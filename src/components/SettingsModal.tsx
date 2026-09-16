@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   X, 
   Download, 
@@ -7,10 +7,13 @@ import {
   ShieldCheck, 
   HardDrive,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Trash2,
+  Eraser,
+  Sparkles
 } from 'lucide-react';
 import { AppState } from '../types';
-import { saveAppState, resetToDefaults } from '../utils/storage';
+import { saveAppState, resetToDefaults, resetToZero } from '../utils/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -26,6 +29,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onStateUpdated
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showConfirmZero, setShowConfirmZero] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -53,8 +58,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (parsed.accounts && parsed.transactions && parsed.categories) {
           saveAppState(parsed);
           onStateUpdated(parsed);
-          alert('Copia de seguridad restaurada correctamente con éxito.');
-          onClose();
+          setShowSuccessToast('Copia de seguridad restaurada correctamente con éxito.');
+          setTimeout(() => {
+            setShowSuccessToast(null);
+            onClose();
+          }, 1400);
         } else {
           alert('El archivo no contiene una copia válida de ANSAMA Finanzas.');
         }
@@ -66,35 +74,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // Reset to initial demo data
-  const handleReset = () => {
-    if (confirm('¿Estás seguro de que deseas restablecer todos los datos a la configuración inicial de fábrica (BBVA y Santander)?')) {
+  const handleResetDefaults = () => {
+    if (confirm('¿Estás seguro de que deseas restablecer todos los datos a la configuración inicial de fábrica (BBVA y Santander con datos de prueba)?')) {
       const defaultState = resetToDefaults();
       onStateUpdated(defaultState);
-      onClose();
+      setShowSuccessToast('Datos de prueba de BBVA y Santander restaurados.');
+      setTimeout(() => {
+        setShowSuccessToast(null);
+        onClose();
+      }, 1400);
     }
+  };
+
+  // Reset to 0 (all transactions removed, balances 0€)
+  const handleExecuteResetToZero = () => {
+    const zeroState = resetToZero(appState);
+    onStateUpdated(zeroState);
+    setShowConfirmZero(false);
+    setShowSuccessToast('¡Aplicación puesta a 0! Ya puedes introducir tus propios saldos y movimientos.');
+    setTimeout(() => {
+      setShowSuccessToast(null);
+      onClose();
+    }, 1600);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
       <div 
-        className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden"
+        className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 bg-zinc-50/50">
           <div className="flex items-center gap-2">
-            <HardDrive className="w-5 h-5 text-[#0E6A3B]" />
-            <h3 className="text-base font-bold text-slate-900">Ajustes y Guardado Local</h3>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-[#0E6A3B] flex items-center justify-center border border-emerald-200/60">
+              <HardDrive className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-zinc-950">Ajustes y Guardado Local</h3>
+              <p className="text-[11px] text-zinc-500">Gestión de base de datos y copias de seguridad</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
+          <button 
+            onClick={onClose} 
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           
+          {/* Notification Toast */}
+          {showSuccessToast && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-900 flex items-center gap-2.5 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+              <span>{showSuccessToast}</span>
+            </div>
+          )}
+
           {/* Privacy & Storage info */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed">
-            <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+          <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/90 text-xs text-zinc-600 leading-relaxed">
+            <div className="flex items-center gap-1.5 font-bold text-zinc-900 mb-1">
               <ShieldCheck className="w-4 h-4 text-[#0E6A3B]" />
               Privacidad y Guardado Local Activo
             </div>
@@ -103,14 +143,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Backup Actions */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            <h4 className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
               Copia de Seguridad y Migración
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 onClick={handleExportData}
-                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer"
+                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-zinc-800 bg-white border border-zinc-200 hover:bg-zinc-50 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-98"
               >
                 <Download className="w-4 h-4 text-zinc-900" />
                 Exportar Copia (JSON)
@@ -118,7 +158,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer"
+                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-zinc-800 bg-white border border-zinc-200 hover:bg-zinc-50 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-98"
               >
                 <Upload className="w-4 h-4 text-[#0E6A3B]" />
                 Importar Copia
@@ -133,30 +173,92 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Danger Zone: Reset */}
-          <div className="pt-4 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-rose-800 uppercase tracking-wider mb-2">
-              Zona de Restauración
+          {/* Start from Zero / Reset Section */}
+          <div className="pt-4 border-t border-zinc-100 space-y-3">
+            <h4 className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
+              Inicialización y Restauración
             </h4>
-            <div className="flex items-center justify-between p-3 rounded-xl bg-rose-50/60 border border-rose-100">
-              <div>
-                <span className="text-xs font-bold text-rose-950 block">Restablecer datos iniciales</span>
-                <span className="text-[11px] text-rose-700">Recarga los saldos de prueba de BBVA y Santander</span>
+
+            {/* Confirmation Box for Resetting to 0 */}
+            {showConfirmZero ? (
+              <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-300 text-xs space-y-3 animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-amber-100 text-amber-900 shrink-0 mt-0.5">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-extrabold text-amber-950 text-sm">¿Confirmas que deseas dejar la aplicación a 0?</h5>
+                    <p className="text-amber-800 mt-1 leading-relaxed">
+                      Esta acción eliminará todos los movimientos registrados ({appState.transactions.length} registros) y pondrá el saldo de todas tus cuentas bancarias a <strong>0,00 €</strong>.
+                    </p>
+                    <p className="text-amber-900 font-semibold mt-1">
+                      Podrás empezar inmediatamente a registrar tus datos y saldos reales desde cero.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmZero(false)}
+                    className="px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-white/80 rounded-lg border border-zinc-300 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteResetToZero}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Sí, poner todo a 0
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Button: Dejar aplicación a 0 */
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/90">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <Eraser className="w-4 h-4 text-[#0E6A3B]" />
+                    <span className="text-xs font-bold text-zinc-950">Dejar la aplicación a 0 (Mis Datos Reales)</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 leading-relaxed">
+                    Borra todos los movimientos y restablece los saldos a 0,00 € para empezar a meter tus datos.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmZero(true)}
+                  className="px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                  Dejar a 0
+                </button>
+              </div>
+            )}
+
+            {/* Restablecer datos iniciales de prueba */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-zinc-800 block">Restablecer datos de prueba</span>
+                <span className="text-[11px] text-zinc-500">Recarga los saldos y movimientos iniciales de demostración de BBVA y Santander.</span>
               </div>
               <button
-                onClick={handleReset}
-                className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-white border border-rose-200 hover:bg-rose-50 rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5"
+                type="button"
+                onClick={handleResetDefaults}
+                className="px-3 py-1.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-lg shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-3.5 h-3.5 text-zinc-500" />
                 Restablecer
               </button>
             </div>
           </div>
 
-          <div className="flex justify-end pt-3">
+          <div className="flex justify-end pt-3 border-t border-zinc-100">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
             >
               Cerrar
             </button>

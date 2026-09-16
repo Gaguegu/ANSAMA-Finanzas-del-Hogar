@@ -103,54 +103,57 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Desktop Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 bg-zinc-100/90 p-1 rounded-xl border border-zinc-200/80">
+          {/* Desktop Navigation Tabs - Resaltada con verde corporativo ANSAMA */}
+          <nav className="hidden md:flex items-center gap-1.5 bg-[#092B19] p-1.5 rounded-2xl border border-[#0E6A3B]/70 shadow-sm ring-1 ring-emerald-950/20">
             <button
               id="nav-tab-dashboard"
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'dashboard'
-                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
-                  : 'text-zinc-600 hover:text-zinc-900'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <PieChart className="w-3.5 h-3.5 text-zinc-500" />
+              <PieChart className={`w-4 h-4 transition-colors ${activeTab === 'dashboard' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Patrimonio</span>
             </button>
+
             <button
               id="nav-tab-accounts"
               onClick={() => setActiveTab('accounts')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'accounts'
-                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
-                  : 'text-zinc-600 hover:text-zinc-900'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5 text-zinc-500" />
+              <Building2 className={`w-4 h-4 transition-colors ${activeTab === 'accounts' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Bancos</span>
             </button>
+
             <button
               id="nav-tab-categories"
               onClick={() => setActiveTab('categories')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'categories'
-                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
-                  : 'text-zinc-600 hover:text-zinc-900'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <TrendingUp className="w-3.5 h-3.5 text-zinc-500" />
+              <TrendingUp className={`w-4 h-4 transition-colors ${activeTab === 'categories' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Gastos e Ingresos</span>
             </button>
+
             <button
               id="nav-tab-transactions"
               onClick={() => setActiveTab('transactions')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'transactions'
-                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
-                  : 'text-zinc-600 hover:text-zinc-900'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <ListOrdered className="w-3.5 h-3.5 text-zinc-500" />
+              <ListOrdered className={`w-4 h-4 transition-colors ${activeTab === 'transactions' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Movimientos</span>
             </button>
           </nav>

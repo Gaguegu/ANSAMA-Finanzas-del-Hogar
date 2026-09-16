@@ -35,6 +35,29 @@ export function resetToDefaults(): AppState {
   return INITIAL_STATE;
 }
 
+export function resetToZero(currentState?: AppState): AppState {
+  const sourceAccounts = currentState?.accounts && currentState.accounts.length > 0 
+    ? currentState.accounts 
+    : INITIAL_STATE.accounts;
+
+  const zeroAccounts: BankAccount[] = sourceAccounts.map((acc) => ({
+    ...acc,
+    balance: 0,
+    lastSynced: new Date().toISOString()
+  }));
+
+  const zeroState: AppState = {
+    accounts: zeroAccounts,
+    transactions: [],
+    categories: currentState?.categories || INITIAL_STATE.categories,
+    lastGlobalSync: new Date().toISOString(),
+    currency: currentState?.currency || 'EUR'
+  };
+
+  saveAppState(zeroState);
+  return zeroState;
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('es-ES', {
     style: 'currency',
