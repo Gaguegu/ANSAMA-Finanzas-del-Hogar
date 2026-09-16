@@ -3,9 +3,9 @@ import {
   RefreshCw, 
   Plus, 
   Settings, 
-  ShieldCheck, 
-  Smartphone,
-  Laptop
+  Download,
+  Sparkles,
+  ArrowDownToLine
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 
@@ -17,6 +17,12 @@ interface HeaderProps {
   onOpenSettingsModal: () => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  isInstalled: boolean;
+  onOpenInstall: () => void;
+  hasNewUpdate: boolean;
+  isCheckingUpdate: boolean;
+  onCheckUpdate: () => void;
+  onApplyUpdate: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,12 +32,41 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewTransactionModal,
   onOpenSettingsModal,
   activeTab,
-  setActiveTab
+  setActiveTab,
+  isInstalled,
+  onOpenInstall,
+  hasNewUpdate,
+  isCheckingUpdate,
+  onCheckUpdate,
+  onApplyUpdate,
 }) => {
   return (
     <header id="app-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-zinc-200">
+      {/* Update notification announcement banner if update is available */}
+      {hasNewUpdate && (
+        <div className="bg-emerald-900 text-white px-4 py-2 text-xs sm:text-sm border-b border-emerald-950 flex flex-wrap items-center justify-between gap-2 shadow-inner">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+            </span>
+            <span>
+              <strong>¡Nuevas actualizaciones disponibles!</strong> Se aplicarán automáticamente en breve o puedes pulsar actualizar manualmente ahora.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onApplyUpdate}
+              className="px-3 py-1 bg-white hover:bg-emerald-50 text-emerald-950 font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              Actualizar Ahora
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+        <div className="flex items-center justify-between h-16 gap-3 sm:gap-4">
           
           {/* Logo & Identity */}
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -118,15 +153,56 @@ export const Header: React.FC<HeaderProps> = ({
           </nav>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Botón Actualizar (con aviso de nuevas versiones y actualización manual) */}
+            <button
+              id="btn-update-app"
+              onClick={onCheckUpdate}
+              disabled={isCheckingUpdate}
+              title={
+                hasNewUpdate 
+                  ? "¡Nueva actualización disponible! Pulsa para actualizar ahora" 
+                  : "Comprobar y buscar actualizaciones"
+              }
+              className={`relative flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs font-bold rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer ${
+                hasNewUpdate 
+                  ? 'bg-[#0E6A3B] text-white ring-2 ring-emerald-400 hover:bg-[#0a522d]'
+                  : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-200'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-emerald-600' : hasNewUpdate ? 'text-white animate-spin' : 'text-zinc-600'}`} />
+              <span className="hidden lg:inline">
+                {hasNewUpdate ? 'Actualizar ahora' : 'Actualizar'}
+              </span>
+              {hasNewUpdate && (
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                </span>
+              )}
+            </button>
+
+            {/* Botón Instalar (SOLO visible en aplicación web; cuando se instala en el PC desaparece automáticamente) */}
+            {!isInstalled && (
+              <button
+                id="btn-install-app"
+                onClick={onOpenInstall}
+                title="Instalar ANSAMA en tu PC o dispositivo"
+                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                <span className="hidden sm:inline">Instalar</span>
+              </button>
+            )}
+
             <button
               id="btn-sync-banks"
               onClick={onOpenSyncModal}
               disabled={isSyncing}
               title="Sincronización bancaria simulada"
-              className="relative flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-sm active:scale-95 disabled:opacity-75 cursor-pointer"
+              className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-sm active:scale-95 disabled:opacity-75 cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
               <span className="hidden sm:inline">Sincronizar Bancos</span>
               <span className="sm:hidden">Sincronizar</span>
             </button>
@@ -134,9 +210,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="btn-add-transaction"
               onClick={onOpenNewTransactionModal}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-bold rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-sm active:scale-95 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Nuevo Movimiento</span>
               <span className="sm:hidden">Nuevo</span>
             </button>
@@ -145,9 +221,9 @@ export const Header: React.FC<HeaderProps> = ({
               id="btn-open-settings"
               onClick={onOpenSettingsModal}
               title="Ajustes y copias de seguridad"
-              className="p-2 rounded-xl text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 transition-all cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 transition-all cursor-pointer"
             >
-              <Settings className="w-5 h-5" />
+              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
 

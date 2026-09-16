@@ -16,8 +16,10 @@ import { TransactionModal } from './components/TransactionModal';
 import { SyncModal } from './components/SyncModal';
 import { AccountModal } from './components/AccountModal';
 import { SettingsModal } from './components/SettingsModal';
+import { InstallModal } from './components/InstallModal';
 import { MobileNav } from './components/MobileNav';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { usePWA } from './utils/usePWA';
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
@@ -27,16 +29,27 @@ export default function App() {
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState<boolean>(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
   const [accountToEdit, setAccountToEdit] = useState<BankAccount | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  // Hook PWA para instalación y actualizaciones automáticas y manuales
+  const pwa = usePWA();
 
   // Show transient toast notification
   const triggerNotification = (message: string, type: 'success' | 'info' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(null);
-    }, 4000);
+    }, 4500);
   };
+
+  // Feedback de actualización
+  useEffect(() => {
+    if (pwa.updateFeedback) {
+      triggerNotification(pwa.updateFeedback, 'info');
+    }
+  }, [pwa.updateFeedback]);
 
   // Add new transaction & update account balance
   const handleAddTransaction = (newTxData: Omit<Transaction, 'id'>) => {
@@ -175,6 +188,22 @@ export default function App() {
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        isInstalled={pwa.isInstalled}
+        onOpenInstall={() => {
+          if (pwa.isInstallable) {
+            pwa.installApp().then((accepted) => {
+              if (!accepted) {
+                setIsInstallModalOpen(true);
+              }
+            });
+          } else {
+            setIsInstallModalOpen(true);
+          }
+        }}
+        hasNewUpdate={pwa.hasNewUpdate}
+        isCheckingUpdate={pwa.isCheckingUpdate}
+        onCheckUpdate={pwa.checkForUpdates}
+        onApplyUpdate={pwa.applyUpdate}
       />
 
       {/* Main App Content Area */}
@@ -324,6 +353,14 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         appState={appState}
         onStateUpdated={(newState) => setAppState(newState)}
+      />
+
+      {/* Modal de Instrucciones e Instalación PWA */}
+      <InstallModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        onInstallDirectly={pwa.installApp}
+        canPromptDirectly={pwa.isInstallable}
       />
 
     </div>
