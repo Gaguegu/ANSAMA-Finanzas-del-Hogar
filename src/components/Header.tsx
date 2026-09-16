@@ -34,8 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 gap-4">
           
           {/* Logo & Identity */}
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-white border border-emerald-100 flex items-center justify-center p-0.5 shadow-sm overflow-hidden shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white border border-emerald-100 flex items-center justify-center p-0.5 shadow-sm overflow-hidden shrink-0">
               <img 
                 src="./logo.jpg" 
                 alt="Logo ANSAMA" 
@@ -43,16 +43,28 @@ export const Header: React.FC<HeaderProps> = ({
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-black tracking-tight text-zinc-950">ANSAMA</span>
-                <span className="inline-block text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
-                  Finanzas del Hogar
-                </span>
+            <div className="flex flex-col justify-center">
+              {/* ANSAMA en fuente Algerian con colores alternados y en cursiva */}
+              <div 
+                className="text-lg sm:text-xl font-black italic tracking-wider leading-none select-none font-['Algerian','Cinzel_Decorative',serif]"
+                title="ANSAMA"
+              >
+                <span className="text-[#0E6A3B]">A</span>
+                <span className="text-black">N</span>
+                <span className="text-[#0E6A3B]">S</span>
+                <span className="text-black">A</span>
+                <span className="text-[#0E6A3B]">M</span>
+                <span className="text-black">A</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+              
+              {/* Finanzas del Hogar debajo en verde, sin círculo */}
+              <span className="text-xs sm:text-[13px] font-bold text-[#0E6A3B] tracking-tight leading-tight mt-0.5">
+                Finanzas del Hogar
+              </span>
+              
+              <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-500 mt-0.5">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                <span>Sincronizado: {formatRelativeTime(lastSync)}</span>
+                <span className="truncate max-w-[150px] sm:max-w-none">Sincronizado: {formatRelativeTime(lastSync)}</span>
               </div>
             </div>
           </div>
