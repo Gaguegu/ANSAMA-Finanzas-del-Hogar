@@ -1,0 +1,6 @@
+{
+  "name": "ANSAMA Finanzas del Hogar",
+  "description": "Aplicación de finanzas del hogar para PC y móvil con resumen de patrimonio, saldos por banco (BBVA, Santander), categorías de gastos e ingresos y sincronización bancaria simulada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
