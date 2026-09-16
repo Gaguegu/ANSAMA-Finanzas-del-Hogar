@@ -82,7 +82,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <HardDrive className="w-5 h-5 text-blue-600" />
+            <HardDrive className="w-5 h-5 text-[#0E6A3B]" />
             <h3 className="text-base font-bold text-slate-900">Ajustes y Guardado Local</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
@@ -95,7 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Privacy & Storage info */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed">
             <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <ShieldCheck className="w-4 h-4 text-[#0E6A3B]" />
               Privacidad y Guardado Local Activo
             </div>
             Todos los datos patrimoniales, saldos bancarios y movimientos se almacenan exclusivamente de manera local en tu navegador (LocalStorage). Ningún dato financiero viaja a servidores externos no autorizados.
@@ -112,7 +112,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={handleExportData}
                 className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer"
               >
-                <Download className="w-4 h-4 text-blue-600" />
+                <Download className="w-4 h-4 text-zinc-900" />
                 Exportar Copia (JSON)
               </button>
 
@@ -120,7 +120,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer"
               >
-                <Upload className="w-4 h-4 text-emerald-600" />
+                <Upload className="w-4 h-4 text-[#0E6A3B]" />
                 Importar Copia
               </button>
               <input

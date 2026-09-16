@@ -26,7 +26,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`flex flex-col items-center gap-1 p-1 min-w-[56px] transition-colors ${
-            activeTab === 'dashboard' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+            activeTab === 'dashboard' ? 'text-[#0E6A3B] font-bold' : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
           <PieChart className="w-5 h-5" />
@@ -37,7 +37,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         <button
           onClick={() => setActiveTab('accounts')}
           className={`flex flex-col items-center gap-1 p-1 min-w-[56px] transition-colors ${
-            activeTab === 'accounts' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+            activeTab === 'accounts' ? 'text-[#0E6A3B] font-bold' : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
           <Building2 className="w-5 h-5" />
@@ -47,7 +47,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         {/* Center Action: + Movimiento */}
         <button
           onClick={onOpenNewTransactionModal}
-          className="w-11 h-11 -mt-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all"
+          className="w-11 h-11 -mt-5 rounded-full bg-[#0E6A3B] text-white flex items-center justify-center shadow-md shadow-emerald-950/30 hover:bg-[#0a522d] active:scale-95 transition-all"
           title="Añadir movimiento"
         >
           <Plus className="w-6 h-6" />
@@ -57,7 +57,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         <button
           onClick={() => setActiveTab('categories')}
           className={`flex flex-col items-center gap-1 p-1 min-w-[56px] transition-colors ${
-            activeTab === 'categories' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+            activeTab === 'categories' ? 'text-[#0E6A3B] font-bold' : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
           <Tags className="w-5 h-5" />
@@ -68,7 +68,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         <button
           onClick={() => setActiveTab('transactions')}
           className={`flex flex-col items-center gap-1 p-1 min-w-[56px] transition-colors ${
-            activeTab === 'transactions' ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+            activeTab === 'transactions' ? 'text-[#0E6A3B] font-bold' : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
           <ListOrdered className="w-5 h-5" />

@@ -187,7 +187,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-sm cursor-pointer"
             >
               Guardar Cuenta
             </button>

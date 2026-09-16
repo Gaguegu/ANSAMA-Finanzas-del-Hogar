@@ -156,25 +156,25 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
             {monthlyIncome > 0 ? ((monthlyExpense / monthlyIncome) * 100).toFixed(1) : 0}% consumido
           </span>
         </div>
-        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden flex">
+        <div className="w-full bg-zinc-100 rounded-full h-2.5 overflow-hidden flex">
           <div 
-            className="bg-blue-600 h-full rounded-l-full transition-all duration-500"
+            className="bg-zinc-800 h-full rounded-l-full transition-all duration-500"
             style={{ width: `${Math.min(100, monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0)}%` }}
             title={`Gastos: ${formatCurrency(monthlyExpense)}`}
           />
           <div 
-            className="bg-emerald-500 h-full rounded-r-full transition-all duration-500"
+            className="bg-[#0E6A3B] h-full rounded-r-full transition-all duration-500"
             style={{ width: `${Math.max(0, 100 - (monthlyIncome > 0 ? (monthlyExpense / monthlyIncome) * 100 : 0))}%` }}
             title={`Ahorro: ${formatCurrency(Math.max(0, monthlySavings))}`}
           />
         </div>
-        <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+        <div className="flex items-center justify-between text-[11px] text-zinc-500 mt-1">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+            <span className="w-2 h-2 rounded-full bg-zinc-800 inline-block"></span>
             Gastos: {formatCurrency(monthlyExpense)}
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+            <span className="w-2 h-2 rounded-full bg-[#0E6A3B] inline-block"></span>
             Ahorro libre: {formatCurrency(Math.max(0, monthlySavings))}
           </span>
         </div>

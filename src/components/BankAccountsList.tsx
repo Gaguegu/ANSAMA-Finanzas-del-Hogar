@@ -141,7 +141,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
         <button
           onClick={onOpenNewAccountModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors self-start sm:self-auto cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           Añadir Cuenta Bancaria
