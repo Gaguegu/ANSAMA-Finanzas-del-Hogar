@@ -5,7 +5,11 @@ import {
   Settings, 
   Download,
   Sparkles,
-  ArrowDownToLine
+  ArrowDownToLine,
+  PieChart,
+  Building2,
+  TrendingUp,
+  ListOrdered
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 
@@ -69,8 +73,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 gap-3 sm:gap-4">
           
           {/* Logo & Identity */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white border border-emerald-100 flex items-center justify-center p-0.5 shadow-sm overflow-hidden shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white border border-zinc-200/80 flex items-center justify-center p-1 shadow-xs overflow-hidden shrink-0">
               <img 
                 src="./logo.jpg" 
                 alt="Logo ANSAMA" 
@@ -85,70 +89,69 @@ export const Header: React.FC<HeaderProps> = ({
                 title="ANSAMA"
               >
                 <span className="text-[#0E6A3B]">A</span>
-                <span className="text-black">N</span>
+                <span className="text-zinc-950">N</span>
                 <span className="text-[#0E6A3B]">S</span>
-                <span className="text-black">A</span>
+                <span className="text-zinc-950">A</span>
                 <span className="text-[#0E6A3B]">M</span>
-                <span className="text-black">A</span>
+                <span className="text-zinc-950">A</span>
               </div>
               
-              {/* Finanzas del Hogar debajo en verde, sin círculo */}
+              {/* Finanzas del Hogar debajo en verde elegante, sin texto de sincronizado debajo */}
               <span className="text-xs sm:text-[13px] font-bold text-[#0E6A3B] tracking-tight leading-tight mt-0.5">
                 Finanzas del Hogar
               </span>
-              
-              <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-500 mt-0.5">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                <span className="truncate max-w-[150px] sm:max-w-none">Sincronizado: {formatRelativeTime(lastSync)}</span>
-              </div>
             </div>
           </div>
 
           {/* Desktop Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 bg-zinc-100 p-1 rounded-xl border border-zinc-200/60">
+          <nav className="hidden md:flex items-center gap-1 bg-zinc-100/90 p-1 rounded-xl border border-zinc-200/80">
             <button
               id="nav-tab-dashboard"
               onClick={() => setActiveTab('dashboard')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'dashboard'
-                  ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/80'
+                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
                   : 'text-zinc-600 hover:text-zinc-900'
               }`}
             >
-              Patrimonio
+              <PieChart className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Patrimonio</span>
             </button>
             <button
               id="nav-tab-accounts"
               onClick={() => setActiveTab('accounts')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'accounts'
-                  ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/80'
+                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
                   : 'text-zinc-600 hover:text-zinc-900'
               }`}
             >
-              Bancos (BBVA / Santander)
+              <Building2 className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Bancos</span>
             </button>
             <button
               id="nav-tab-categories"
               onClick={() => setActiveTab('categories')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'categories'
-                  ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/80'
+                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
                   : 'text-zinc-600 hover:text-zinc-900'
               }`}
             >
-              Gastos e Ingresos
+              <TrendingUp className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Gastos e Ingresos</span>
             </button>
             <button
               id="nav-tab-transactions"
               onClick={() => setActiveTab('transactions')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'transactions'
-                  ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/80'
+                   ? 'bg-white text-emerald-950 font-bold shadow-xs border border-zinc-200/90'
                   : 'text-zinc-600 hover:text-zinc-900'
               }`}
             >
-              Movimientos
+              <ListOrdered className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Movimientos</span>
             </button>
           </nav>
 

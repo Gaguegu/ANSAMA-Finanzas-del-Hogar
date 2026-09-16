@@ -14,7 +14,7 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.png', 'logo.jpg'],
         manifest: {
-          id: '/',
+          id: 'ansama-finanzas-del-hogar',
           name: 'ANSAMA Finanzas del Hogar',
           short_name: 'ANSAMA',
           description: 'Gestión y control de finanzas del hogar para PC y móvil con sincronización bancaria de BBVA y Santander.',

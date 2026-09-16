@@ -9,7 +9,8 @@ import {
   Calendar,
   Building,
   RotateCcw,
-  FileText
+  FileText,
+  Plus
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate } from '../utils/storage';
@@ -84,21 +85,27 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   };
 
   return (
-    <div id="section-transactions" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
+    <div id="section-transactions" className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xs p-5 sm:p-6">
       
       {/* Title & Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-zinc-100">
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Historial de Movimientos</h3>
-          <p className="text-xs text-slate-500">
-            {filteredTransactions.length} de {transactions.length} movimientos registrados en el hogar
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-zinc-950">Historial Consolidado de Movimientos</h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">
+              {filteredTransactions.length} registros
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Extracto de cuentas BBVA, Santander y operaciones registradas
           </p>
         </div>
 
         <button
           onClick={onOpenNewTransactionModal}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-lg transition-colors cursor-pointer self-start md:self-auto shadow-xs"
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all cursor-pointer self-start md:self-auto shadow-2xs active:scale-95"
         >
+          <Plus className="w-3.5 h-3.5" />
           Añadir Movimiento
         </button>
       </div>
@@ -114,7 +121,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             placeholder="Buscar por concepto o notas..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-900 placeholder:text-zinc-400"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-900 placeholder:text-zinc-400 font-medium"
           />
         </div>
 
@@ -123,7 +130,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterBank}
             onChange={(e) => setFilterBank(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-medium"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
           >
             <option value="all">Todos los Bancos</option>
             <option value="bbva">Solo BBVA</option>
@@ -136,9 +143,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as 'all' | 'expense' | 'income')}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-medium"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
           >
-            <option value="all">Tipo: Todos</option>
+            <option value="all">Tipo: Todos los Flujos</option>
             <option value="expense">Solo Gastos</option>
             <option value="income">Solo Ingresos</option>
           </select>
@@ -149,7 +156,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-medium"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
           >
             <option value="all">Todas las Categorías</option>
             {categories.map((c) => (
@@ -163,14 +170,14 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {hasActiveFilters && (
-        <div className="flex items-center justify-between bg-emerald-50/70 border border-emerald-200 rounded-lg px-3 py-1.5 mb-4 text-xs text-emerald-900">
-          <span>Filtros aplicados ({filteredTransactions.length} encontrados)</span>
+        <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 mb-4 text-xs text-emerald-950">
+          <span className="font-medium">Filtros aplicados ({filteredTransactions.length} encontrados)</span>
           <button
             onClick={resetFilters}
-            className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-emerald-950 cursor-pointer"
+            className="inline-flex items-center gap-1 font-bold text-[#0E6A3B] hover:text-emerald-950 cursor-pointer"
           >
-            <RotateCcw className="w-3 h-3" />
-            Limpiar filtros
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restablecer filtros
           </button>
         </div>
       )}
@@ -179,16 +186,16 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              <th className="py-3 px-3">Fecha</th>
-              <th className="py-3 px-3">Concepto & Detalle</th>
-              <th className="py-3 px-3">Categoría</th>
-              <th className="py-3 px-3">Cuenta / Banco</th>
-              <th className="py-3 px-3 text-right">Importe</th>
-              <th className="py-3 px-3 text-center">Acción</th>
+            <tr className="border-b border-zinc-200/80 text-[11px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-50/50">
+              <th className="py-3 px-3.5 rounded-l-lg">Fecha</th>
+              <th className="py-3 px-3.5">Concepto & Detalle</th>
+              <th className="py-3 px-3.5">Categoría</th>
+              <th className="py-3 px-3.5">Cuenta / Entidad</th>
+              <th className="py-3 px-3.5 text-right">Importe</th>
+              <th className="py-3 px-3.5 text-center rounded-r-lg">Acción</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-xs">
+          <tbody className="divide-y divide-zinc-100 text-xs">
             {filteredTransactions.length > 0 ? (
               filteredTransactions.map((tx) => {
                 const account = accountMap.get(tx.accountId);
@@ -198,33 +205,33 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 return (
                   <tr 
                     key={tx.id} 
-                    className="hover:bg-slate-50/80 transition-colors group"
+                    className="hover:bg-zinc-50/70 transition-colors group"
                   >
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap font-medium">
+                    <td className="py-3.5 px-3.5 text-zinc-500 whitespace-nowrap font-medium font-feature-settings-tnum">
                       {formatDate(tx.date)}
                     </td>
 
-                    <td className="py-3.5 px-3">
-                      <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <td className="py-3.5 px-3.5">
+                      <div className="font-semibold text-zinc-950 flex items-center gap-2">
                         {tx.title}
                         {tx.isSimulated && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200" title="Sincronizado automáticamente">
-                            <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#004481] border border-blue-200" title="Sincronizado automáticamente por PSD2">
+                            <Sparkles className="w-2.5 h-2.5 text-[#004481]" />
                             PSD2
                           </span>
                         )}
                       </div>
                       {tx.note && (
-                        <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs">
+                        <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-xs">
                           {tx.note}
                         </div>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3 whitespace-nowrap">
+                    <td className="py-3.5 px-3.5 whitespace-nowrap">
                       {category ? (
                         <span 
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
                           style={{
                             backgroundColor: category.bgLight,
                             color: category.color
@@ -237,39 +244,39 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                           {category.name}
                         </span>
                       ) : (
-                        <span className="text-slate-400">General</span>
+                        <span className="text-zinc-400">General</span>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3 whitespace-nowrap">
+                    <td className="py-3.5 px-3.5 whitespace-nowrap">
                       {account ? (
-                        <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                        <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
                           <span
                             className="w-2 h-2 rounded-full"
                             style={{ backgroundColor: account.color }}
                           />
-                          <span className="font-bold text-[11px]">{account.bankName}</span>
-                          <span className="text-slate-400 text-[11px]">({account.accountName})</span>
+                          <span className="font-bold text-[11px] text-zinc-900">{account.bankName}</span>
+                          <span className="text-zinc-400 text-[11px]">({account.accountName})</span>
                         </span>
                       ) : (
-                        <span className="text-slate-400">Cuenta general</span>
+                        <span className="text-zinc-400">Cuenta general</span>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3 text-right whitespace-nowrap font-bold">
-                      <span className={isIncome ? 'text-emerald-600' : 'text-slate-900'}>
+                    <td className="py-3.5 px-3.5 text-right whitespace-nowrap font-bold">
+                      <span className={`font-feature-settings-tnum text-sm ${isIncome ? 'text-[#0E6A3B]' : 'text-zinc-950'}`}>
                         {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-3 text-center">
+                    <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
                       <button
                         onClick={() => {
                           if (confirm(`¿Eliminar el movimiento "${tx.title}"?`)) {
                             onDeleteTransaction(tx.id);
                           }
                         }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
                         title="Eliminar movimiento"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -280,8 +287,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               })
             ) : (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-slate-400">
-                  No se encontraron movimientos con los filtros seleccionados.
+                <td colSpan={6} className="py-12 text-center text-zinc-400">
+                  <p className="font-medium text-sm">No se encontraron movimientos con los filtros seleccionados</p>
+                  <p className="text-xs text-zinc-400 mt-1">Prueba a restablecer los filtros de búsqueda</p>
                 </td>
               </tr>
             )}
@@ -290,7 +298,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {/* Mobile Touch Card View */}
-      <div className="md:hidden divide-y divide-slate-100">
+      <div className="md:hidden divide-y divide-zinc-100">
         {filteredTransactions.length > 0 ? (
           filteredTransactions.map((tx) => {
             const account = accountMap.get(tx.accountId);
@@ -300,30 +308,30 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             return (
               <div key={tx.id} className="py-3.5 flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-xs text-slate-400 font-medium">
+                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                    <span className="text-xs text-zinc-400 font-medium font-feature-settings-tnum">
                       {formatDate(tx.date)}
                     </span>
                     {account && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800 border border-zinc-200/60">
                         {account.bankName}
                       </span>
                     )}
                     {tx.isSimulated && (
-                      <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#004481] border border-blue-200">
                         PSD2
                       </span>
                     )}
                   </div>
 
-                  <h4 className="font-bold text-slate-900 text-sm truncate">
+                  <h4 className="font-bold text-zinc-900 text-sm truncate">
                     {tx.title}
                   </h4>
 
                   {category && (
                     <div className="mt-1">
                       <span 
-                        className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium"
+                        className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold"
                         style={{
                           backgroundColor: category.bgLight,
                           color: category.color
@@ -335,14 +343,14 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                   )}
 
                   {tx.note && (
-                    <p className="text-[11px] text-slate-400 mt-1 truncate">
+                    <p className="text-[11px] text-zinc-400 mt-1 truncate">
                       {tx.note}
                     </p>
                   )}
                 </div>
 
                 <div className="text-right flex flex-col items-end justify-between self-stretch">
-                  <span className={`text-base font-extrabold ${isIncome ? 'text-emerald-600' : 'text-slate-900'}`}>
+                  <span className={`text-base font-extrabold font-feature-settings-tnum ${isIncome ? 'text-[#0E6A3B]' : 'text-zinc-950'}`}>
                     {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
                   </span>
 
@@ -352,7 +360,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                         onDeleteTransaction(tx.id);
                       }
                     }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
+                    className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                    title="Eliminar movimiento"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -361,7 +370,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             );
           })
         ) : (
-          <div className="py-8 text-center text-slate-400 text-xs">
+          <div className="py-8 text-center text-zinc-400 text-xs font-medium">
             No hay movimientos que coincidan con la búsqueda.
           </div>
         )}

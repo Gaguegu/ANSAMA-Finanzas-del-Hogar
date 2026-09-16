@@ -87,33 +87,33 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   };
 
   return (
-    <div id="section-categories-chart" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 lg:p-7">
+    <div id="section-categories-chart" className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xs p-5 sm:p-6 lg:p-7">
       
       {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-5 mb-6">
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Categorías y Presupuesto</h3>
-          <p className="text-xs text-slate-500">Distribución de los importes del mes actual</p>
+          <h3 className="text-base font-bold text-zinc-950">Distribución de Gastos e Ingresos</h3>
+          <p className="text-xs text-zinc-500">Consumo presupuestario del mes corriente</p>
         </div>
 
         {/* Expense vs Income Toggle */}
-        <div className="inline-flex p-1 bg-slate-100 rounded-xl">
+        <div className="inline-flex p-1 bg-zinc-100 rounded-xl border border-zinc-200/60">
           <button
             onClick={() => setActiveTab('expense')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeTab === 'expense'
-                ? 'bg-rose-50 text-rose-700 border border-rose-200 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-zinc-950 shadow-xs border border-zinc-200/80'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
             Gastos ({formatCurrency(totalSum > 0 && activeTab === 'expense' ? totalSum : 0)})
           </button>
           <button
             onClick={() => setActiveTab('income')}
-            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeTab === 'income'
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-emerald-950 shadow-xs border border-zinc-200/80'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
             Ingresos ({formatCurrency(totalSum > 0 && activeTab === 'income' ? totalSum : 0)})
@@ -133,7 +133,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                 cx={size / 2}
                 cy={size / 2}
                 r={radius}
-                stroke="#f1f5f9"
+                stroke="#f4f4f5"
                 strokeWidth={strokeWidth}
                 fill="none"
               />
@@ -170,7 +170,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                   cx={size / 2}
                   cy={size / 2}
                   r={radius}
-                  stroke="#cbd5e1"
+                  stroke="#e4e4e7"
                   strokeWidth={strokeWidth}
                   fill="none"
                   strokeDasharray="4 4"
@@ -180,25 +180,25 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
 
             {/* Central summary inside the donut */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                 {activeTab === 'expense' ? 'Total Gastos' : 'Total Ingresos'}
               </span>
-              <span className="text-xl font-black text-slate-900 leading-tight mt-0.5">
+              <span className="text-xl font-extrabold text-zinc-950 leading-tight mt-0.5 font-feature-settings-tnum">
                 {formatCurrency(totalSum)}
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5">
+              <span className="text-[10px] text-zinc-500 mt-0.5 font-medium">
                 {monthTransactions.filter((t) => t.type === activeTab).length} movimientos
               </span>
             </div>
           </div>
 
-          <p className="text-xs text-slate-400 text-center mt-3">
-            Pasa el cursor sobre los segmentos para ver el desglose
+          <p className="text-[11px] text-zinc-400 text-center mt-3 font-medium">
+            Toca o pasa el cursor sobre cada segmento para ver detalles
           </p>
         </div>
 
         {/* Categories List with Progress Bar */}
-        <div className="lg:col-span-7 space-y-3.5">
+        <div className="lg:col-span-7 space-y-3">
           {sortedStats.map((item) => {
             const hasBudget = activeTab === 'expense' && item.budget > 0;
             const budgetPercent = hasBudget ? (item.totalAmount / item.budget) * 100 : 0;
@@ -211,35 +211,35 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                 key={item.category.id}
                 onMouseEnter={() => setHoveredCategory(item.category.id)}
                 onMouseLeave={() => setHoveredCategory(null)}
-                className={`p-3 rounded-xl border transition-all ${
+                className={`p-3 sm:p-3.5 rounded-xl border transition-all ${
                   isHovered 
-                    ? 'border-blue-400 bg-blue-50/40 shadow-xs' 
-                    : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
+                    ? 'border-emerald-400 bg-emerald-50/30 shadow-xs' 
+                    : 'border-zinc-200/80 bg-white hover:border-zinc-300'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-2.5">
                     <div 
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-white"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-2xs"
                       style={{ backgroundColor: item.category.color }}
                     >
-                      {renderCategoryIcon(item.category.iconName, 'w-3.5 h-3.5')}
+                      {renderCategoryIcon(item.category.iconName, 'w-4 h-4')}
                     </div>
                     <div>
-                      <span className="text-sm font-semibold text-slate-900 block">
+                      <span className="text-sm font-bold text-zinc-900 block">
                         {item.category.name}
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-zinc-400">
                         {item.transactionCount} {item.transactionCount === 1 ? 'operación' : 'operaciones'}
                       </span>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <span className="text-sm font-bold text-slate-900 block">
+                    <span className="text-sm font-bold text-zinc-950 block font-feature-settings-tnum">
                       {formatCurrency(item.totalAmount)}
                     </span>
-                    <span className="text-[11px] font-semibold text-slate-500">
+                    <span className="text-[11px] font-semibold text-zinc-500">
                       {item.percentage.toFixed(1)}% del total
                     </span>
                   </div>
@@ -247,17 +247,17 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
 
                 {/* Monthly budget bar for expenses */}
                 {hasBudget && (
-                  <div className="mt-2 pt-2 border-t border-slate-200/60">
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-                      <span>Presupuesto mensual: {formatCurrency(item.budget)}</span>
-                      <span className={isOverBudget ? 'text-rose-600 font-bold' : isNearBudget ? 'text-amber-600 font-bold' : 'text-slate-600'}>
+                  <div className="mt-2.5 pt-2 border-t border-zinc-100">
+                    <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
+                      <span>Presupuesto mensual: <strong className="text-zinc-700">{formatCurrency(item.budget)}</strong></span>
+                      <span className={`font-bold ${isOverBudget ? 'text-rose-600' : isNearBudget ? 'text-amber-600' : 'text-[#0E6A3B]'}`}>
                         {budgetPercent.toFixed(0)}%
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
-                          isOverBudget ? 'bg-rose-500' : isNearBudget ? 'bg-amber-500' : 'bg-emerald-500'
+                          isOverBudget ? 'bg-rose-500' : isNearBudget ? 'bg-amber-500' : 'bg-[#0E6A3B]'
                         }`}
                         style={{ width: `${Math.min(100, budgetPercent)}%` }}
                       />

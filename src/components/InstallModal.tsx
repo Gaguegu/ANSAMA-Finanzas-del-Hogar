@@ -102,6 +102,34 @@ export const InstallModal: React.FC<InstallModalProps> = ({
             Crea un acceso directo en el <strong>Escritorio</strong> de Windows y en el <strong>Menú Inicio</strong>, se ejecuta en una ventana propia sin barras de navegador y guarda los datos en tu disco.
           </div>
 
+          {/* Guía infalible para crear el acceso directo en Chrome / Edge */}
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-2.5">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+              <Monitor className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+              <span>Cómo crear el Acceso Directo en el Escritorio desde Chrome:</span>
+            </div>
+            <p className="leading-relaxed text-zinc-700">
+              Si tienes otra aplicación de ANSAMA (como el Comparador) en el mismo dominio o no te salta el aviso automático, puedes crear el icono en tu escritorio directamente desde el menú de Chrome:
+            </p>
+            <div className="bg-white p-3 rounded-lg border border-emerald-100 space-y-2 text-zinc-800 shadow-xs">
+              <p className="flex items-start gap-2">
+                <span className="font-bold text-[#0E6A3B]">Paso 1:</span>
+                <span>En la pestaña de ANSAMA Finanzas, pulsa en los <strong>3 puntos verticales (⋮)</strong> arriba a la derecha en Chrome.</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <span className="font-bold text-[#0E6A3B]">Paso 2:</span>
+                <span>Ve a <strong>«Guardar y compartir»</strong> (o «Más herramientas») y haz clic en <strong>«Crear acceso directo...»</strong> o <strong>«Instalar página como aplicación...»</strong>.</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <span className="font-bold text-[#0E6A3B]">Paso 3:</span>
+                <span>En la ventanita que aparece, asegúrate de marcar la casilla <strong>«Abrir como ventana»</strong> y pulsa en <strong>Crear</strong> (o Instalar).</span>
+              </p>
+            </div>
+            <p className="text-[11px] text-emerald-800 font-medium">
+              ✓ Windows creará inmediatamente el icono con el logo en tu Escritorio y funcionará como una aplicación nativa de PC.
+            </p>
+          </div>
+
           <div className="space-y-3 pt-1">
             <h4 className="text-xs font-bold text-zinc-800 uppercase tracking-wider">
               Pasos para instalar en PC (Google Chrome o Microsoft Edge):
