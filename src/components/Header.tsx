@@ -9,7 +9,9 @@ import {
   PieChart,
   Building2,
   TrendingUp,
-  ListOrdered
+  ListOrdered,
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 
@@ -107,57 +109,83 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Desktop Navigation Tabs - Resaltada con verde corporativo ANSAMA */}
-          <nav className="hidden md:flex items-center gap-1.5 bg-[#092B19] p-1.5 rounded-2xl border border-[#0E6A3B]/70 shadow-sm ring-1 ring-emerald-950/20">
+          <nav className="hidden xl:flex items-center gap-1 bg-[#092B19] p-1 rounded-2xl border border-[#0E6A3B]/70 shadow-sm ring-1 ring-emerald-950/20">
             <button
               id="nav-tab-dashboard"
               onClick={() => setActiveTab('dashboard')}
-              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'dashboard'
                   ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
                   : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <PieChart className={`w-4 h-4 transition-colors ${activeTab === 'dashboard' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <PieChart className={`w-3.5 h-3.5 transition-colors ${activeTab === 'dashboard' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Patrimonio</span>
             </button>
 
             <button
               id="nav-tab-accounts"
               onClick={() => setActiveTab('accounts')}
-              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'accounts'
                   ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
                   : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <Building2 className={`w-4 h-4 transition-colors ${activeTab === 'accounts' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <Building2 className={`w-3.5 h-3.5 transition-colors ${activeTab === 'accounts' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Bancos</span>
             </button>
 
             <button
               id="nav-tab-categories"
               onClick={() => setActiveTab('categories')}
-              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'categories'
                   ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
                   : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <TrendingUp className={`w-4 h-4 transition-colors ${activeTab === 'categories' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
-              <span>Gastos e Ingresos</span>
+              <TrendingUp className={`w-3.5 h-3.5 transition-colors ${activeTab === 'categories' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <span>Gastos</span>
             </button>
 
             <button
               id="nav-tab-transactions"
               onClick={() => setActiveTab('transactions')}
-              className={`group flex items-center gap-2 px-3.5 py-2 text-xs rounded-xl transition-all cursor-pointer ${
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
                 activeTab === 'transactions'
                   ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
                   : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
               }`}
             >
-              <ListOrdered className={`w-4 h-4 transition-colors ${activeTab === 'transactions' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <ListOrdered className={`w-3.5 h-3.5 transition-colors ${activeTab === 'transactions' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Movimientos</span>
+            </button>
+
+            <button
+              id="nav-tab-monthly"
+              onClick={() => setActiveTab('monthly')}
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
+                activeTab === 'monthly'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
+              }`}
+            >
+              <Calendar className={`w-3.5 h-3.5 transition-colors ${activeTab === 'monthly' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <span>Cierre Mensual</span>
+            </button>
+
+            <button
+              id="nav-tab-yearly"
+              onClick={() => setActiveTab('yearly')}
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
+                activeTab === 'yearly'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
+              }`}
+            >
+              <BarChart3 className={`w-3.5 h-3.5 transition-colors ${activeTab === 'yearly' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <span>Cierre Anual</span>
             </button>
           </nav>
 
@@ -245,6 +273,81 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
+        </div>
+
+        {/* Mobile / Tablet Horizontal Navigation Bar (screens < xl) */}
+        <div className="xl:hidden mt-3 pt-2.5 border-t border-zinc-100 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <PieChart className="w-3.5 h-3.5" />
+            <span>Patrimonio</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('accounts')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'accounts'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Bancos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'categories'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Gastos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'transactions'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <ListOrdered className="w-3.5 h-3.5" />
+            <span>Movimientos</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('monthly')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'monthly'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Cierre Mensual</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('yearly')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+              activeTab === 'yearly'
+                ? 'bg-[#092B19] text-white font-black shadow-xs'
+                : 'bg-zinc-100/80 text-zinc-700 hover:bg-zinc-200 font-semibold'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Cierre Anual</span>
+          </button>
         </div>
       </div>
     </header>

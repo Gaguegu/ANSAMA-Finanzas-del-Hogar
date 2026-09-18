@@ -7,10 +7,12 @@ import {
   Check, 
   RefreshCw, 
   Plus, 
-  ShieldCheck,
-  Edit2,
-  Wifi,
-  ExternalLink
+  ShieldCheck, 
+  Edit2, 
+  Wifi, 
+  ExternalLink,
+  TrendingUp,
+  LineChart
 } from 'lucide-react';
 import { BankAccount } from '../types';
 import { formatCurrency, formatRelativeTime } from '../utils/storage';
@@ -38,19 +40,20 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     setTimeout(() => setCopiedId(null), 1800);
   };
 
-  // Group accounts by bank
+  // Group accounts by bank and type
   const bbvaAccounts = accounts.filter((a) => a.bankId === 'bbva');
   const santanderAccounts = accounts.filter((a) => a.bankId === 'santander');
-  const otherAccounts = accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander');
+  const investmentAccounts = accounts.filter((a) => a.type === 'investment');
+  const otherAccounts = accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment');
 
   const bbvaTotal = bbvaAccounts.reduce((sum, a) => sum + a.balance, 0);
   const santanderTotal = santanderAccounts.reduce((sum, a) => sum + a.balance, 0);
+  const investmentTotal = investmentAccounts.reduce((sum, a) => sum + a.balance, 0);
 
   const renderAccountCard = (account: BankAccount) => {
     const isCredit = account.type === 'credit';
     const isSavings = account.type === 'savings';
-    const isBBVA = account.bankId === 'bbva';
-    const isSantander = account.bankId === 'santander';
+    const isInvestment = account.type === 'investment';
 
     return (
       <div
@@ -61,25 +64,31 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         {/* Accent colored top strip */}
         <div 
           className="absolute top-0 left-0 right-0 h-1"
-          style={{ backgroundColor: account.color }}
+          style={{ backgroundColor: account.color || '#0E6A3B' }}
         />
 
         <div>
           {/* Header row with card type, contactless icon, and edit button */}
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
-              {/* Mini gold EMV chip graphic */}
-              <div className="w-7 h-5 rounded-xs bg-amber-200/80 border border-amber-300/80 flex items-center justify-center p-0.5 shadow-2xs">
-                <div className="w-full h-full border border-amber-400/60 rounded-[1px] grid grid-cols-2 gap-0.5">
-                  <div className="bg-amber-300/40"></div>
-                  <div className="bg-amber-300/40"></div>
+              {isInvestment ? (
+                <div className="w-7 h-5 rounded-xs bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[#0E6A3B] shadow-2xs">
+                  <TrendingUp className="w-3.5 h-3.5" />
                 </div>
-              </div>
+              ) : (
+                /* Mini gold EMV chip graphic */
+                <div className="w-7 h-5 rounded-xs bg-amber-200/80 border border-amber-300/80 flex items-center justify-center p-0.5 shadow-2xs">
+                  <div className="w-full h-full border border-amber-400/60 rounded-[1px] grid grid-cols-2 gap-0.5">
+                    <div className="bg-amber-300/40"></div>
+                    <div className="bg-amber-300/40"></div>
+                  </div>
+                </div>
+              )}
 
               <Wifi className="w-3.5 h-3.5 text-zinc-400 rotate-90" />
 
-              <span className="text-[11px] font-extrabold text-zinc-600 uppercase tracking-wider">
-                {isCredit ? 'Tarjeta Crédito' : isSavings ? 'Ahorro' : 'Cuenta Corriente'}
+              <span className={`text-[11px] font-extrabold uppercase tracking-wider ${isInvestment ? 'text-[#0E6A3B]' : 'text-zinc-600'}`}>
+                {isInvestment ? 'Cuenta de Valores' : isCredit ? 'Tarjeta Crédito' : isSavings ? 'Ahorro' : 'Cuenta Corriente'}
               </span>
             </div>
 
@@ -111,7 +120,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             <button
               onClick={() => copyToClipboard(account.iban, account.id)}
               className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-700 hover:text-zinc-950 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/90 rounded-md transition-colors cursor-pointer"
-              title="Copiar IBAN completo"
+              title="Copiar IBAN o referencia"
             >
               {copiedId === account.id ? (
                 <>
@@ -121,7 +130,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               ) : (
                 <>
                   <Copy className="w-3 h-3 text-zinc-400" />
-                  <span>IBAN</span>
+                  <span>{isInvestment ? 'Ref' : 'IBAN'}</span>
                 </>
               )}
             </button>
@@ -131,7 +140,9 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         {/* Balance and sync info */}
         <div className="mt-4 pt-3 border-t border-zinc-100 flex items-end justify-between">
           <div>
-            <span className="text-[11px] font-medium text-zinc-400 block">Saldo disponible</span>
+            <span className="text-[11px] font-medium text-zinc-400 block">
+              {isInvestment ? 'Valor liquidativo' : 'Saldo disponible'}
+            </span>
             <span
               className={`text-xl sm:text-2xl font-black tracking-tight font-feature-settings-tnum ${
                 account.balance < 0 ? 'text-rose-600' : 'text-zinc-950'
@@ -146,7 +157,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               Actualizado {formatRelativeTime(account.lastSynced)}
             </span>
             <span className="text-[11px] font-bold text-zinc-700">
-              {isCredit ? 'Disposición autorizada' : 'Fondos disponibles'}
+              {isInvestment ? 'Cartera activa' : isCredit ? 'Disposición autorizada' : 'Fondos disponibles'}
             </span>
           </div>
         </div>
@@ -254,6 +265,42 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
           {santanderAccounts.map(renderAccountCard)}
         </div>
       </div>
+
+      {/* Recuadro Cuentas de Valores (Inversión, Fondos y Acciones) resaltado con verde */}
+      {investmentAccounts.length > 0 && (
+        <div className="bg-white border-2 border-emerald-600/50 rounded-2xl shadow-sm ring-1 ring-emerald-950/5 overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/70 via-white to-emerald-50/40">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-[#092B19] flex items-center justify-center text-emerald-400 font-black text-xs shadow-xs border border-emerald-800">
+                <LineChart className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-black text-zinc-950 text-base">Cuentas de Valores e Inversión</h4>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-[#0E6A3B] border border-emerald-300">
+                    Cartera Activa
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 mt-0.5">
+                  Valor liquidativo consolidado: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(investmentTotal)}</span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenNewAccountModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all self-start sm:self-auto cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Añadir Cartera de Valores
+            </button>
+          </div>
+
+          <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {investmentAccounts.map(renderAccountCard)}
+          </div>
+        </div>
+      )}
 
       {/* Otras Cuentas Bancarias si existen */}
       {otherAccounts.length > 0 && (

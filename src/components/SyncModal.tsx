@@ -15,7 +15,7 @@ import { formatCurrency, formatRelativeTime } from '../utils/storage';
 interface SyncModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExecuteSync: (bankId?: 'bbva' | 'santander') => Promise<{ results: BankSyncResult[]; addedCount: number }>;
+  onExecuteSync: (bankId?: 'bbva' | 'santander', fromDate?: string) => Promise<{ results: BankSyncResult[]; addedCount: number }>;
   lastGlobalSync: string;
 }
 
@@ -27,10 +27,30 @@ export const SyncModal: React.FC<SyncModalProps> = ({
 }) => {
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'completed'>('idle');
   const [selectedTarget, setSelectedTarget] = useState<'all' | 'bbva' | 'santander'>('all');
+  const [dateRangePreset, setDateRangePreset] = useState<'30days' | 'current_month' | 'current_year' | 'custom'>('30days');
+  
+  // Compute initial default custom date (30 days ago)
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const [customFromDate, setCustomFromDate] = useState<string>(thirtyDaysAgoStr);
+  
   const [currentStepText, setCurrentStepText] = useState('');
   const [syncSummary, setSyncSummary] = useState<{ results: BankSyncResult[]; addedCount: number } | null>(null);
 
   if (!isOpen) return null;
+
+  const getEffectiveFromDate = (): string => {
+    const today = new Date();
+    if (dateRangePreset === '30days') {
+      return new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    }
+    if (dateRangePreset === 'current_month') {
+      return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    if (dateRangePreset === 'current_year') {
+      return `${today.getFullYear()}-01-01`;
+    }
+    return customFromDate || thirtyDaysAgoStr;
+  };
 
   const handleStartSync = async () => {
     setSyncState('syncing');
@@ -41,12 +61,13 @@ export const SyncModal: React.FC<SyncModalProps> = ({
     }, 450);
 
     const stepTimer2 = setTimeout(() => {
-      setCurrentStepText('Descargando últimos movimientos y conciliando saldos disponibles...');
+      setCurrentStepText(`Descargando movimientos desde ${getEffectiveFromDate()} y conciliando saldos...`);
     }, 850);
 
     try {
       const targetParam = selectedTarget === 'all' ? undefined : selectedTarget;
-      const res = await onExecuteSync(targetParam);
+      const effectiveDate = getEffectiveFromDate();
+      const res = await onExecuteSync(targetParam, effectiveDate);
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
       setSyncSummary(res);
@@ -150,7 +171,88 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-zinc-500 pt-2">
+              {/* Date Filter Configuration */}
+              <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                    <span>📅 ¿Desde qué fecha descargar movimientos?</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-[#0E6A3B] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Desde: {getEffectiveFromDate()}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDateRangePreset('30days')}
+                    className={`py-1.5 px-2 text-[11px] rounded-lg font-semibold border transition-all cursor-pointer ${
+                      dateRangePreset === '30days'
+                        ? 'bg-[#0E6A3B] text-white border-[#0E6A3B]'
+                        : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    Últimos 30 días
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateRangePreset('current_month')}
+                    className={`py-1.5 px-2 text-[11px] rounded-lg font-semibold border transition-all cursor-pointer ${
+                      dateRangePreset === 'current_month'
+                        ? 'bg-[#0E6A3B] text-white border-[#0E6A3B]'
+                        : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    Mes en curso
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateRangePreset('current_year')}
+                    className={`py-1.5 px-2 text-[11px] rounded-lg font-semibold border transition-all cursor-pointer ${
+                      dateRangePreset === 'current_year'
+                        ? 'bg-[#0E6A3B] text-white border-[#0E6A3B]'
+                        : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    Año en curso
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDateRangePreset('custom')}
+                    className={`py-1.5 px-2 text-[11px] rounded-lg font-semibold border transition-all cursor-pointer ${
+                      dateRangePreset === 'custom'
+                        ? 'bg-[#0E6A3B] text-white border-[#0E6A3B]'
+                        : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    Elegir fecha...
+                  </button>
+                </div>
+
+                {dateRangePreset === 'custom' && (
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-medium text-zinc-600 mb-1">
+                      Indica la fecha inicial exacta:
+                    </label>
+                    <input
+                      type="date"
+                      value={customFromDate}
+                      onChange={(e) => setCustomFromDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                      className="w-full px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-zinc-300 text-zinc-900 focus:border-[#0E6A3B] focus:ring-1 focus:ring-[#0E6A3B]"
+                    />
+                  </div>
+                )}
+
+                <p className="text-[10.5px] text-zinc-500 leading-tight">
+                  ℹ️ <strong>Normativa PSD2:</strong> Los bancos permiten descargar por defecto los últimos 90 días de histórico, pero en ANSAMA puedes seleccionar la fecha que necesites para traer movimientos anteriores o acotar solo al mes actual.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-zinc-500 pt-1">
                 <Clock className="w-3.5 h-3.5" />
                 <span>Última sincronización guardada: {formatRelativeTime(lastGlobalSync)}</span>
               </div>

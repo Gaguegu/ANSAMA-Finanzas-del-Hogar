@@ -161,7 +161,8 @@ const SIMULATED_FEED_SANTANDER: Array<Omit<Transaction, 'id' | 'accountId' | 'da
 
 export async function simulateBankSync(
   currentState: AppState,
-  targetBankId?: 'bbva' | 'santander'
+  targetBankId?: 'bbva' | 'santander',
+  fromDate?: string
 ): Promise<{ newState: AppState; results: BankSyncResult[]; addedCount: number }> {
   // Simulate network latency (between 900ms and 1500ms)
   await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -186,16 +187,25 @@ export async function simulateBankSync(
     // Pick random item from pool
     const randomItem = pool[Math.floor(Math.random() * pool.length)];
 
+    // If fromDate is set, choose a realistic date between fromDate and today
+    let txDate = todayStr;
+    if (fromDate && fromDate < todayStr) {
+      const startMs = new Date(fromDate).getTime();
+      const endMs = new Date(todayStr).getTime();
+      const randomMs = startMs + Math.random() * (endMs - startMs);
+      txDate = new Date(randomMs).toISOString().split('T')[0];
+    }
+
     const txId = `tx-sync-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const createdTx: Transaction = {
       id: txId,
       accountId: acc.id,
-      date: todayStr,
+      date: txDate,
       title: randomItem.title,
       amount: randomItem.amount,
       type: randomItem.type,
       categoryId: randomItem.categoryId,
-      note: `${randomItem.note} • Sincronizado vía OpenBanking`,
+      note: `${randomItem.note} • Sincronizado vía OpenBanking (${txDate})`,
       isSimulated: true
     };
 

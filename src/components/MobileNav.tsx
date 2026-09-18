@@ -4,7 +4,9 @@ import {
   Building2, 
   Tags, 
   ListOrdered, 
-  Plus
+  Plus,
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 
 interface MobileNavProps {
@@ -19,15 +21,15 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   onOpenNewTransactionModal
 }) => {
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-zinc-200 px-3 py-1.5 shadow-lg">
-      <div className="flex items-center justify-around max-w-md mx-auto">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-zinc-200 px-2 py-1.5 shadow-lg">
+      <div className="flex items-center justify-between max-w-md mx-auto">
         
         {/* Tab: Patrimonio */}
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all ${
+          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
             activeTab === 'dashboard' 
-              ? 'text-[#0E6A3B] font-bold bg-emerald-50/80' 
+              ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
@@ -38,9 +40,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         {/* Tab: Bancos */}
         <button
           onClick={() => setActiveTab('accounts')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all ${
+          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
             activeTab === 'accounts' 
-              ? 'text-[#0E6A3B] font-bold bg-emerald-50/80' 
+              ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
@@ -51,36 +53,36 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         {/* Center Action: + Movimiento */}
         <button
           onClick={onOpenNewTransactionModal}
-          className="w-11 h-11 -mt-5 rounded-full bg-[#0E6A3B] text-white flex items-center justify-center shadow-md shadow-emerald-950/30 hover:bg-[#0a522d] active:scale-95 transition-all"
+          className="w-10 h-10 -mt-4 rounded-full bg-[#0E6A3B] text-white flex items-center justify-center shadow-md shadow-emerald-950/30 hover:bg-[#0a522d] active:scale-95 transition-all cursor-pointer"
           title="Añadir movimiento"
         >
           <Plus className="w-5 h-5" />
         </button>
 
-        {/* Tab: Categorias */}
+        {/* Tab: Cierre Mes */}
         <button
-          onClick={() => setActiveTab('categories')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all ${
-            activeTab === 'categories' 
-              ? 'text-[#0E6A3B] font-bold bg-emerald-50/80' 
+          onClick={() => setActiveTab('monthly')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'monthly' 
+              ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
-          <Tags className="w-4 h-4" />
-          <span className="text-[10px]">Gastos</span>
+          <Calendar className="w-4 h-4" />
+          <span className="text-[10px]">Cierre Mes</span>
         </button>
 
-        {/* Tab: Movimientos */}
+        {/* Tab: Cierre Año */}
         <button
-          onClick={() => setActiveTab('transactions')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition-all ${
-            activeTab === 'transactions' 
-              ? 'text-[#0E6A3B] font-bold bg-emerald-50/80' 
+          onClick={() => setActiveTab('yearly')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'yearly' 
+              ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
           }`}
         >
-          <ListOrdered className="w-4 h-4" />
-          <span className="text-[10px]">Movimientos</span>
+          <BarChart3 className="w-4 h-4" />
+          <span className="text-[10px]">Cierre Año</span>
         </button>
 
       </div>

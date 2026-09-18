@@ -1,6 +1,6 @@
-export type BankId = 'bbva' | 'santander' | 'caixabank' | 'ing' | 'other';
+export type BankId = 'bbva' | 'santander' | 'caixabank' | 'ing' | 'myinvestor' | 'degiro' | 'renta4' | 'other';
 
-export type AccountType = 'checking' | 'savings' | 'credit';
+export type AccountType = 'checking' | 'savings' | 'credit' | 'investment';
 
 export interface BankAccount {
   id: string;
@@ -41,12 +41,21 @@ export interface Transaction {
   isSimulated?: boolean;
 }
 
+export interface MonthClosure {
+  month: string; // YYYY-MM
+  isClosed: boolean;
+  closedAt?: string;
+  notes?: string;
+  auditedBalances?: Record<string, number>; // accountId -> closing balance
+}
+
 export interface AppState {
   accounts: BankAccount[];
   transactions: Transaction[];
   categories: TransactionCategory[];
   lastGlobalSync: string;
   currency: string;
+  monthlyClosures?: MonthClosure[];
 }
 
 export interface BankSyncResult {

@@ -56,13 +56,35 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       return;
     }
 
-    const bankName = bankId === 'bbva' ? 'BBVA' : bankId === 'santander' ? 'Santander' : bankId === 'caixabank' ? 'CaixaBank' : 'ING Direct';
-    const color = bankId === 'bbva' ? '#004481' : bankId === 'santander' ? '#EC0000' : '#007eae';
+    const bankNames: Record<BankId, string> = {
+      bbva: 'BBVA',
+      santander: 'Banco Santander',
+      caixabank: 'CaixaBank',
+      ing: 'ING Direct',
+      myinvestor: 'MyInvestor (Valores)',
+      degiro: 'DeGiro (Valores)',
+      renta4: 'Renta 4 Banco',
+      other: 'Otra Entidad'
+    };
+
+    const bankColors: Record<BankId, string> = {
+      bbva: '#004481',
+      santander: '#EC0000',
+      caixabank: '#007eae',
+      ing: '#ff6200',
+      myinvestor: '#1b365d',
+      degiro: '#0097c3',
+      renta4: '#00549f',
+      other: '#0E6A3B'
+    };
+
+    const bankName = bankNames[bankId] || 'Banco';
+    const color = type === 'investment' ? '#0E6A3B' : (bankColors[bankId] || '#0E6A3B');
     
-    // Masked IBAN
+    // Masked IBAN / Account number
     const cleanIban = iban.trim();
     const last4 = cleanIban.replace(/\s+/g, '').slice(-4) || '0000';
-    const masked = `${cleanIban.substring(0, 4)} •••• •••• ${last4}`;
+    const masked = cleanIban.length > 4 ? `${cleanIban.substring(0, 4)} •••• •••• ${last4}` : `VAL •••• ${last4}`;
 
     const account: BankAccount = {
       id: accountToEdit ? accountToEdit.id : `acc-${bankId}-${Date.now()}`,
@@ -77,7 +99,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       lastSynced: new Date().toISOString(),
       color,
       textColor: '#ffffff',
-      bgLight: bankId === 'bbva' ? '#f0f5fa' : '#fff5f5',
+      bgLight: bankId === 'bbva' ? '#f0f5fa' : bankId === 'santander' ? '#fff5f5' : '#f0fdf4',
       borderColor: color
     };
 
@@ -88,14 +110,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
       <div 
-        className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden"
+        className="bg-white rounded-2xl border-2 border-emerald-600/40 shadow-xl max-w-md w-full overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-base font-bold text-slate-900">
-            {accountToEdit ? 'Editar Cuenta Bancaria' : 'Añadir Nueva Cuenta Bancaria'}
-          </h3>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50/50">
+          <div>
+            <h3 className="text-base font-black text-zinc-950">
+              {accountToEdit ? 'Editar Cuenta Bancaria / Valores' : 'Añadir Nueva Cuenta o Cartera'}
+            </h3>
+            <p className="text-xs text-zinc-500">Cuentas corrientes, ahorro, tarjetas y cuentas de valores</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -107,60 +132,89 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Entidad Bancaria</label>
-            <select
-              value={bankId}
-              onChange={(e) => {
-                const val = e.target.value as BankId;
-                setBankId(val);
-                if (val === 'bbva' && (!iban || iban.startsWith('ES91'))) setIban('ES76 0182 ');
-                if (val === 'santander' && (!iban || iban.startsWith('ES76'))) setIban('ES91 0049 ');
-              }}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:bg-white text-slate-900 font-medium"
-            >
-              <option value="bbva">BBVA (Banco Bilbao Vizcaya Argentaria)</option>
-              <option value="santander">Banco Santander</option>
-              <option value="caixabank">CaixaBank</option>
-              <option value="ing">ING</option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">Tipo de Cuenta</label>
+              <select
+                value={type}
+                onChange={(e) => {
+                  const newType = e.target.value as AccountType;
+                  setType(newType);
+                  if (newType === 'investment' && !accountName) {
+                    setAccountName('Cartera de Fondos y Acciones');
+                  }
+                }}
+                className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900 font-bold"
+              >
+                <option value="checking">Cuenta Corriente</option>
+                <option value="savings">Cuenta de Ahorro</option>
+                <option value="credit">Tarjeta de Crédito</option>
+                <option value="investment">📈 Cuenta de Valores</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">Entidad o Bróker</label>
+              <select
+                value={bankId}
+                onChange={(e) => {
+                  const val = e.target.value as BankId;
+                  setBankId(val);
+                  if (val === 'bbva' && (!iban || iban.startsWith('ES91'))) setIban('ES76 0182 ');
+                  if (val === 'santander' && (!iban || iban.startsWith('ES76'))) setIban('ES91 0049 ');
+                }}
+                className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900 font-medium"
+              >
+                <option value="bbva">BBVA</option>
+                <option value="santander">Banco Santander</option>
+                <option value="caixabank">CaixaBank</option>
+                <option value="ing">ING Direct</option>
+                <option value="myinvestor">MyInvestor</option>
+                <option value="degiro">DeGiro</option>
+                <option value="renta4">Renta 4</option>
+                <option value="other">Otra Entidad / Bróker</option>
+              </select>
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre de la Cuenta</label>
+            <label className="block text-xs font-bold text-zinc-700 mb-1">Nombre Descriptivo</label>
             <input
               type="text"
               required
-              placeholder="Ej: Cuenta Nómina, Cuenta Ahorro, Tarjeta Aqua..."
+              placeholder={type === 'investment' ? 'Ej: Cuenta Valores BBVA Trader, Fondo Indexado...' : 'Ej: Cuenta Nómina, Cuenta Ahorro...'}
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:bg-white text-slate-900"
+              className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900 font-medium"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Tipo de Cuenta</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as AccountType)}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:bg-white text-slate-900 font-medium"
-              >
-                <option value="checking">Cuenta Corriente</option>
-                <option value="savings">Cuenta de Ahorro</option>
-                <option value="credit">Tarjeta de Crédito</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Saldo Actual (€)</label>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">
+                {type === 'investment' ? 'Valor Liquidativo Total (€)' : 'Saldo Actual (€)'}
+              </label>
               <input
                 type="text"
                 required
                 value={balanceStr}
                 onChange={(e) => setBalanceStr(e.target.value)}
                 placeholder="0.00"
-                className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-slate-50 border border-slate-200 focus:bg-white text-slate-900"
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">
+                {type === 'investment' ? 'Número Cuenta / Referencia' : 'Número IBAN'}
+              </label>
+              <input
+                type="text"
+                required
+                value={iban}
+                onChange={(e) => setIban(e.target.value)}
+                placeholder={type === 'investment' ? 'ESXX... o Ref. Cartera' : 'ESXX XXXX XXXX XXXX XXXX XXXX'}
+                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
               />
             </div>
           </div>

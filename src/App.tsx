@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppState, BankAccount, Transaction, BankSyncResult } from './types';
+import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure } from './types';
 import { 
   loadAppState, 
   saveAppState, 
@@ -12,6 +12,8 @@ import { NetWorthCard } from './components/NetWorthCard';
 import { BankAccountsList } from './components/BankAccountsList';
 import { ExpenseCategoriesChart } from './components/ExpenseCategoriesChart';
 import { TransactionsTable } from './components/TransactionsTable';
+import { MonthlyClosure } from './components/MonthlyClosure';
+import { YearlyClosure } from './components/YearlyClosure';
 import { TransactionModal } from './components/TransactionModal';
 import { SyncModal } from './components/SyncModal';
 import { AccountModal } from './components/AccountModal';
@@ -166,6 +168,29 @@ export default function App() {
     }
   };
 
+  // Update or create a month closure
+  const handleUpdateClosure = (closure: MonthClosure) => {
+    const existing = appState.monthlyClosures || [];
+    const index = existing.findIndex((c) => c.month === closure.month);
+    let updated: MonthClosure[];
+    if (index >= 0) {
+      updated = [...existing];
+      updated[index] = closure;
+    } else {
+      updated = [...existing, closure];
+    }
+    const newState: AppState = {
+      ...appState,
+      monthlyClosures: updated
+    };
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(
+      closure.isClosed ? `Mes ${closure.month} cerrado y auditado` : `Cierre del mes ${closure.month} actualizado`,
+      'success'
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-20 md:pb-12 text-slate-900">
       
@@ -309,6 +334,25 @@ export default function App() {
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+            />
+          </div>
+        )}
+
+        {/* Cierre Mensual View */}
+        {activeTab === 'monthly' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <MonthlyClosure
+              appState={appState}
+              onUpdateClosure={handleUpdateClosure}
+            />
+          </div>
+        )}
+
+        {/* Cierre por Año View (Saldos totales de cada banco por meses) */}
+        {activeTab === 'yearly' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <YearlyClosure
+              appState={appState}
             />
           </div>
         )}
