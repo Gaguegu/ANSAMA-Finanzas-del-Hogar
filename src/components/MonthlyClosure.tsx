@@ -152,6 +152,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     onUpdateClosure(updated);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div id="section-monthly-closure" className="space-y-6 animate-in fade-in">
       
@@ -238,6 +242,16 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                   Cerrar Mes {capitalizedMonth}
                 </>
               )}
+            </button>
+
+            {/* Print Button */}
+            <button
+              onClick={handlePrint}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+              title="Imprimir informe mensual o guardar como PDF"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Imprimir</span>
             </button>
           </div>
         </div>

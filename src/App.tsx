@@ -20,7 +20,7 @@ import { AccountModal } from './components/AccountModal';
 import { SettingsModal } from './components/SettingsModal';
 import { InstallModal } from './components/InstallModal';
 import { MobileNav } from './components/MobileNav';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { Sparkles, CheckCircle2, RefreshCw, Info } from 'lucide-react';
 import { usePWA } from './utils/usePWA';
 
 export default function App() {
@@ -196,10 +196,14 @@ export default function App() {
       
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-20 right-4 z-50 animate-in fade-in slide-in-from-top-3 duration-200">
-          <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium border border-slate-800">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{notification.message}</span>
+        <div className="fixed top-20 right-4 z-50 animate-in fade-in slide-in-from-top-3 duration-200 max-w-sm">
+          <div className="flex items-center gap-2.5 bg-slate-900/95 backdrop-blur text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-medium border border-slate-700/80">
+            {notification.type === 'info' ? (
+              <RefreshCw className="w-4 h-4 text-emerald-400 shrink-0 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span className="leading-snug">{notification.message}</span>
           </div>
         </div>
       )}
@@ -229,6 +233,10 @@ export default function App() {
         isCheckingUpdate={pwa.isCheckingUpdate}
         onCheckUpdate={pwa.checkForUpdates}
         onApplyUpdate={pwa.applyUpdate}
+        autoUpdateCountdown={pwa.autoUpdateCountdown}
+        isAutoUpdatePaused={pwa.isAutoUpdatePaused}
+        onPauseAutoUpdate={pwa.pauseAutoUpdate}
+        onResumeAutoUpdate={pwa.resumeAutoUpdate}
       />
 
       {/* Main App Content Area */}

@@ -258,6 +258,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
+            {/* Actualizaciones Automáticas */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0E6A3B]"></span>
+                  </span>
+                  <span className="text-xs font-bold text-emerald-950">Actualización Automática Activa</span>
+                </div>
+                <span className="text-[11px] text-emerald-800/90 block">
+                  La app busca nuevas versiones continuamente en segundo plano y te notifica en pantalla para actualizarse sola automáticamente sin perder ningún dato.
+                </span>
+              </div>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-[#0E6A3B] text-white self-start sm:self-center tracking-wider shrink-0">
+                Automático
+              </span>
+            </div>
+
             {/* Instalación de la aplicación en PC / Escritorio (discreta) */}
             {!isInstalled && onOpenInstall && (
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50/90 border border-zinc-200/80">

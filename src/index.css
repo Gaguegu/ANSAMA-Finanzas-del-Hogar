@@ -1,1 +1,34 @@
 @import "tailwindcss";
+
+@media print {
+  /* Ocultar elementos de navegación, botones y notificaciones al imprimir */
+  #app-header,
+  #mobile-nav,
+  .no-print,
+  button,
+  .fixed {
+    display: none !important;
+  }
+
+  body, html {
+    background-color: #ffffff !important;
+    color: #09090b !important;
+  }
+
+  /* Asegurar que se impriman los colores de fondo y bordes corporativos */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

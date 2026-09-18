@@ -29,6 +29,10 @@ interface HeaderProps {
   isCheckingUpdate: boolean;
   onCheckUpdate: () => void;
   onApplyUpdate: () => void;
+  autoUpdateCountdown?: number | null;
+  isAutoUpdatePaused?: boolean;
+  onPauseAutoUpdate?: () => void;
+  onResumeAutoUpdate?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,25 +49,56 @@ export const Header: React.FC<HeaderProps> = ({
   isCheckingUpdate,
   onCheckUpdate,
   onApplyUpdate,
+  autoUpdateCountdown,
+  isAutoUpdatePaused,
+  onPauseAutoUpdate,
+  onResumeAutoUpdate,
 }) => {
   return (
     <header id="app-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-zinc-200">
       {/* Update notification announcement banner if update is available */}
       {hasNewUpdate && (
-        <div className="bg-emerald-900 text-white px-4 py-2 text-xs sm:text-sm border-b border-emerald-950 flex flex-wrap items-center justify-between gap-2 shadow-inner">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
+        <div className="bg-[#092B19] text-white px-4 py-2.5 text-xs sm:text-sm border-b border-emerald-800 flex flex-wrap items-center justify-between gap-2 shadow-inner animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
             </span>
             <span>
-              <strong>¡Nuevas actualizaciones disponibles!</strong> Se aplicarán automáticamente en breve o puedes pulsar actualizar manualmente ahora.
+              <strong className="text-emerald-300">¡Nueva versión detectada!</strong>{' '}
+              {autoUpdateCountdown !== null && autoUpdateCountdown > 0 ? (
+                <>
+                  Actualización automática en{' '}
+                  <span className="font-extrabold text-white bg-emerald-800 px-1.5 py-0.5 rounded border border-emerald-600 font-feature-settings-tnum">
+                    {autoUpdateCountdown}s
+                  </span>
+                  ...
+                </>
+              ) : (
+                <>Aplicando la actualización en un instante...</>
+              )}
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {isAutoUpdatePaused ? (
+              <button
+                onClick={onResumeAutoUpdate}
+                className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Reanudar
+              </button>
+            ) : (
+              <button
+                onClick={onPauseAutoUpdate}
+                className="px-2.5 py-1 bg-white/15 hover:bg-white/25 text-emerald-100 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                title="Pausar si estás trabajando en un formulario"
+              >
+                Pausar
+              </button>
+            )}
             <button
               onClick={onApplyUpdate}
-              className="px-3 py-1 bg-white hover:bg-emerald-50 text-emerald-950 font-bold rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
+              className="px-3 py-1 bg-emerald-400 hover:bg-emerald-300 text-[#092B19] font-black rounded-lg text-xs shadow-xs transition-colors cursor-pointer"
             >
               Actualizar Ahora
             </button>
@@ -209,10 +244,14 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <RefreshCw className={`w-4 h-4 shrink-0 ${isCheckingUpdate ? 'animate-spin text-emerald-600' : hasNewUpdate ? 'text-white animate-spin' : 'text-zinc-600'}`} />
               <span className="hidden sm:inline">
-                {hasNewUpdate ? 'Actualizar ahora' : 'Actualizar'}
+                {hasNewUpdate 
+                  ? (autoUpdateCountdown !== null && autoUpdateCountdown > 0 ? `Actualizar (${autoUpdateCountdown}s)` : 'Actualizar ahora') 
+                  : 'Actualizar'}
               </span>
               <span className="sm:hidden">
-                {hasNewUpdate ? 'Actualizar' : 'Actualizar'}
+                {hasNewUpdate 
+                  ? (autoUpdateCountdown !== null && autoUpdateCountdown > 0 ? `(${autoUpdateCountdown}s)` : 'Actualizar') 
+                  : 'Actualizar'}
               </span>
               {hasNewUpdate && (
                 <span className="flex h-2 w-2 relative -ml-0.5">

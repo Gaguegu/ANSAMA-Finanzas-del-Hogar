@@ -22,15 +22,40 @@ export function usePWA() {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [autoUpdateCountdown, setAutoUpdateCountdown] = useState<number | null>(null);
+  const [isAutoUpdatePaused, setIsAutoUpdatePaused] = useState<boolean>(false);
+
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const safeReload = useCallback(() => {
     if (isGlobalReloading) return;
     isGlobalReloading = true;
     
-    // Give time to persist any unsaved local state if any, then reload safely
+    // Flag to indicate that we just updated successfully
+    try {
+      sessionStorage.setItem('ansama_app_just_updated', 'true');
+    } catch {
+      // ignore
+    }
+
+    // Give time to persist any unsaved local state, then reload safely
     setTimeout(() => {
       window.location.reload();
-    }, 400);
+    }, 300);
+  }, []);
+
+  // Check if we just reloaded after an automatic update
+  useEffect(() => {
+    try {
+      const justUpdated = sessionStorage.getItem('ansama_app_just_updated');
+      if (justUpdated === 'true') {
+        sessionStorage.removeItem('ansama_app_just_updated');
+        setUpdateFeedback('¡Aplicación actualizada a la versión más reciente con éxito!');
+        setTimeout(() => setUpdateFeedback(null), 5000);
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   // Monitor installation status
@@ -124,6 +149,93 @@ export function usePWA() {
     };
   }, [safeReload]);
 
+  // Periodic automatic background update checking (every 45 seconds + tab focus/online)
+  useEffect(() => {
+    if (!swRegistration) return;
+
+    const runBackgroundCheck = () => {
+      if (navigator.onLine && swRegistration) {
+        swRegistration.update().catch(() => {});
+      }
+    };
+
+    const interval = setInterval(runBackgroundCheck, 45000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runBackgroundCheck();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    window.addEventListener('online', runBackgroundCheck);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      window.removeEventListener('online', runBackgroundCheck);
+    };
+  }, [swRegistration]);
+
+  // Apply update safely without leaving the screen blank
+  const applyUpdate = useCallback(() => {
+    setUpdateFeedback('Aplicando actualización automáticamente...');
+    if (swRegistration?.waiting) {
+      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    // Safe single reload trigger after short buffer
+    setTimeout(() => {
+      safeReload();
+    }, 400);
+  }, [swRegistration, safeReload]);
+
+  // AUTOMATIC UPDATE: Start countdown when an update is detected
+  useEffect(() => {
+    if (hasNewUpdate && !isAutoUpdatePaused) {
+      setAutoUpdateCountdown(4);
+      setUpdateFeedback('¡Nueva versión detectada! Se actualizará automáticamente en 4 segundos...');
+
+      const interval = setInterval(() => {
+        setAutoUpdateCountdown((prev) => {
+          if (prev === null) return null;
+          if (prev <= 1) {
+            clearInterval(interval);
+            applyUpdate();
+            return 0;
+          }
+          const nextVal = prev - 1;
+          setUpdateFeedback(`¡Nueva versión detectada! Se actualizará automáticamente en ${nextVal}s...`);
+          return nextVal;
+        });
+      }, 1000);
+
+      countdownTimerRef.current = interval;
+
+      return () => {
+        clearInterval(interval);
+      };
+    } else if (!hasNewUpdate) {
+      setAutoUpdateCountdown(null);
+    }
+  }, [hasNewUpdate, isAutoUpdatePaused, applyUpdate]);
+
+  const pauseAutoUpdate = useCallback(() => {
+    setIsAutoUpdatePaused(true);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    setAutoUpdateCountdown(null);
+    setUpdateFeedback('Actualización automática pausada. Pulsa «Actualizar» cuando desees.');
+    setTimeout(() => setUpdateFeedback(null), 4000);
+  }, []);
+
+  const resumeAutoUpdate = useCallback(() => {
+    setIsAutoUpdatePaused(false);
+    applyUpdate();
+  }, [applyUpdate]);
+
   // Install trigger
   const installApp = useCallback(async (): Promise<boolean> => {
     if (!deferredPrompt) {
@@ -143,30 +255,18 @@ export function usePWA() {
     return false;
   }, [deferredPrompt]);
 
-  // Apply update safely without leaving the screen blank
-  const applyUpdate = useCallback(() => {
-    setUpdateFeedback('Aplicando actualización...');
-    if (swRegistration?.waiting) {
-      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    }
-    // Safe single reload trigger after short buffer
-    setTimeout(() => {
-      safeReload();
-    }, 600);
-  }, [swRegistration, safeReload]);
-
   // Manual Check for Updates
   const checkForUpdates = useCallback(async () => {
     setIsCheckingUpdate(true);
-    setUpdateFeedback('Comprobando actualizaciones...');
+    setUpdateFeedback('Comprobando si hay actualizaciones disponibles...');
 
     if ('serviceWorker' in navigator && swRegistration) {
       try {
         await swRegistration.update();
         if (swRegistration.waiting) {
           setHasNewUpdate(true);
-          setUpdateFeedback('¡Nueva versión lista! Aplicando...');
-          setTimeout(() => applyUpdate(), 800);
+          setUpdateFeedback('¡Nueva versión lista! Actualizando automáticamente...');
+          setTimeout(() => applyUpdate(), 600);
           return;
         }
       } catch (err) {
@@ -179,9 +279,9 @@ export function usePWA() {
       setIsCheckingUpdate(false);
       if (!hasNewUpdate) {
         setUpdateFeedback('Tu aplicación está al día con la versión más reciente.');
-        setTimeout(() => setUpdateFeedback(null), 3000);
+        setTimeout(() => setUpdateFeedback(null), 3500);
       }
-    }, 900);
+    }, 800);
   }, [swRegistration, hasNewUpdate, applyUpdate]);
 
   return {
@@ -190,9 +290,13 @@ export function usePWA() {
     hasNewUpdate,
     isCheckingUpdate,
     updateFeedback,
+    autoUpdateCountdown,
+    isAutoUpdatePaused,
     installApp,
     applyUpdate,
     checkForUpdates,
+    pauseAutoUpdate,
+    resumeAutoUpdate,
     setHasNewUpdate,
     setUpdateFeedback,
   };
