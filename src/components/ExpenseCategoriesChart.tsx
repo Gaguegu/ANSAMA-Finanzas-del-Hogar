@@ -87,13 +87,18 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   };
 
   return (
-    <div id="section-categories-chart" className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xs p-5 sm:p-6 lg:p-7">
+    <div id="section-categories-chart" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 lg:p-7">
       
       {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-5 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-emerald-100/90 pb-5 mb-6">
         <div>
-          <h3 className="text-base font-bold text-zinc-950">Distribución de Gastos e Ingresos</h3>
-          <p className="text-xs text-zinc-500">Consumo presupuestario del mes corriente</p>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-black text-zinc-950">Distribución de Gastos e Ingresos</h3>
+            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-[#0E6A3B] border border-emerald-300">
+              Presupuesto
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">Consumo presupuestario y categorización del mes corriente</p>
         </div>
 
         {/* Expense vs Income Toggle */}

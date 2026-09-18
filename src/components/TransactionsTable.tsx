@@ -85,14 +85,14 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   };
 
   return (
-    <div id="section-transactions" className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xs p-5 sm:p-6">
+    <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6">
       
       {/* Title & Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-zinc-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-emerald-100/90">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-bold text-zinc-950">Historial Consolidado de Movimientos</h3>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">
+            <h3 className="text-base sm:text-lg font-black text-zinc-950">Historial Consolidado de Movimientos</h3>
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#0E6A3B] border border-emerald-200">
               {filteredTransactions.length} registros
             </span>
           </div>

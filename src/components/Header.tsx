@@ -72,9 +72,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3 sm:gap-4">
           
-          {/* Logo & Identity */}
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-xl bg-white border border-zinc-200/80 flex items-center justify-center p-1 shadow-xs overflow-hidden shrink-0">
+          {/* Logo & Identity dentro de un recuadro con bordes redondeados a juego con los botones */}
+          <div 
+            id="brand-identity-box"
+            className="flex items-center gap-2.5 sm:gap-3 bg-white/95 px-2.5 sm:px-3.5 py-1.5 rounded-2xl border-2 border-[#0E6A3B]/40 shadow-xs hover:border-[#0E6A3B]/70 transition-all ring-1 ring-emerald-950/5 shrink-0"
+          >
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-white border border-emerald-200/80 flex items-center justify-center p-0.5 shadow-2xs overflow-hidden shrink-0">
               <img 
                 src="./logo.jpg" 
                 alt="Logo ANSAMA" 
@@ -82,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div className="flex flex-col justify-center">
+            <div className="flex flex-col justify-center select-none">
               {/* ANSAMA en fuente Algerian con colores alternados y en cursiva */}
               <div 
                 className="text-lg sm:text-xl font-black italic tracking-wider leading-none select-none font-['Algerian','Cinzel_Decorative',serif]"
@@ -96,8 +99,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="text-zinc-950">A</span>
               </div>
               
-              {/* Finanzas del Hogar debajo en verde elegante, sin texto de sincronizado debajo */}
-              <span className="text-xs sm:text-[13px] font-bold text-[#0E6A3B] tracking-tight leading-tight mt-0.5">
+              {/* Finanzas del Hogar debajo en verde corporativo */}
+              <span className="text-[11px] sm:text-xs font-extrabold text-[#0E6A3B] tracking-tight leading-tight mt-0.5 whitespace-nowrap">
                 Finanzas del Hogar
               </span>
             </div>
