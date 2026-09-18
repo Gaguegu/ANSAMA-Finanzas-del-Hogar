@@ -22,7 +22,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body class="bg-[#f8faf9] text-zinc-900 font-['Plus_Jakarta_Sans',sans-serif] antialiased selection:bg-emerald-100 selection:text-emerald-950">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Fallback visual mientras carga el motor React -->
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background-color:#f8faf9;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#18181b;">
+        <div style="width:48px;height:48px;border-radius:14px;background:#fff;border:1px solid #e4e4e7;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);margin-bottom:12px;">
+          <img src="./logo.jpg" alt="ANSAMA" style="width:36px;height:36px;object-fit:contain;border-radius:8px;" />
+        </div>
+        <div style="font-size:14px;font-weight:800;color:#0E6A3B;letter-spacing:-0.01em;">ANSAMA Finanzas del Hogar</div>
+        <div style="font-size:12px;color:#71717a;margin-top:4px;">Cargando finanzas...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

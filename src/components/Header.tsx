@@ -158,9 +158,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </nav>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
-            {/* Botón Actualizar (con aviso de nuevas versiones y actualización manual) */}
+          {/* Action Buttons: Actualizar, Sincronizar Bancos, Nuevo Movimiento (con mismo tamaño y proporción) */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* 1. Botón Actualizar */}
             <button
               id="btn-update-app"
               onClick={onCheckUpdate}
@@ -170,66 +170,75 @@ export const Header: React.FC<HeaderProps> = ({
                   ? "¡Nueva actualización disponible! Pulsa para actualizar ahora" 
                   : "Comprobar y buscar actualizaciones"
               }
-              className={`relative flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs font-bold rounded-xl transition-all shadow-2xs active:scale-95 cursor-pointer ${
+              className={`h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 ${
                 hasNewUpdate 
                   ? 'bg-[#0E6A3B] text-white ring-2 ring-emerald-400 hover:bg-[#0a522d]'
-                  : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-200'
+                  : 'bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-200/90'
               }`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-emerald-600' : hasNewUpdate ? 'text-white animate-spin' : 'text-zinc-600'}`} />
-              <span className="hidden lg:inline">
+              <RefreshCw className={`w-4 h-4 shrink-0 ${isCheckingUpdate ? 'animate-spin text-emerald-600' : hasNewUpdate ? 'text-white animate-spin' : 'text-zinc-600'}`} />
+              <span className="hidden sm:inline">
                 {hasNewUpdate ? 'Actualizar ahora' : 'Actualizar'}
               </span>
+              <span className="sm:hidden">
+                {hasNewUpdate ? 'Actualizar' : 'Actualizar'}
+              </span>
               {hasNewUpdate && (
-                <span className="flex h-2 w-2 relative">
+                <span className="flex h-2 w-2 relative -ml-0.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                 </span>
               )}
             </button>
 
-            {/* Botón Instalar (SOLO visible en aplicación web; cuando se instala en el PC desaparece automáticamente) */}
-            {!isInstalled && (
-              <button
-                id="btn-install-app"
-                onClick={onOpenInstall}
-                title="Instalar ANSAMA en tu PC o dispositivo"
-                className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 transition-all shadow-2xs active:scale-95 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-[#0E6A3B]" />
-                <span className="hidden sm:inline">Instalar</span>
-              </button>
-            )}
-
+            {/* 2. Botón Sincronizar Bancos (mismo tamaño) */}
             <button
               id="btn-sync-banks"
               onClick={onOpenSyncModal}
               disabled={isSyncing}
               title="Sincronización bancaria simulada"
-              className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-sm active:scale-95 disabled:opacity-75 cursor-pointer"
+              className="h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-xs active:scale-95 disabled:opacity-75 cursor-pointer shrink-0"
             >
-              <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
               <span className="hidden sm:inline">Sincronizar Bancos</span>
               <span className="sm:hidden">Sincronizar</span>
             </button>
 
+            {/* 3. Botón Nuevo Movimiento (mismo tamaño) */}
             <button
               id="btn-add-transaction"
               onClick={onOpenNewTransactionModal}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+              title="Añadir nuevo gasto o ingreso"
+              className="h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 sm:gap-2 bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
             >
-              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Plus className="w-4 h-4 shrink-0" />
               <span className="hidden sm:inline">Nuevo Movimiento</span>
               <span className="sm:hidden">Nuevo</span>
             </button>
 
+            {/* Divisor vertical sutil */}
+            <div className="h-6 w-px bg-zinc-200 hidden sm:block mx-0.5"></div>
+
+            {/* Botón Instalar más discreto (solo en navegador web; al instalarse desaparece automáticamente) */}
+            {!isInstalled && (
+              <button
+                id="btn-install-app"
+                onClick={onOpenInstall}
+                title="Instalar ANSAMA en tu PC (Crear acceso directo en el Escritorio)"
+                className="h-10 w-10 flex items-center justify-center rounded-xl text-zinc-500 hover:text-[#0E6A3B] hover:bg-emerald-50/80 border border-zinc-200/80 hover:border-emerald-300 transition-all cursor-pointer shrink-0"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Botón Ajustes */}
             <button
               id="btn-open-settings"
               onClick={onOpenSettingsModal}
               title="Ajustes y copias de seguridad"
-              className="p-1.5 sm:p-2 rounded-xl text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 transition-all cursor-pointer"
+              className="h-10 w-10 flex items-center justify-center rounded-xl text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 border border-transparent hover:border-zinc-200 transition-all cursor-pointer shrink-0"
             >
-              <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Settings className="w-4 h-4" />
             </button>
           </div>
 

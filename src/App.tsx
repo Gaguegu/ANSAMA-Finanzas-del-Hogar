@@ -353,6 +353,16 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         appState={appState}
         onStateUpdated={(newState) => setAppState(newState)}
+        isInstalled={pwa.isInstalled}
+        onOpenInstall={() => {
+          if (pwa.isInstallable) {
+            pwa.installApp().then((accepted) => {
+              if (!accepted) setIsInstallModalOpen(true);
+            });
+          } else {
+            setIsInstallModalOpen(true);
+          }
+        }}
       />
 
       {/* Modal de Instrucciones e Instalación PWA */}

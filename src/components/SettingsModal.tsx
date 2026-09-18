@@ -20,13 +20,17 @@ interface SettingsModalProps {
   onClose: () => void;
   appState: AppState;
   onStateUpdated: (newState: AppState) => void;
+  isInstalled?: boolean;
+  onOpenInstall?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   appState,
-  onStateUpdated
+  onStateUpdated,
+  isInstalled,
+  onOpenInstall
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmZero, setShowConfirmZero] = useState(false);
@@ -253,6 +257,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Restablecer
               </button>
             </div>
+
+            {/* Instalación de la aplicación en PC / Escritorio (discreta) */}
+            {!isInstalled && onOpenInstall && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-50/90 border border-zinc-200/80">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-zinc-800 block">Instalar en este ordenador (PC)</span>
+                  <span className="text-[11px] text-zinc-500">Crea un acceso directo en el Escritorio y barra de tareas para abrir ANSAMA directamente.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenInstall();
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold text-[#0E6A3B] bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                  Instalar en PC
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end pt-3 border-t border-zinc-100">

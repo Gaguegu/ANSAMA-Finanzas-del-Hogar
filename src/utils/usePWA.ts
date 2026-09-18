@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
+
+// Global flag to prevent double-reloading loops across hook instances or event listeners
+let isGlobalReloading = false;
 
 export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -19,6 +22,16 @@ export function usePWA() {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
+  const safeReload = useCallback(() => {
+    if (isGlobalReloading) return;
+    isGlobalReloading = true;
+    
+    // Give time to persist any unsaved local state if any, then reload safely
+    setTimeout(() => {
+      window.location.reload();
+    }, 400);
+  }, []);
 
   // Monitor installation status
   useEffect(() => {
@@ -97,12 +110,10 @@ export function usePWA() {
         console.warn('Service worker ready check:', err);
       });
 
-    // Auto-reload when new controller takes over
-    let refreshing = false;
+    // Auto-reload when new controller takes over - guarded
     const handleControllerChange = () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
+      if (!isGlobalReloading) {
+        safeReload();
       }
     };
 
@@ -111,18 +122,7 @@ export function usePWA() {
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
     };
-  }, []);
-
-  // Auto-update timer if an update is waiting
-  useEffect(() => {
-    if (hasNewUpdate) {
-      // Auto-update after 6 seconds of notification, or user can click manually
-      const timer = setTimeout(() => {
-        applyUpdate();
-      }, 8000);
-      return () => clearTimeout(timer);
-    }
-  }, [hasNewUpdate]);
+  }, [safeReload]);
 
   // Install trigger
   const installApp = useCallback(async (): Promise<boolean> => {
@@ -143,44 +143,45 @@ export function usePWA() {
     return false;
   }, [deferredPrompt]);
 
-  // Apply update
+  // Apply update safely without leaving the screen blank
   const applyUpdate = useCallback(() => {
+    setUpdateFeedback('Aplicando actualización...');
     if (swRegistration?.waiting) {
       swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
-    // Force reload with cache bypass
+    // Safe single reload trigger after short buffer
     setTimeout(() => {
-      window.location.reload();
-    }, 300);
-  }, [swRegistration]);
+      safeReload();
+    }, 600);
+  }, [swRegistration, safeReload]);
 
   // Manual Check for Updates
   const checkForUpdates = useCallback(async () => {
     setIsCheckingUpdate(true);
-    setUpdateFeedback('Buscando actualizaciones...');
+    setUpdateFeedback('Comprobando actualizaciones...');
 
     if ('serviceWorker' in navigator && swRegistration) {
       try {
         await swRegistration.update();
         if (swRegistration.waiting) {
           setHasNewUpdate(true);
-          setUpdateFeedback('¡Nueva actualización detectada! Aplicando...');
-          setTimeout(() => applyUpdate(), 1000);
+          setUpdateFeedback('¡Nueva versión lista! Aplicando...');
+          setTimeout(() => applyUpdate(), 800);
           return;
         }
       } catch (err) {
-        console.warn('Error al verificar actualización:', err);
+        console.warn('Aviso comprobación actualización:', err);
       }
     }
 
-    // Short simulated check in dev mode / client cache verification
+    // Finished checking: inform user without forcing blank reload
     setTimeout(() => {
       setIsCheckingUpdate(false);
       if (!hasNewUpdate) {
-        setUpdateFeedback('Tu aplicación está al día con la última versión.');
-        setTimeout(() => setUpdateFeedback(null), 3500);
+        setUpdateFeedback('Tu aplicación está al día con la versión más reciente.');
+        setTimeout(() => setUpdateFeedback(null), 3000);
       }
-    }, 1200);
+    }, 900);
   }, [swRegistration, hasNewUpdate, applyUpdate]);
 
   return {
