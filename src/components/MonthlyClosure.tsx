@@ -14,7 +14,10 @@ import {
   FileText,
   Printer,
   Sparkles,
-  PieChart
+  PieChart,
+  Edit3,
+  Check,
+  X
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
 import { formatCurrency, formatDate } from '../utils/storage';
@@ -33,6 +36,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
   const [notesText, setNotesText] = useState<string>('');
+  
+  // Estado para ajustar saldos de cierre (especialmente cuenta de valores)
+  const [isEditingBalances, setIsEditingBalances] = useState<boolean>(false);
+  const [tempBalances, setTempBalances] = useState<Record<string, string>>({});
 
   // Extract year and month numbers
   const [yearStr, monthStr] = selectedMonth.split('-');
@@ -42,6 +49,12 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   // Month name in Spanish
   const monthName = new Date(year, month - 1, 1).toLocaleString('es-ES', { month: 'long' });
   const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+  // Último día del mes en formato YYYY-MM-DD
+  const lastDayOfMonthStr = useMemo(() => {
+    const lastDay = new Date(year, month, 0);
+    return `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+  }, [year, month]);
 
   // Find existing closure record
   const currentClosure = useMemo(() => {
@@ -56,6 +69,24 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   React.useEffect(() => {
     setNotesText(currentClosure.notes || '');
   }, [currentClosure]);
+
+  // Reconstrucción del saldo histórico de cada cuenta al final de ese mes
+  const getAccountBalanceForMonth = (acc: BankAccount): number => {
+    // Si ya existe un saldo auditado/congelado para este mes, usarlo
+    if (currentClosure.auditedBalances?.[acc.id] !== undefined) {
+      return currentClosure.auditedBalances[acc.id];
+    }
+    // Si es cuenta de inversión (valores), si no se auditó, toma su saldo base
+    if (acc.type === 'investment') {
+      return acc.balance;
+    }
+    // Para cuentas bancarias:
+    // Saldo al fin de ese mes = Saldo Actual - (Ingresos posteriores) + (Gastos posteriores)
+    const futureTxs = appState.transactions.filter(tx => tx.accountId === acc.id && tx.date > lastDayOfMonthStr);
+    const futureIncome = futureTxs.filter(tx => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
+    const futureExpense = futureTxs.filter(tx => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
+    return acc.balance - futureIncome + futureExpense;
+  };
 
   // Navigate months
   const handlePrevMonth = () => {
@@ -119,7 +150,9 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       const income = txs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
       const expense = txs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
       const net = income - expense;
-      const currentBalance = bankAccs.reduce((sum, a) => sum + a.balance, 0);
+      
+      // Saldo de las cuentas calculado al fin de ese mes específico
+      const currentBalance = bankAccs.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
 
       return {
         id: b.id,
@@ -128,20 +161,62 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
         income,
         expense,
         net,
-        currentBalance
+        currentBalance,
+        accounts: bankAccs
       };
     }).filter((b) => b.accountsCount > 0);
-  }, [appState.accounts, monthTransactions]);
+  }, [appState.accounts, monthTransactions, currentClosure, lastDayOfMonthStr, appState.transactions]);
 
-  // Toggle close / open status
+  // Total patrimonio a fin de ese mes
+  const totalBalanceMonth = useMemo(() => {
+    return appState.accounts.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
+  }, [appState.accounts, currentClosure, lastDayOfMonthStr, appState.transactions]);
+
+  // Toggle close / open status (guarda foto fija de los saldos de cuentas de valores y bancos de ese mes)
   const handleToggleClose = () => {
+    const isClosing = !currentClosure.isClosed;
+    const audited: Record<string, number> = isClosing
+      ? appState.accounts.reduce((acc, a) => ({ ...acc, [a.id]: getAccountBalanceForMonth(a) }), {})
+      : (currentClosure.auditedBalances || {});
+
     const updated: MonthClosure = {
       month: selectedMonth,
-      isClosed: !currentClosure.isClosed,
-      closedAt: !currentClosure.isClosed ? new Date().toISOString() : undefined,
-      notes: notesText
+      isClosed: isClosing,
+      closedAt: isClosing ? new Date().toISOString() : undefined,
+      notes: notesText,
+      auditedBalances: audited
     };
     onUpdateClosure(updated);
+  };
+
+  // Abrir modal de edición de saldos de cierre (para valores o bancos)
+  const handleOpenEditBalances = () => {
+    const initialValues: Record<string, string> = {};
+    appState.accounts.forEach((a) => {
+      initialValues[a.id] = getAccountBalanceForMonth(a).toString();
+    });
+    setTempBalances(initialValues);
+    setIsEditingBalances(true);
+  };
+
+  // Guardar saldos de cierre personalizados
+  const handleSaveCustomBalances = () => {
+    const parsedAudited: Record<string, number> = {};
+    appState.accounts.forEach((a) => {
+      const valStr = tempBalances[a.id];
+      const parsed = parseFloat(valStr?.replace(',', '.') || '0');
+      parsedAudited[a.id] = isNaN(parsed) ? getAccountBalanceForMonth(a) : parsed;
+    });
+
+    const updated: MonthClosure = {
+      month: selectedMonth,
+      isClosed: true,
+      closedAt: currentClosure.closedAt || new Date().toISOString(),
+      notes: notesText,
+      auditedBalances: parsedAudited
+    };
+    onUpdateClosure(updated);
+    setIsEditingBalances(false);
   };
 
   const handleSaveNotes = () => {
@@ -222,10 +297,21 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               <ChevronRight className="w-4 h-4" />
             </button>
 
+            {/* Botón Ajustar Saldos al Cierre (ideal para poner los saldos de carteras de valores o meses pasados) */}
+            <button
+              onClick={handleOpenEditBalances}
+              title="Ajustar o revisar los saldos exactos de tus cuentas de valores o bancos al cierre de este mes"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-[#0E6A3B]" />
+              <span className="hidden sm:inline">Ajustar Saldos Cierre</span>
+              <span className="sm:hidden">Saldos</span>
+            </button>
+
             {/* Close/Open Month Button */}
             <button
               onClick={handleToggleClose}
-              className={`ml-2 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
                 currentClosure.isClosed
                   ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-300'
                   : 'bg-[#0E6A3B] text-white hover:bg-[#0a522d]'
@@ -349,7 +435,9 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                 <th className="px-5 py-3 text-right">Ingresos Mes</th>
                 <th className="px-5 py-3 text-right">Gastos Mes</th>
                 <th className="px-5 py-3 text-right">Balance Neto Mes</th>
-                <th className="px-5 py-3 text-right">Saldo Actual</th>
+                <th className="px-5 py-3 text-right">
+                  {currentClosure.isClosed ? 'Saldo al Cierre' : 'Saldo Actual'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -398,7 +486,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                   {monthNet >= 0 ? `+${formatCurrency(monthNet)}` : formatCurrency(monthNet)}
                 </td>
                 <td className="px-5 py-3 text-right text-[#092B19] text-sm font-feature-settings-tnum">
-                  {formatCurrency(appState.accounts.reduce((s, a) => s + a.balance, 0))}
+                  {formatCurrency(totalBalanceMonth)}
                 </td>
               </tr>
             </tfoot>
@@ -470,6 +558,119 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal de Ajuste de Saldos al Cierre (especialmente para Cuentas de Valores o meses históricos) */}
+      {isEditingBalances && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div 
+            className="bg-white rounded-2xl border-2 border-emerald-600/40 shadow-xl max-w-lg w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabecera del modal */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#0E6A3B] flex items-center justify-center text-white shadow-xs">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-950">
+                    Ajustar Saldos al Cierre de {capitalizedMonth} {year}
+                  </h3>
+                  <p className="text-[11px] text-zinc-600">
+                    Introduce o ajusta los saldos que tenía cada cuenta a fecha de fin de mes
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEditingBalances(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Cuerpo del modal */}
+            <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950">
+                <p className="font-bold mb-0.5 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                  Ideal para Cuentas de Valores o Cierres Pasados (2025):
+                </p>
+                Los saldos de las cuentas corrientes se han calculado automáticamente a partir de los movimientos. Para tus <strong>cuentas de valores / inversiones</strong>, introduce la valoración que tenía tu cartera a <strong>último día de {capitalizedMonth} {year}</strong>.
+              </div>
+
+              <div className="space-y-3">
+                {appState.accounts.map((acc) => (
+                  <div 
+                    key={acc.id} 
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                      acc.type === 'investment' 
+                        ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-500/20' 
+                        : 'bg-zinc-50/80 border-zinc-200'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-zinc-900 truncate">
+                          {acc.accountName}
+                        </span>
+                        {acc.type === 'investment' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300">
+                            Valores / Inversión
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-500 truncate">
+                        {acc.bankName} • {acc.accountNumberMasked}
+                      </p>
+                    </div>
+
+                    <div className="w-36 shrink-0">
+                      <label className="block text-[10px] font-semibold text-zinc-500 mb-0.5">
+                        Saldo a 31/{String(month).padStart(2, '0')} (€)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={tempBalances[acc.id] ?? ''}
+                          onChange={(e) => {
+                            setTempBalances((prev) => ({
+                              ...prev,
+                              [acc.id]: e.target.value
+                            }));
+                          }}
+                          className="w-full px-2.5 py-1.5 text-xs font-bold text-right rounded-lg bg-white border border-zinc-300 focus:border-[#0E6A3B] focus:ring-1 focus:ring-[#0E6A3B] text-zinc-900 font-feature-settings-tnum"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pie del modal */}
+            <div className="px-6 py-3.5 bg-zinc-50 border-t border-zinc-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditingBalances(false)}
+                className="px-3.5 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-200 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomBalances}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Guardar Saldos y Auditar Cierre</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

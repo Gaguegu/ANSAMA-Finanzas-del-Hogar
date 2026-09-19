@@ -86,7 +86,19 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
       for (let m = 0; m < 12; m++) {
         const monthNum = String(m + 1).padStart(2, '0');
-        // Last day of this month
+        const monthKey = `${selectedYear}-${monthNum}`;
+        const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
+
+        // Si el mes está cerrado y tiene saldos auditados para estas cuentas, usamos esos saldos exactos
+        if (closure?.isClosed && closure.auditedBalances) {
+          const auditedSum = matchingAccounts.reduce((sum, a) => {
+            return sum + (closure.auditedBalances?.[a.id] ?? a.balance);
+          }, 0);
+          monthlyBalances.push(Math.round(auditedSum * 100) / 100);
+          continue;
+        }
+
+        // Si no está auditado, calculamos retrocediendo los movimientos posteriores al fin de mes
         const lastDayOfMonth = new Date(selectedYear, m + 1, 0).getDate();
         const endOfMonthDateStr = `${selectedYear}-${monthNum}-${String(lastDayOfMonth).padStart(2, '0')}`;
         
@@ -95,9 +107,6 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
           return accIds.includes(tx.accountId) && tx.date > endOfMonthDateStr;
         });
 
-        // If a transaction occurred AFTER endOfMonthDateStr:
-        // An income added to current balance, so to roll back we subtract it.
-        // An expense subtracted from current balance, so to roll back we add it.
         let rolledBalance = currentBalance;
         for (const tx of subsequentTxs) {
           if (tx.type === 'income') {
