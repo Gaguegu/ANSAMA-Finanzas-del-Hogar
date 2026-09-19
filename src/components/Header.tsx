@@ -113,15 +113,15 @@ export const Header: React.FC<HeaderProps> = ({
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* LÍNEA 1: Identidad con Logotipo, Círculo de Versión y Botones de Acción */}
-        <div className="flex items-center justify-between py-2.5 sm:py-3 gap-3">
+        {/* LÍNEA 1: Identidad con Logotipo, Círculo de Versión y Botones de Acción Centrados */}
+        <div className="flex flex-col xl:flex-row items-center justify-between py-2.5 gap-3">
           
           {/* Lado Izquierdo: Logotipo ANSAMA + Círculo de Versión */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             {/* Logo & Identity dentro de un recuadro con bordes redondeados */}
             <div 
               id="brand-identity-box"
-              className="flex items-center gap-2 sm:gap-3 bg-white/95 px-2 sm:px-3 py-1.5 rounded-2xl border-2 border-[#0E6A3B]/40 shadow-xs hover:border-[#0E6A3B]/70 transition-all ring-1 ring-emerald-950/5 shrink-0"
+              className="flex items-center gap-2 sm:gap-3 bg-white/95 px-2.5 sm:px-3 py-1.5 rounded-2xl border-2 border-[#0E6A3B]/40 shadow-xs hover:border-[#0E6A3B]/70 transition-all ring-1 ring-emerald-950/5 shrink-0"
             >
               <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-white border border-emerald-200/80 flex items-center justify-center p-0.5 shadow-2xs overflow-hidden shrink-0">
                 <img 
@@ -165,18 +165,17 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Lado Derecho: Todos los Botones de Acción en su propia área sin competir por espacio */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Centro de la Pantalla: Todos los Botones de Acción repartidos y centrados */}
+          <div className="flex-1 flex items-center justify-center gap-2 sm:gap-2.5 flex-wrap w-full xl:w-auto">
             {/* 1. Botón Nuevo Movimiento */}
             <button
               id="btn-add-transaction"
               onClick={onOpenNewTransactionModal}
               title="Añadir nuevo gasto o ingreso"
-              className="h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
+              className="h-9 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">Nuevo Movimiento</span>
-              <span className="sm:hidden">Nuevo</span>
+              <span>Nuevo Movimiento</span>
             </button>
 
             {/* 2. Botón Sincronizar Bancos */}
@@ -185,11 +184,10 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onOpenSyncModal}
               disabled={isSyncing}
               title="Sincronización bancaria con PSD2"
-              className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-xs active:scale-95 disabled:opacity-75 cursor-pointer shrink-0"
+              className="h-9 sm:h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-xs active:scale-95 disabled:opacity-75 cursor-pointer shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
-              <span className="hidden md:inline">Sincronizar Bancos</span>
-              <span className="md:hidden">Sincronizar</span>
+              <span>Sincronizar Bancos</span>
             </button>
 
             {/* 3. Botón Actualizar */}
@@ -202,22 +200,17 @@ export const Header: React.FC<HeaderProps> = ({
                   ? "¡Nueva actualización disponible! Pulsa para actualizar ahora" 
                   : "Comprobar y buscar actualizaciones"
               }
-              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 ${
+              className={`h-9 sm:h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer shrink-0 ${
                 hasNewUpdate 
                   ? 'bg-[#0E6A3B] text-white ring-2 ring-emerald-400 hover:bg-[#0a522d]'
                   : 'bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-200/90'
               }`}
             >
               <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isCheckingUpdate ? 'animate-spin text-emerald-600' : hasNewUpdate ? 'text-white animate-spin' : 'text-zinc-600'}`} />
-              <span className="hidden lg:inline">
+              <span>
                 {hasNewUpdate 
                   ? (autoUpdateCountdown !== null && autoUpdateCountdown > 0 ? `Actualizar (${autoUpdateCountdown}s)` : 'Actualizar ahora') 
                   : 'Actualizar'}
-              </span>
-              <span className="lg:hidden">
-                {hasNewUpdate 
-                  ? (autoUpdateCountdown !== null && autoUpdateCountdown > 0 ? `(${autoUpdateCountdown}s)` : 'Act.') 
-                  : 'Act.'}
               </span>
               {hasNewUpdate && (
                 <span className="flex h-2 w-2 relative -ml-0.5">
@@ -265,13 +258,16 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
+          {/* Espacio balanceador a la derecha en pantallas grandes para garantizar centrado óptico exacto */}
+          <div className="hidden xl:flex items-center justify-end w-[250px] shrink-0 pointer-events-none" aria-hidden="true" />
+
         </div>
 
-        {/* LÍNEA 2: Barra de Navegación de Pestañas completa y despejada */}
-        <div className="py-1.5 border-t border-zinc-100/90 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+        {/* LÍNEA 2: Barra de Navegación de Pestañas perfectamente centrada en la pantalla */}
+        <div className="py-2 border-t border-zinc-100/90 flex items-center justify-center overflow-x-auto no-scrollbar">
           <nav 
             id="app-main-navigation" 
-            className="flex items-center gap-1 bg-[#092B19] p-1 rounded-2xl border border-[#0E6A3B]/70 shadow-sm ring-1 ring-emerald-950/20 w-full sm:w-auto"
+            className="flex items-center gap-1 bg-[#092B19] p-1 rounded-2xl border border-[#0E6A3B]/70 shadow-sm ring-1 ring-emerald-950/20 mx-auto"
           >
             <button
               id="nav-tab-dashboard"
