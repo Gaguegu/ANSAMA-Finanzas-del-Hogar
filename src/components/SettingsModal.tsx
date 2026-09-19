@@ -779,7 +779,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-zinc-100">
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-full bg-[#092B19] border border-emerald-400 text-white flex items-center justify-center text-[10px] font-black">
+                2.5
+              </div>
+              <span className="text-[11px] font-semibold text-zinc-500">ANSAMA Finanzas v2.5</span>
+            </div>
             <button
               onClick={onClose}
               className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
