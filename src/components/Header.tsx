@@ -12,7 +12,8 @@ import {
   ListOrdered,
   Calendar,
   BarChart3,
-  Coins
+  Coins,
+  Lock
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 
@@ -34,6 +35,8 @@ interface HeaderProps {
   isAutoUpdatePaused?: boolean;
   onPauseAutoUpdate?: () => void;
   onResumeAutoUpdate?: () => void;
+  hasPassword?: boolean;
+  onLockApp?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,6 +57,8 @@ export const Header: React.FC<HeaderProps> = ({
   isAutoUpdatePaused,
   onPauseAutoUpdate,
   onResumeAutoUpdate,
+  hasPassword,
+  onLockApp,
 }) => {
   return (
     <header id="app-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-zinc-200">
@@ -325,6 +330,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Settings className="w-4 h-4" />
             </button>
+
+            {/* Botón Bloquear Pantalla (si tiene clave configurada) */}
+            {hasPassword && onLockApp && (
+              <button
+                id="btn-lock-app"
+                onClick={onLockApp}
+                title="Bloquear pantalla de finanzas ahora"
+                className="h-10 w-10 flex items-center justify-center rounded-xl text-zinc-600 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer shrink-0"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
         </div>

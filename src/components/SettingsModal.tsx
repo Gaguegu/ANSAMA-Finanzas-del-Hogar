@@ -5,15 +5,22 @@ import {
   Upload, 
   RotateCcw, 
   ShieldCheck, 
-  HardDrive,
-  CheckCircle2,
-  AlertTriangle,
-  Trash2,
-  Eraser,
-  Sparkles
+  HardDrive, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Trash2, 
+  Eraser, 
+  Sparkles,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+  FileKey
 } from 'lucide-react';
 import { AppState } from '../types';
 import { saveAppState, resetToDefaults, resetToZero } from '../utils/storage';
+import { encryptData, decryptData, hashPassword } from '../utils/crypto';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,6 +29,8 @@ interface SettingsModalProps {
   onStateUpdated: (newState: AppState) => void;
   isInstalled?: boolean;
   onOpenInstall?: () => void;
+  currentPassword?: string;
+  onPasswordChanged?: (newPassword: string | null) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,35 +39,119 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   appState,
   onStateUpdated,
   isInstalled,
-  onOpenInstall
+  onOpenInstall,
+  currentPassword,
+  onPasswordChanged
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmZero, setShowConfirmZero] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState<string | null>(null);
 
+  // Security / Password modal states
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [oldPasswordInput, setOldPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Decryption modal state for imported encrypted files
+  const [pendingEncryptedContent, setPendingEncryptedContent] = useState<string | null>(null);
+  const [importPasswordInput, setImportPasswordInput] = useState('');
+  const [importPasswordError, setImportPasswordError] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
+  // Backup format preference: encrypted (recommended) or standard json
+  const [exportPasswordInput, setExportPasswordInput] = useState('');
+  const [showExportPasswordModal, setShowExportPasswordModal] = useState(false);
+  const [isEncryptingExport, setIsEncryptingExport] = useState(false);
+
   if (!isOpen) return null;
 
-  // Export JSON backup
-  const handleExportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+  // Format filename with exact date and time
+  const getFormattedFilename = (isEncrypted: boolean) => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const year = now.getFullYear();
+    const month = pad(now.getMonth() + 1);
+    const day = pad(now.getDate());
+    const hours = pad(now.getHours());
+    const minutes = pad(now.getMinutes());
+    const seconds = pad(now.getSeconds());
+
+    const formattedTimestamp = `${year}-${month}-${day}_${hours}h${minutes}m${seconds}s`;
+    return isEncrypted 
+      ? `ANSAMA_Finanzas_Copia_CIFRADA_${formattedTimestamp}.ansama`
+      : `ANSAMA_Finanzas_Copia_${formattedTimestamp}.json`;
+  };
+
+  // Trigger download of a string
+  const triggerDownload = (content: string, filename: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    const filename = `ansama_finanzas_backup_${new Date().toISOString().split('T')[0]}.json`;
-    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("href", url);
     downloadAnchor.setAttribute("download", filename);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    URL.revokeObjectURL(url);
+
+    setShowSuccessToast(`Copia generada: "${filename}"`);
+    setTimeout(() => {
+      setShowSuccessToast(null);
+    }, 4000);
   };
 
-  // Import JSON backup
+  // Export Encrypted Backup (.ansama protected with password)
+  const handleConfirmEncryptedExport = async () => {
+    const pass = exportPasswordInput || currentPassword;
+    if (!pass) {
+      alert('Debes indicar una contraseña para proteger la copia de seguridad.');
+      return;
+    }
+
+    setIsEncryptingExport(true);
+    try {
+      const plaintext = JSON.stringify(appState, null, 2);
+      const encryptedPayload = await encryptData(plaintext, pass);
+      const filename = getFormattedFilename(true);
+      triggerDownload(encryptedPayload, filename, 'application/json');
+      setShowExportPasswordModal(false);
+      setExportPasswordInput('');
+    } catch (err) {
+      alert('Error al cifrar los datos.');
+    } finally {
+      setIsEncryptingExport(false);
+    }
+  };
+
+  // Export Standard JSON backup
+  const handleExportStandardData = () => {
+    const filename = getFormattedFilename(false);
+    const dataStr = JSON.stringify(appState, null, 2);
+    triggerDownload(dataStr, filename, 'application/json');
+  };
+
+  // Handle file selection (handles both plain .json and encrypted .ansama / .json)
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
       try {
-        const parsed = JSON.parse(event.target?.result as string);
+        const parsed = JSON.parse(content);
+        // Check if it is an encrypted ANSAMA payload
+        if (parsed.app === 'ANSAMA_FINANZAS_PROTECTED' && parsed.ciphertext) {
+          setPendingEncryptedContent(content);
+          setImportPasswordInput(currentPassword || '');
+          setImportPasswordError(null);
+          return;
+        }
+
+        // Standard unencrypted JSON backup
         if (parsed.accounts && parsed.transactions && parsed.categories) {
           saveAppState(parsed);
           onStateUpdated(parsed);
@@ -71,10 +164,131 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           alert('El archivo no contiene una copia válida de ANSAMA Finanzas.');
         }
       } catch (err) {
-        alert('Error al leer el archivo JSON.');
+        alert('Error al leer el archivo. Asegúrate de que no está dañado.');
       }
     };
     reader.readAsText(file);
+    // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Confirm Decrypt of Imported File
+  const handleConfirmDecryptImport = async () => {
+    if (!pendingEncryptedContent || !importPasswordInput.trim()) {
+      setImportPasswordError('Introduce la contraseña con la que se protegió la copia.');
+      return;
+    }
+
+    setIsDecrypting(true);
+    setImportPasswordError(null);
+
+    try {
+      const decryptedJsonStr = await decryptData(pendingEncryptedContent, importPasswordInput.trim());
+      const parsed = JSON.parse(decryptedJsonStr);
+
+      if (parsed.accounts && parsed.transactions && parsed.categories) {
+        saveAppState(parsed);
+        onStateUpdated(parsed);
+        setPendingEncryptedContent(null);
+        setImportPasswordInput('');
+        setShowSuccessToast('¡Copia descifrada y restaurada correctamente con éxito!');
+        setTimeout(() => {
+          setShowSuccessToast(null);
+          onClose();
+        }, 1500);
+      } else {
+        setImportPasswordError('El contenido descifrado no tiene el formato esperado.');
+      }
+    } catch (err: any) {
+      setImportPasswordError('Contraseña incorrecta. No se pudo descifrar la copia.');
+    } finally {
+      setIsDecrypting(false);
+    }
+  };
+
+  // Password Management Handlers
+  const handleSavePassword = async () => {
+    setPasswordError(null);
+
+    // If app already has a password, verify old password first
+    if (appState.security?.hasPassword) {
+      if (!oldPasswordInput) {
+        setPasswordError('Debes introducir tu contraseña actual.');
+        return;
+      }
+      const oldHash = await hashPassword(oldPasswordInput);
+      if (oldHash !== appState.security.passwordHash) {
+        setPasswordError('La contraseña actual no es correcta.');
+        return;
+      }
+    }
+
+    if (newPasswordInput.length < 4) {
+      setPasswordError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordError('Las dos contraseñas no coinciden.');
+      return;
+    }
+
+    const newHash = await hashPassword(newPasswordInput);
+    const updatedState: AppState = {
+      ...appState,
+      security: {
+        ...appState.security,
+        hasPassword: true,
+        passwordHash: newHash,
+      }
+    };
+
+    saveAppState(updatedState);
+    onStateUpdated(updatedState);
+    if (onPasswordChanged) onPasswordChanged(newPasswordInput);
+
+    setIsChangingPassword(false);
+    setOldPasswordInput('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    setShowSuccessToast('¡Contraseña de acceso configurada y guardada!');
+    setTimeout(() => setShowSuccessToast(null), 3000);
+  };
+
+  const handleRemovePassword = async () => {
+    if (!oldPasswordInput) {
+      setPasswordError('Introduce tu contraseña actual para poder retirarla.');
+      return;
+    }
+    const oldHash = await hashPassword(oldPasswordInput);
+    if (oldHash !== appState.security?.passwordHash) {
+      setPasswordError('Contraseña actual incorrecta.');
+      return;
+    }
+
+    if (!confirm('¿Seguro que quieres quitar la protección por contraseña de la aplicación?')) {
+      return;
+    }
+
+    const updatedState: AppState = {
+      ...appState,
+      security: {
+        ...appState.security,
+        hasPassword: false,
+        passwordHash: undefined
+      }
+    };
+
+    saveAppState(updatedState);
+    onStateUpdated(updatedState);
+    if (onPasswordChanged) onPasswordChanged(null);
+
+    setIsChangingPassword(false);
+    setOldPasswordInput('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    setShowSuccessToast('Protección por contraseña desactivada.');
+    setTimeout(() => setShowSuccessToast(null), 3000);
   };
 
   // Reset to initial demo data
@@ -145,37 +359,303 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             Todos los datos patrimoniales, saldos bancarios y movimientos se almacenan exclusivamente de manera local en tu navegador (LocalStorage). Ningún dato financiero viaja a servidores externos no autorizados.
           </div>
 
+          {/* Security & Password Section */}
+          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-white space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <Lock className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Protección por Contraseña</h4>
+                  <p className="text-[11px] text-zinc-400">
+                    {appState.security?.hasPassword 
+                      ? 'Bloqueo activo al abrir la app o pulsar el candado.' 
+                      : 'Protege tu información confidencial con una clave.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {appState.security?.hasPassword ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold tracking-wide border border-emerald-500/30 uppercase">
+                    Protegida
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 text-[10px] font-bold tracking-wide border border-zinc-700 uppercase">
+                    Desactivada
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Password Configuration Box */}
+            {isChangingPassword ? (
+              <div className="p-3 bg-zinc-800/80 rounded-xl border border-zinc-700/80 space-y-3 mt-2">
+                <div className="text-xs font-semibold text-zinc-300">
+                  {appState.security?.hasPassword ? 'Cambiar o Quitar Contraseña' : 'Establecer Contraseña de Acceso'}
+                </div>
+
+                {passwordError && (
+                  <div className="p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-400 text-xs flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{passwordError}</span>
+                  </div>
+                )}
+
+                {appState.security?.hasPassword && (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-zinc-400 uppercase mb-1">
+                      Contraseña Actual
+                    </label>
+                    <input
+                      type={showPasswords ? 'text' : 'password'}
+                      value={oldPasswordInput}
+                      onChange={(e) => setOldPasswordInput(e.target.value)}
+                      placeholder="Introduce tu clave actual..."
+                      className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 uppercase mb-1">
+                    Nueva Contraseña
+                  </label>
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Mínimo 4 caracteres..."
+                    className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 uppercase mb-1">
+                    Confirmar Nueva Contraseña
+                  </label>
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    value={confirmPasswordInput}
+                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                    placeholder="Repite la nueva contraseña..."
+                    className="w-full px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords(!showPasswords)}
+                    className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
+                  >
+                    {showPasswords ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    <span>{showPasswords ? 'Ocultar claves' : 'Ver claves'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {appState.security?.hasPassword && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePassword}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Quitar clave
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsChangingPassword(false);
+                        setPasswordError(null);
+                      }}
+                      className="px-2.5 py-1 text-[11px] text-zinc-400 hover:bg-zinc-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSavePassword}
+                      className="px-3 py-1 text-[11px] font-bold bg-[#0E6A3B] hover:bg-[#0a522d] text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      Guardar Clave
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-zinc-400">
+                  {appState.security?.hasPassword 
+                    ? 'Tus datos financieros están seguros contra miradas ajenas.' 
+                    : 'Recomendado para evitar accesos no autorizados en este dispositivo.'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsChangingPassword(true);
+                    setPasswordError(null);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg border border-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                  {appState.security?.hasPassword ? 'Gestionar Clave' : 'Activar Clave'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Backup Actions */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-zinc-700 uppercase tracking-wider">
-              Copia de Seguridad y Migración
+              Copia de Seguridad Blindada con Contraseña
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Export Button: Cifrada */}
               <button
-                onClick={handleExportData}
-                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-zinc-800 bg-white border border-zinc-200 hover:bg-zinc-50 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-98"
+                onClick={() => {
+                  if (appState.security?.hasPassword) {
+                    setExportPasswordInput(currentPassword || '');
+                  }
+                  setShowExportPasswordModal(true);
+                }}
+                className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all shadow-xs cursor-pointer active:scale-98"
               >
-                <Download className="w-4 h-4 text-zinc-900" />
-                Exportar Copia (JSON)
+                <FileKey className="w-4 h-4 text-emerald-300" />
+                Exportar Copia Cifrada (Recomendado)
               </button>
 
+              {/* Import Button */}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 p-3 text-xs font-bold text-zinc-800 bg-white border border-zinc-200 hover:bg-zinc-50 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-98"
               >
                 <Upload className="w-4 h-4 text-[#0E6A3B]" />
-                Importar Copia
+                Importar / Restaurar Copia
               </button>
               <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleImportFile}
-                accept=".json"
+                accept=".json,.ansama"
                 className="hidden"
               />
             </div>
+
+            {/* Export Standard unencrypted option (small link) */}
+            <div className="flex items-center justify-between pt-1 text-[11px] text-zinc-500">
+              <span>¿Necesitas el formato JSON tradicional sin contraseña?</span>
+              <button
+                type="button"
+                onClick={handleExportStandardData}
+                className="text-zinc-700 hover:text-zinc-950 font-semibold underline cursor-pointer"
+              >
+                Descargar JSON simple
+              </button>
+            </div>
+            
+            <p className="text-[11px] text-zinc-500 leading-normal">
+              💡 La copia protegida utiliza <strong>cifrado militar AES-GCM de 256 bits</strong> con la fecha y hora exacta. Nadie podrá abrirla ni en PC ni en la nube sin tu clave.
+            </p>
           </div>
+
+          {/* Modal prompt when exporting encrypted copy */}
+          {showExportPasswordModal && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-emerald-600/50 text-white space-y-3 animate-in fade-in">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <FileKey className="w-4 h-4" />
+                <span>Generar Copia de Seguridad Cifrada (.ansama)</span>
+              </div>
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                El archivo se blindará con cifrado criptográfico. Para restaurarlo en el futuro o en otro equipo, se te solicitará esta contraseña:
+              </p>
+              <div>
+                <label className="block text-[10px] font-semibold text-zinc-400 uppercase mb-1">
+                  Contraseña de Cifrado
+                </label>
+                <input
+                  type="password"
+                  value={exportPasswordInput}
+                  onChange={(e) => setExportPasswordInput(e.target.value)}
+                  placeholder="Escribe la contraseña para proteger el archivo..."
+                  className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowExportPasswordModal(false)}
+                  className="px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmEncryptedExport}
+                  disabled={isEncryptingExport || !exportPasswordInput.trim()}
+                  className="px-3 py-1.5 text-xs font-bold bg-[#0E6A3B] hover:bg-[#0a522d] text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  {isEncryptingExport ? 'Cifrando...' : 'Descargar Archivo Protegido'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Modal prompt when importing encrypted copy */}
+          {pendingEncryptedContent && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-amber-500/50 text-white space-y-3 animate-in fade-in">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                <KeyRound className="w-4 h-4" />
+                <span>Archivo Protegido con Contraseña</span>
+              </div>
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                Esta copia de seguridad contiene datos cifrados. Introduce la contraseña con la que fue generada para descifrarla y restaurar tus cuentas:
+              </p>
+
+              {importPasswordError && (
+                <div className="p-2 bg-rose-500/20 border border-rose-500/40 rounded-lg text-rose-300 text-xs flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{importPasswordError}</span>
+                </div>
+              )}
+
+              <div>
+                <input
+                  type="password"
+                  value={importPasswordInput}
+                  onChange={(e) => {
+                    setImportPasswordInput(e.target.value);
+                    setImportPasswordError(null);
+                  }}
+                  placeholder="Contraseña del archivo..."
+                  className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingEncryptedContent(null)}
+                  className="px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDecryptImport}
+                  disabled={isDecrypting || !importPasswordInput.trim()}
+                  className="px-3 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {isDecrypting ? 'Descifrando...' : 'Descifrar y Restaurar'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Start from Zero / Reset Section */}
           <div className="pt-4 border-t border-zinc-100 space-y-3">

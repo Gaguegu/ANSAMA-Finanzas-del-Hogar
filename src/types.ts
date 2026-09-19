@@ -72,6 +72,12 @@ export interface MonthClosure {
   auditedBalances?: Record<string, number>; // accountId -> closing balance
 }
 
+export interface SecurityConfig {
+  passwordHash?: string;
+  hasPassword?: boolean;
+  autoLockMinutes?: number; // e.g. 5, 15, 30 or 0 for never
+}
+
 export interface AppState {
   accounts: BankAccount[];
   transactions: Transaction[];
@@ -80,6 +86,7 @@ export interface AppState {
   currency: string;
   monthlyClosures?: MonthClosure[];
   yieldRecords?: YieldRecord[];
+  security?: SecurityConfig;
 }
 
 export interface BankSyncResult {

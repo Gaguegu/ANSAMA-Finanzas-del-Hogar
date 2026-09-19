@@ -23,6 +23,7 @@ import { AccountModal } from './components/AccountModal';
 import { SettingsModal } from './components/SettingsModal';
 import { InstallModal } from './components/InstallModal';
 import { MobileNav } from './components/MobileNav';
+import { LockScreen } from './components/LockScreen';
 import { Sparkles, CheckCircle2, RefreshCw, Info } from 'lucide-react';
 import { usePWA } from './utils/usePWA';
 
@@ -39,6 +40,13 @@ export default function App() {
   const [editingYield, setEditingYield] = useState<YieldRecord | null>(null);
   const [accountToEdit, setAccountToEdit] = useState<BankAccount | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  // Security & App Lock states
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    const loaded = loadAppState();
+    return Boolean(loaded.security?.hasPassword && loaded.security?.passwordHash);
+  });
+  const [sessionPassword, setSessionPassword] = useState<string>('');
 
   // Hook PWA para instalación y actualizaciones automáticas y manuales
   const pwa = usePWA();
@@ -411,6 +419,12 @@ export default function App() {
         isAutoUpdatePaused={pwa.isAutoUpdatePaused}
         onPauseAutoUpdate={pwa.pauseAutoUpdate}
         onResumeAutoUpdate={pwa.resumeAutoUpdate}
+        hasPassword={Boolean(appState.security?.hasPassword)}
+        onLockApp={() => {
+          setIsLocked(true);
+          setSessionPassword('');
+          triggerNotification('Aplicación bloqueada. Se requiere contraseña.');
+        }}
       />
 
       {/* Main App Content Area */}
@@ -619,6 +633,10 @@ export default function App() {
             setIsInstallModalOpen(true);
           }
         }}
+        currentPassword={sessionPassword}
+        onPasswordChanged={(newPass) => {
+          setSessionPassword(newPass || '');
+        }}
       />
 
       {/* Modal de Instrucciones e Instalación PWA */}
@@ -628,6 +646,22 @@ export default function App() {
         onInstallDirectly={pwa.installApp}
         canPromptDirectly={pwa.isInstallable}
       />
+
+      {/* Pantalla de Bloqueo por Contraseña si está activada */}
+      {isLocked && appState.security?.hasPassword && appState.security?.passwordHash && (
+        <LockScreen
+          storedPasswordHash={appState.security.passwordHash}
+          onUnlock={(unlockedPassword) => {
+            setIsLocked(false);
+            setSessionPassword(unlockedPassword);
+            triggerNotification('¡Bienvenido! Finanzas desbloqueadas.');
+          }}
+          onForgotOrRestore={() => {
+            setIsSettingsModalOpen(true);
+            setIsLocked(false);
+          }}
+        />
+      )}
 
     </div>
   );
