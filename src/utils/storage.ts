@@ -1,5 +1,6 @@
-import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult } from '../types';
+import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult, YieldRecord } from '../types';
 import { INITIAL_STATE } from '../data/defaultData';
+import { detectYieldFromTransaction, createAutoYieldRecord } from './yieldDetection';
 
 const STORAGE_KEY = 'ansama_finanzas_hogar_v1';
 
@@ -14,6 +15,10 @@ export function loadAppState(): AppState {
     if (!parsed.accounts || !parsed.transactions || !parsed.categories) {
       saveAppState(INITIAL_STATE);
       return INITIAL_STATE;
+    }
+    // Backward compatibility: ensure yieldRecords is present
+    if (!parsed.yieldRecords) {
+      parsed.yieldRecords = INITIAL_STATE.yieldRecords || [];
     }
     return parsed;
   } catch (error) {
@@ -51,7 +56,9 @@ export function resetToZero(currentState?: AppState): AppState {
     transactions: [],
     categories: currentState?.categories || INITIAL_STATE.categories,
     lastGlobalSync: new Date().toISOString(),
-    currency: currentState?.currency || 'EUR'
+    currency: currentState?.currency || 'EUR',
+    monthlyClosures: [],
+    yieldRecords: []
   };
 
   saveAppState(zeroState);
@@ -125,6 +132,20 @@ const SIMULATED_FEED_BBVA: Array<Omit<Transaction, 'id' | 'accountId' | 'date'>>
     type: 'expense',
     categoryId: 'cat-ocio',
     note: 'Desayuno familiar'
+  },
+  {
+    title: 'Liquidación de Intereses Cuenta Remunerada',
+    amount: 28.35,
+    type: 'income',
+    categoryId: 'cat-rendimientos',
+    note: 'Liquidación periódica intereses acreedores BBVA'
+  },
+  {
+    title: 'Abono Dividendo Iberdrola S.A.',
+    amount: 85.05,
+    type: 'income',
+    categoryId: 'cat-rendimientos',
+    note: 'Retribución dividendo flexible Iberdrola'
   }
 ];
 
@@ -149,6 +170,13 @@ const SIMULATED_FEED_SANTANDER: Array<Omit<Transaction, 'id' | 'accountId' | 'da
     type: 'expense',
     categoryId: 'cat-suscripciones',
     note: 'Cargo en tarjeta Santander'
+  },
+  {
+    title: 'Liquidación Intereses Depósito Ahorro',
+    amount: 34.42,
+    type: 'income',
+    categoryId: 'cat-rendimientos',
+    note: 'Intereses devengados cuenta Santander'
   },
   {
     title: 'Aportación Ahorro Automático Metas',
@@ -240,10 +268,26 @@ export async function simulateBankSync(
     });
   }
 
+  // Detección y anotación automática de Rendimientos (Intereses y Dividendos)
+  const currentYields = currentState.yieldRecords || [];
+  const newAutoYields: YieldRecord[] = [];
+
+  for (const tx of newTransactions) {
+    const detected = detectYieldFromTransaction(tx);
+    if (detected) {
+      // Comprobar que no exista ya un registro para esta transacción
+      const alreadyExists = currentYields.some((y) => y.transactionId === tx.id);
+      if (!alreadyExists) {
+        newAutoYields.push(createAutoYieldRecord(tx, detected));
+      }
+    }
+  }
+
   const newState: AppState = {
     ...currentState,
     accounts: accountsCopy,
     transactions: [...newTransactions, ...currentState.transactions],
+    yieldRecords: [...newAutoYields, ...currentYields],
     lastGlobalSync: nowIso
   };
 

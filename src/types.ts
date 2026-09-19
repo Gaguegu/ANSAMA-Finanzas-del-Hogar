@@ -41,6 +41,29 @@ export interface Transaction {
   isSimulated?: boolean;
 }
 
+export type YieldType = 'interest' | 'dividend';
+
+export type YieldStatus = 'needs_review' | 'verified';
+
+export interface YieldRecord {
+  id: string;
+  type: YieldType; // 'interest' = Interés Bancario | 'dividend' = Dividendo de Acciones
+  accountId: string; // Cuenta bancaria / broker pagador o depositario
+  date: string; // YYYY-MM-DD
+  title: string; // Concepto o Empresa (ej. "Dividendo Iberdrola", "Intereses Cuenta Ahorro")
+  grossAmount: number; // Importe Bruto (€)
+  taxRatePercent: number; // Porcentaje de retención aplicado (ej. 19%)
+  withholdingTax: number; // Retención practicada en €
+  netAmount: number; // Importe Líquido ingresado en € (Bruto - Retención)
+  sharesCount?: number; // Para dividendos: nº de títulos / acciones
+  grossPerShare?: number; // Para dividendos: dividendo bruto por título en €
+  isinOrTicker?: string; // Ticker o ISIN del valor
+  notes?: string;
+  transactionId?: string; // ID de la transacción en cuenta vinculada (si aplica)
+  status?: YieldStatus; // 'needs_review' = Pendiente de comprobar con el extracto/justificante | 'verified' = Comprobado
+  autoDetected?: boolean; // true si fue anotado automáticamente al recibirse en el banco
+}
+
 export interface MonthClosure {
   month: string; // YYYY-MM
   isClosed: boolean;
@@ -56,6 +79,7 @@ export interface AppState {
   lastGlobalSync: string;
   currency: string;
   monthlyClosures?: MonthClosure[];
+  yieldRecords?: YieldRecord[];
 }
 
 export interface BankSyncResult {

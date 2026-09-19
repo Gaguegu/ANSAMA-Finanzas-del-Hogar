@@ -6,7 +6,8 @@ import {
   ListOrdered, 
   Plus,
   Calendar,
-  BarChart3
+  BarChart3,
+  Coins
 } from 'lucide-react';
 
 interface MobileNavProps {
@@ -62,7 +63,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         {/* Tab: Cierre Mes */}
         <button
           onClick={() => setActiveTab('monthly')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'monthly' 
               ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
@@ -75,7 +76,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         {/* Tab: Cierre Año */}
         <button
           onClick={() => setActiveTab('yearly')}
-          className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+          className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'yearly' 
               ? 'text-[#0E6A3B] font-black bg-emerald-50' 
               : 'text-zinc-500 hover:text-zinc-800'
@@ -83,6 +84,19 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         >
           <BarChart3 className="w-4 h-4" />
           <span className="text-[10px]">Cierre Año</span>
+        </button>
+
+        {/* Tab: Rendimientos */}
+        <button
+          onClick={() => setActiveTab('yields')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-1.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'yields' 
+              ? 'text-[#0E6A3B] font-black bg-emerald-50' 
+              : 'text-zinc-500 hover:text-zinc-800'
+          }`}
+        >
+          <Coins className="w-4 h-4" />
+          <span className="text-[10px]">Rendimientos</span>
         </button>
 
       </div>

@@ -11,7 +11,8 @@ import {
   TrendingUp,
   ListOrdered,
   Calendar,
-  BarChart3
+  BarChart3,
+  Coins
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 
@@ -221,6 +222,20 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <BarChart3 className={`w-3.5 h-3.5 transition-colors ${activeTab === 'yearly' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
               <span>Cierre Anual</span>
+            </button>
+
+            <button
+              id="nav-tab-yields"
+              onClick={() => setActiveTab('yields')}
+              className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-xl transition-all cursor-pointer ${
+                activeTab === 'yields'
+                  ? 'bg-white text-[#092B19] font-black shadow-xs ring-1 ring-white/40'
+                  : 'text-emerald-100/85 hover:text-white hover:bg-white/10 font-bold'
+              }`}
+              title="Intereses Bancarios y Dividendos de Acciones (Bruto, Retención y Líquido)"
+            >
+              <Coins className={`w-3.5 h-3.5 transition-colors ${activeTab === 'yields' ? 'text-[#0E6A3B]' : 'text-emerald-300/80 group-hover:text-emerald-200'}`} />
+              <span>Rendimientos</span>
             </button>
           </nav>
 

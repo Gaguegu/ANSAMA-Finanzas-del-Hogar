@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure } from './types';
+import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure, YieldRecord, YieldStatus } from './types';
 import { 
   loadAppState, 
   saveAppState, 
@@ -7,6 +7,7 @@ import {
   formatCurrency,
   formatRelativeTime 
 } from './utils/storage';
+import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { Header } from './components/Header';
 import { NetWorthCard } from './components/NetWorthCard';
 import { BankAccountsList } from './components/BankAccountsList';
@@ -14,6 +15,8 @@ import { ExpenseCategoriesChart } from './components/ExpenseCategoriesChart';
 import { TransactionsTable } from './components/TransactionsTable';
 import { MonthlyClosure } from './components/MonthlyClosure';
 import { YearlyClosure } from './components/YearlyClosure';
+import { YieldsView } from './components/YieldsView';
+import { YieldModal } from './components/YieldModal';
 import { TransactionModal } from './components/TransactionModal';
 import { SyncModal } from './components/SyncModal';
 import { AccountModal } from './components/AccountModal';
@@ -32,6 +35,8 @@ export default function App() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
+  const [isYieldModalOpen, setIsYieldModalOpen] = useState<boolean>(false);
+  const [editingYield, setEditingYield] = useState<YieldRecord | null>(null);
   const [accountToEdit, setAccountToEdit] = useState<BankAccount | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
@@ -77,15 +82,28 @@ export default function App() {
       return acc;
     });
 
+    // Detectar automáticamente si este abono es un rendimiento (interés o dividendo)
+    const detectedYield = detectYieldFromTransaction(newTx);
+    let updatedYields = appState.yieldRecords || [];
+    if (detectedYield) {
+      const autoYield = createAutoYieldRecord(newTx, detectedYield);
+      updatedYields = [autoYield, ...updatedYields];
+    }
+
     const newState: AppState = {
       ...appState,
       accounts: updatedAccounts,
-      transactions: [newTx, ...appState.transactions]
+      transactions: [newTx, ...appState.transactions],
+      yieldRecords: updatedYields
     };
 
     setAppState(newState);
     saveAppState(newState);
-    triggerNotification(`Movimiento "${newTx.title}" guardado correctamente.`);
+    triggerNotification(
+      detectedYield
+        ? `Movimiento "${newTx.title}" guardado y anotado automáticamente en Rendimientos (pendiente de comprobar).`
+        : `Movimiento "${newTx.title}" guardado correctamente.`
+    );
   };
 
   // Delete transaction & restore account balance
@@ -188,6 +206,162 @@ export default function App() {
     triggerNotification(
       closure.isClosed ? `Mes ${closure.month} cerrado y auditado` : `Cierre del mes ${closure.month} actualizado`,
       'success'
+    );
+  };
+
+  // Save (add or update) Yield Record (Intereses Bancarios o Dividendos)
+  const handleSaveYield = (record: YieldRecord, syncWithTransactions: boolean) => {
+    const existingYields = appState.yieldRecords || [];
+    const isEditing = existingYields.some((y) => y.id === record.id);
+    let updatedTransactions = [...appState.transactions];
+    let updatedAccounts = [...appState.accounts];
+    let finalTransactionId = record.transactionId;
+
+    if (syncWithTransactions) {
+      if (finalTransactionId) {
+        // Actualizar transacción existente
+        const txIndex = updatedTransactions.findIndex((t) => t.id === finalTransactionId);
+        if (txIndex >= 0) {
+          const oldTx = updatedTransactions[txIndex];
+          // Revertir saldo de la cuenta anterior
+          updatedAccounts = updatedAccounts.map((acc) => {
+            if (acc.id === oldTx.accountId) {
+              return { ...acc, balance: acc.balance - oldTx.amount };
+            }
+            return acc;
+          });
+
+          // Actualizar transacción con el nuevo importe líquido
+          const updatedTx: Transaction = {
+            ...oldTx,
+            accountId: record.accountId,
+            date: record.date,
+            title: `${record.type === 'interest' ? 'Intereses' : 'Dividendo'}: ${record.title}`,
+            amount: record.netAmount,
+            note: `Bruto: ${formatCurrency(record.grossAmount)} | Retención ${record.taxRatePercent}%: ${formatCurrency(record.withholdingTax)} | Líquido: ${formatCurrency(record.netAmount)}`
+          };
+          updatedTransactions[txIndex] = updatedTx;
+
+          // Abonar nuevo importe líquido en la cuenta
+          updatedAccounts = updatedAccounts.map((acc) => {
+            if (acc.id === record.accountId) {
+              return { ...acc, balance: acc.balance + record.netAmount };
+            }
+            return acc;
+          });
+        }
+      } else {
+        // Crear nueva transacción vinculada
+        const newTxId = `tx-yd-${record.id}`;
+        finalTransactionId = newTxId;
+        const newTx: Transaction = {
+          id: newTxId,
+          accountId: record.accountId,
+          date: record.date,
+          title: `${record.type === 'interest' ? 'Intereses' : 'Dividendo'}: ${record.title}`,
+          amount: record.netAmount,
+          type: 'income',
+          categoryId: 'cat-rendimientos',
+          note: `Bruto: ${formatCurrency(record.grossAmount)} | Retención ${record.taxRatePercent}%: ${formatCurrency(record.withholdingTax)} | Líquido: ${formatCurrency(record.netAmount)}`
+        };
+        updatedTransactions = [newTx, ...updatedTransactions];
+
+        // Abonar importe líquido en la cuenta bancaria seleccionada
+        updatedAccounts = updatedAccounts.map((acc) => {
+          if (acc.id === record.accountId) {
+            return { ...acc, balance: acc.balance + record.netAmount };
+          }
+          return acc;
+        });
+      }
+    }
+
+    const finalRecord: YieldRecord = {
+      ...record,
+      transactionId: finalTransactionId
+    };
+
+    let updatedYields: YieldRecord[];
+    if (isEditing) {
+      updatedYields = existingYields.map((y) => (y.id === finalRecord.id ? finalRecord : y));
+    } else {
+      updatedYields = [finalRecord, ...existingYields];
+    }
+
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(
+      isEditing
+        ? `Rendimiento "${record.title}" actualizado con éxito.`
+        : `Rendimiento "${record.title}" guardado (+${formatCurrency(record.netAmount)} líquido).`
+    );
+  };
+
+  // Delete Yield Record
+  const handleDeleteYield = (id: string) => {
+    const existingYields = appState.yieldRecords || [];
+    const target = existingYields.find((y) => y.id === id);
+    if (!target) return;
+
+    let updatedTransactions = [...appState.transactions];
+    let updatedAccounts = [...appState.accounts];
+
+    // Si tenía una transacción asociada en cuenta, eliminarla y restaurar el saldo
+    if (target.transactionId) {
+      const tx = updatedTransactions.find((t) => t.id === target.transactionId);
+      if (tx) {
+        updatedAccounts = updatedAccounts.map((acc) => {
+          if (acc.id === tx.accountId) {
+            return { ...acc, balance: acc.balance - tx.amount };
+          }
+          return acc;
+        });
+        updatedTransactions = updatedTransactions.filter((t) => t.id !== target.transactionId);
+      }
+    }
+
+    const updatedYields = existingYields.filter((y) => y.id !== id);
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(`Rendimiento "${target.title}" eliminado.`);
+  };
+
+  // Toggle Yield Status (needs_review <-> verified)
+  const handleToggleYieldStatus = (id: string) => {
+    const existingYields = appState.yieldRecords || [];
+    const target = existingYields.find((y) => y.id === id);
+    if (!target) return;
+
+    const newStatus: YieldStatus = target.status === 'needs_review' ? 'verified' : 'needs_review';
+    const updatedYields: YieldRecord[] = existingYields.map((y) => 
+      y.id === id ? { ...y, status: newStatus } : y
+    );
+
+    const newState: AppState = {
+      ...appState,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(
+      newStatus === 'verified'
+        ? `Cobro "${target.title}" marcado como comprobado y verificado.`
+        : `Cobro "${target.title}" marcado como pendiente de comprobación.`
     );
   };
 
@@ -365,6 +539,25 @@ export default function App() {
           </div>
         )}
 
+        {/* Rendimientos: Intereses Bancarios y Dividendos de Acciones */}
+        {activeTab === 'yields' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <YieldsView
+              appState={appState}
+              onOpenNewYieldModal={() => {
+                setEditingYield(null);
+                setIsYieldModalOpen(true);
+              }}
+              onEditYield={(record) => {
+                setEditingYield(record);
+                setIsYieldModalOpen(true);
+              }}
+              onDeleteYield={handleDeleteYield}
+              onToggleYieldStatus={handleToggleYieldStatus}
+            />
+          </div>
+        )}
+
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
@@ -375,6 +568,17 @@ export default function App() {
       />
 
       {/* Modals */}
+      <YieldModal
+        isOpen={isYieldModalOpen}
+        onClose={() => {
+          setIsYieldModalOpen(false);
+          setEditingYield(null);
+        }}
+        accounts={appState.accounts}
+        onSaveYield={handleSaveYield}
+        initialYield={editingYield}
+      />
+
       <TransactionModal
         isOpen={isTransactionModalOpen}
         onClose={() => setIsTransactionModalOpen(false)}

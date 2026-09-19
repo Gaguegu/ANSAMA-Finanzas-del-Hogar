@@ -1,4 +1,4 @@
-import { AppState, BankAccount, TransactionCategory, Transaction } from '../types';
+import { AppState, BankAccount, TransactionCategory, Transaction, YieldRecord } from '../types';
 
 export const DEFAULT_ACCOUNTS: BankAccount[] = [
   {
@@ -298,10 +298,147 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
   }
 ];
 
+export const DEFAULT_YIELDS: YieldRecord[] = [
+  {
+    id: 'yd-2026-1',
+    type: 'interest',
+    accountId: 'acc-santander-ahorro',
+    date: '2026-09-01',
+    title: 'Intereses Liquidación Mensual Cuenta Metas',
+    grossAmount: 35.19,
+    taxRatePercent: 19,
+    withholdingTax: 6.69,
+    netAmount: 28.50,
+    notes: 'Liquidación mensual ahorro remunerado Santander'
+  },
+  {
+    id: 'yd-2026-2',
+    type: 'dividend',
+    accountId: 'acc-santander-one',
+    date: '2026-07-29',
+    title: 'Dividendo Iberdrola S.A. (Complementario 2025)',
+    grossAmount: 240.00,
+    taxRatePercent: 19,
+    withholdingTax: 45.60,
+    netAmount: 194.40,
+    sharesCount: 600,
+    grossPerShare: 0.40,
+    isinOrTicker: 'IBE.MC',
+    notes: 'Abono dividendo bruto 0,40 € por acción'
+  },
+  {
+    id: 'yd-2026-3',
+    type: 'interest',
+    accountId: 'acc-bbva-nomina',
+    date: '2026-06-30',
+    title: 'Intereses Depósito a Plazo Fijo BBVA 12M',
+    grossAmount: 110.00,
+    taxRatePercent: 19,
+    withholdingTax: 20.90,
+    netAmount: 89.10,
+    notes: 'Liquidación semestral de intereses IPF'
+  },
+  {
+    id: 'yd-2026-4',
+    type: 'dividend',
+    accountId: 'acc-santander-one',
+    date: '2026-05-02',
+    title: 'Dividendo Banco Santander S.A. (Final)',
+    grossAmount: 195.00,
+    taxRatePercent: 19,
+    withholdingTax: 37.05,
+    netAmount: 157.95,
+    sharesCount: 2000,
+    grossPerShare: 0.0975,
+    isinOrTicker: 'SAN.MC',
+    notes: 'Pago de dividendo complementario en efectivo'
+  },
+  {
+    id: 'yd-2026-5',
+    type: 'interest',
+    accountId: 'acc-bbva-nomina',
+    date: '2026-03-31',
+    title: 'Intereses Trimestrales Cuenta Online BBVA',
+    grossAmount: 24.69,
+    taxRatePercent: 19,
+    withholdingTax: 4.69,
+    netAmount: 20.00,
+    notes: 'Rendimiento remuneración saldos primer trimestre'
+  },
+  {
+    id: 'yd-2026-6',
+    type: 'dividend',
+    accountId: 'acc-bbva-nomina',
+    date: '2026-01-15',
+    title: 'Dividendo Telefónica S.A. (A cuenta)',
+    grossAmount: 150.00,
+    taxRatePercent: 19,
+    withholdingTax: 28.50,
+    netAmount: 121.50,
+    sharesCount: 1000,
+    grossPerShare: 0.15,
+    isinOrTicker: 'TEF.MC',
+    notes: 'Dividendo a cuenta del ejercicio'
+  },
+  // Ejercicio anterior 2025
+  {
+    id: 'yd-2025-1',
+    type: 'interest',
+    accountId: 'acc-santander-ahorro',
+    date: '2025-12-31',
+    title: 'Intereses Cierre Anual Cuenta Metas Ahorro',
+    grossAmount: 85.00,
+    taxRatePercent: 19,
+    withholdingTax: 16.15,
+    netAmount: 68.85,
+    notes: 'Liquidación anual Santander'
+  },
+  {
+    id: 'yd-2025-2',
+    type: 'dividend',
+    accountId: 'acc-santander-one',
+    date: '2025-11-04',
+    title: 'Dividendo Banco Santander S.A. (A cuenta)',
+    grossAmount: 160.00,
+    taxRatePercent: 19,
+    withholdingTax: 30.40,
+    netAmount: 129.60,
+    sharesCount: 2000,
+    grossPerShare: 0.08,
+    isinOrTicker: 'SAN.MC'
+  },
+  {
+    id: 'yd-2025-3',
+    type: 'dividend',
+    accountId: 'acc-santander-one',
+    date: '2025-07-28',
+    title: 'Dividendo Iberdrola S.A.',
+    grossAmount: 210.00,
+    taxRatePercent: 19,
+    withholdingTax: 39.90,
+    netAmount: 170.10,
+    sharesCount: 600,
+    grossPerShare: 0.35,
+    isinOrTicker: 'IBE.MC'
+  },
+  {
+    id: 'yd-2025-4',
+    type: 'interest',
+    accountId: 'acc-bbva-nomina',
+    date: '2025-06-30',
+    title: 'Intereses Semestrales BBVA',
+    grossAmount: 75.00,
+    taxRatePercent: 19,
+    withholdingTax: 14.25,
+    netAmount: 60.75
+  }
+];
+
 export const INITIAL_STATE: AppState = {
   accounts: DEFAULT_ACCOUNTS,
   categories: DEFAULT_CATEGORIES,
   transactions: DEFAULT_TRANSACTIONS,
   lastGlobalSync: new Date().toISOString(),
-  currency: 'EUR'
+  currency: 'EUR',
+  yieldRecords: DEFAULT_YIELDS
 };
