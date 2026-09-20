@@ -18,14 +18,14 @@ import {
   X,
   Calendar
 } from 'lucide-react';
-import { BankAccount, Transaction } from '../types';
+import { BankAccount, Transaction, AccountType } from '../types';
 import { formatCurrency, formatRelativeTime, formatDate } from '../utils/storage';
 
 interface BankAccountsListProps {
   accounts: BankAccount[];
   transactions?: Transaction[];
   onSyncBank: (bankId: 'bbva' | 'santander') => void;
-  onOpenNewAccountModal: () => void;
+  onOpenNewAccountModal: (initialType?: AccountType) => void;
   onEditAccount: (account: BankAccount) => void;
   onDeleteAccount?: (accountId: string, accountName?: string) => void;
   onDeleteBank?: (bankId: string, bankName: string, accountIds: string[]) => void;
@@ -263,7 +263,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         </div>
 
         <button
-          onClick={onOpenNewAccountModal}
+          onClick={() => onOpenNewAccountModal('checking')}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all self-start sm:self-auto cursor-pointer shadow-xs active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -284,7 +284,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </p>
           </div>
           <button
-            onClick={onOpenNewAccountModal}
+            onClick={() => onOpenNewAccountModal('checking')}
             className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" />
@@ -381,7 +381,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </div>
 
             <button
-              onClick={onOpenNewAccountModal}
+              onClick={() => onOpenNewAccountModal('investment')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all self-start sm:self-auto cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -417,7 +417,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </div>
 
             <button
-              onClick={onOpenNewAccountModal}
+              onClick={() => onOpenNewAccountModal('deposit')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-700 hover:bg-sky-800 rounded-xl transition-all self-start sm:self-auto cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />

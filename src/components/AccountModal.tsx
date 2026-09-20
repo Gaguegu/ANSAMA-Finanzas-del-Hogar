@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock } from 'lucide-react';
+import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock, RotateCcw } from 'lucide-react';
 import { BankAccount, BankId, AccountType } from '../types';
 import { parseCurrencyInput, formatCurrency } from '../utils/storage';
 
@@ -9,6 +9,7 @@ interface AccountModalProps {
   onSaveAccount: (account: BankAccount) => void;
   onDeleteAccount?: (id: string) => void;
   accountToEdit?: BankAccount | null;
+  initialType?: AccountType;
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({
@@ -16,9 +17,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onClose,
   onSaveAccount,
   onDeleteAccount,
-  accountToEdit
+  accountToEdit,
+  initialType
 }) => {
-  const [bankId, setBankId] = useState<BankId>('bbva');
+  const [bankId, setBankId] = useState<BankId | ''>('');
   const [customBankName, setCustomBankName] = useState('');
   const [accountName, setAccountName] = useState('');
   const [iban, setIban] = useState('');
@@ -28,42 +30,76 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const resetFormToBlank = (targetType?: AccountType) => {
+    setBankId('');
+    setCustomBankName('');
+    setAccountName('');
+    setIban('');
+    setType(targetType || initialType || 'checking');
+    setBalanceStr('');
+    setBalanceDate(new Date().toISOString().split('T')[0]);
+    setError(null);
+    setShowDeleteConfirm(false);
+  };
+
   useEffect(() => {
     setShowDeleteConfirm(false);
-    if (accountToEdit) {
-      setBankId(accountToEdit.bankId);
-      if (accountToEdit.bankId === 'other') {
-        setCustomBankName(accountToEdit.bankName);
+    if (isOpen) {
+      if (accountToEdit) {
+        setBankId(accountToEdit.bankId);
+        if (accountToEdit.bankId === 'other') {
+          setCustomBankName(accountToEdit.bankName);
+        } else {
+          setCustomBankName('');
+        }
+        setAccountName(accountToEdit.accountName);
+        setIban(accountToEdit.iban || '');
+        setType(accountToEdit.type);
+        // Si la cuenta tenía el bug de truncamiento (4.599), corregir a 4599.13
+        const currentBalance = Math.abs(accountToEdit.balance - 4.599) < 0.001 ? 4599.13 : accountToEdit.balance;
+        setBalanceStr(currentBalance.toString());
+        setBalanceDate(
+          accountToEdit.balanceDate || 
+          (accountToEdit.lastSynced ? accountToEdit.lastSynced.split('T')[0] : new Date().toISOString().split('T')[0])
+        );
       } else {
-        setCustomBankName('');
+        // Al dar al botón Añadir cuenta: TODOS los datos en blanco para meter el nuevo Banco
+        resetFormToBlank(initialType);
       }
-      setAccountName(accountToEdit.accountName);
-      setIban(accountToEdit.iban);
-      setType(accountToEdit.type);
-      // Si la cuenta tenía el bug de truncamiento (4.599), corregir a 4599.13
-      const currentBalance = Math.abs(accountToEdit.balance - 4.599) < 0.001 ? 4599.13 : accountToEdit.balance;
-      setBalanceStr(currentBalance.toString());
-      setBalanceDate(
-        accountToEdit.balanceDate || 
-        (accountToEdit.lastSynced ? accountToEdit.lastSynced.split('T')[0] : new Date().toISOString().split('T')[0])
-      );
-    } else {
-      setBankId('bbva');
-      setCustomBankName('');
-      setAccountName('');
-      setIban('ES76 0182 ');
-      setType('checking');
-      setBalanceStr('1000.00');
-      setBalanceDate(new Date().toISOString().split('T')[0]);
+      setError(null);
     }
-    setError(null);
-  }, [accountToEdit, isOpen]);
+  }, [accountToEdit, isOpen, initialType]);
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    resetFormToBlank();
+    onClose();
+  };
+
+  const getIbanPlaceholder = () => {
+    if (type === 'investment') return 'ESXX... o Ref. Cartera de Valores';
+    if (type === 'deposit') return 'ESXX... o Referencia de Contrato / IBAN';
+    if (bankId === 'bbva') return 'ES76 0182 XXXX XXXX XXXX XXXX';
+    if (bankId === 'santander') return 'ES91 0049 XXXX XXXX XXXX XXXX';
+    if (bankId === 'caixabank') return 'ES21 2100 XXXX XXXX XXXX XXXX';
+    if (bankId === 'ing') return 'ES14 1465 XXXX XXXX XXXX XXXX';
+    if (bankId === 'sabadell') return 'ES80 0081 XXXX XXXX XXXX XXXX';
+    if (bankId === 'bankinter') return 'ES09 0128 XXXX XXXX XXXX XXXX';
+    if (bankId === 'unicaja') return 'ES65 2103 XXXX XXXX XXXX XXXX';
+    if (bankId === 'abanca') return 'ES43 2080 XXXX XXXX XXXX XXXX';
+    if (bankId === 'openbank') return 'ES38 0073 XXXX XXXX XXXX XXXX';
+    return 'ESXX XXXX XXXX XXXX XXXX XXXX';
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!bankId) {
+      setError('Por favor, selecciona tu banco o entidad en el menú desplegable.');
+      return;
+    }
 
     const parsedBalance = parseCurrencyInput(balanceStr);
     if (isNaN(parsedBalance) || parsedBalance < 0) {
@@ -166,11 +202,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     };
 
     onSaveAccount(account);
+    resetFormToBlank();
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+      onClick={handleClose}
+    >
       <div 
         className="bg-white rounded-2xl border-2 border-emerald-600/40 shadow-xl max-w-md w-full overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -178,18 +218,37 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-emerald-100 bg-emerald-50/50">
           <div>
             <h3 className="text-base font-black text-zinc-950">
-              {accountToEdit ? 'Editar Cuenta / Depósito / Valores' : 'Añadir Nueva Cuenta, Depósito o Cartera'}
+              {accountToEdit ? 'Editar Cuenta / Depósito / Valores' : 'Añadir Nuevo Banco o Cuenta'}
             </h3>
-            <p className="text-xs text-zinc-500">Corrientes, ahorro, depósitos a plazo fijo, valores y tarjetas</p>
+            <p className="text-xs text-zinc-500">
+              {accountToEdit ? 'Modifica los datos del producto seleccionado' : 'Introduce los datos en blanco de tu nueva entidad'}
+            </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {!accountToEdit && (
+              <button
+                type="button"
+                onClick={() => resetFormToBlank()}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-[#0E6A3B] bg-emerald-100/70 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer border border-emerald-200"
+                title="Poner todos los campos en blanco"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>En blanco</span>
+              </button>
+            )}
+            <button 
+              onClick={handleClose} 
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+              title="Cerrar ventana"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
-            <div className="p-3 text-xs rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
+            <div className="p-3 text-xs rounded-xl bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
               {error}
             </div>
           )}
@@ -202,11 +261,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 onChange={(e) => {
                   const newType = e.target.value as AccountType;
                   setType(newType);
-                  if (newType === 'investment' && !accountName) {
-                    setAccountName('Cartera de Fondos y Acciones');
-                  } else if (newType === 'deposit' && !accountName) {
-                    setAccountName('Depósito a Plazo Fijo');
-                  }
                 }}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900 font-bold cursor-pointer"
               >
@@ -219,19 +273,19 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-700 mb-1">Entidad o Bróker</label>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">Entidad o Bróker *</label>
               <select
                 value={bankId}
+                required
                 onChange={(e) => {
-                  const val = e.target.value as BankId;
+                  const val = e.target.value as BankId | '';
                   setBankId(val);
-                  if (val === 'bbva' && (!iban || iban.startsWith('ES91'))) setIban('ES76 0182 ');
-                  if (val === 'santander' && (!iban || iban.startsWith('ES76'))) setIban('ES91 0049 ');
-                  if (val === 'caixabank' && (!iban || iban.startsWith('ES76') || iban.startsWith('ES91'))) setIban('ES21 2100 ');
-                  if (val === 'ing' && (!iban || iban.startsWith('ES76') || iban.startsWith('ES91'))) setIban('ES14 1465 ');
                 }}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900 font-medium cursor-pointer"
+                className={`w-full px-3 py-2 text-xs rounded-xl border focus:bg-white text-zinc-900 font-medium cursor-pointer ${
+                  !bankId ? 'bg-amber-50/60 border-amber-300 text-zinc-600 font-semibold' : 'bg-zinc-50 border-zinc-200'
+                }`}
               >
+                <option value="" disabled>-- Selecciona tu banco --</option>
                 <optgroup label="Banca Tradicional">
                   <option value="bbva">BBVA</option>
                   <option value="santander">Banco Santander</option>
@@ -408,16 +462,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </label>
             <input
               type="text"
-              required
               value={iban}
               onChange={(e) => setIban(e.target.value)}
-              placeholder={
-                type === 'investment' 
-                  ? 'ESXX... o Ref. Cartera' 
-                  : type === 'deposit'
-                    ? 'ESXX... o Referencia'
-                    : 'ESXX XXXX XXXX XXXX XXXX XXXX'
-              }
+              placeholder={getIbanPlaceholder()}
               className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
             />
           </div>
@@ -444,7 +491,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   onClick={() => {
                     if (accountToEdit && onDeleteAccount) {
                       onDeleteAccount(accountToEdit.id);
-                      onClose();
+                      handleClose();
                     }
                   }}
                   className="px-3 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs cursor-pointer flex items-center gap-1"
@@ -473,7 +520,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
               >
                 Cancelar
@@ -482,7 +529,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 type="submit"
                 className="px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs cursor-pointer"
               >
-                Guardar Cuenta
+                {accountToEdit ? 'Guardar Cambios' : 'Guardar Nuevo Banco'}
               </button>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure, YieldRecord, YieldStatus } from './types';
+import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure, YieldRecord, YieldStatus, AccountType } from './types';
 import { 
   loadAppState, 
   saveAppState, 
@@ -40,7 +40,14 @@ export default function App() {
   const [isYieldModalOpen, setIsYieldModalOpen] = useState<boolean>(false);
   const [editingYield, setEditingYield] = useState<YieldRecord | null>(null);
   const [accountToEdit, setAccountToEdit] = useState<BankAccount | null>(null);
+  const [accountModalInitialType, setAccountModalInitialType] = useState<AccountType | undefined>(undefined);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
+  const handleOpenNewAccountModal = (initialType?: AccountType) => {
+    setAccountToEdit(null);
+    setAccountModalInitialType(initialType);
+    setIsAccountModalOpen(true);
+  };
 
   // Security & App Lock states
   const [isLocked, setIsLocked] = useState<boolean>(() => {
@@ -488,12 +495,10 @@ export default function App() {
                   accounts={appState.accounts}
                   transactions={appState.transactions}
                   onSyncBank={handleQuickSyncBank}
-                  onOpenNewAccountModal={() => {
-                    setAccountToEdit(null);
-                    setIsAccountModalOpen(true);
-                  }}
+                  onOpenNewAccountModal={handleOpenNewAccountModal}
                   onEditAccount={(acc) => {
                     setAccountToEdit(acc);
+                    setAccountModalInitialType(undefined);
                     setIsAccountModalOpen(true);
                   }}
                   onDeleteAccount={handleDeleteAccount}
@@ -529,12 +534,10 @@ export default function App() {
               accounts={appState.accounts}
               transactions={appState.transactions}
               onSyncBank={handleQuickSyncBank}
-              onOpenNewAccountModal={() => {
-                setAccountToEdit(null);
-                setIsAccountModalOpen(true);
-              }}
+              onOpenNewAccountModal={handleOpenNewAccountModal}
               onEditAccount={(acc) => {
                 setAccountToEdit(acc);
+                setAccountModalInitialType(undefined);
                 setIsAccountModalOpen(true);
               }}
               onDeleteAccount={handleDeleteAccount}
@@ -662,10 +665,22 @@ export default function App() {
         onClose={() => {
           setIsAccountModalOpen(false);
           setAccountToEdit(null);
+          setAccountModalInitialType(undefined);
         }}
-        onSaveAccount={handleSaveAccount}
-        onDeleteAccount={handleDeleteAccount}
+        onSaveAccount={(account) => {
+          handleSaveAccount(account);
+          setAccountToEdit(null);
+          setAccountModalInitialType(undefined);
+          setIsAccountModalOpen(false);
+        }}
+        onDeleteAccount={(id) => {
+          handleDeleteAccount(id);
+          setAccountToEdit(null);
+          setAccountModalInitialType(undefined);
+          setIsAccountModalOpen(false);
+        }}
         accountToEdit={accountToEdit}
+        initialType={accountModalInitialType}
       />
 
       <SettingsModal
