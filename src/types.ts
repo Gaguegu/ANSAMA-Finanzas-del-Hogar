@@ -24,6 +24,7 @@ export interface BankAccount {
   iban: string;
   type: AccountType;
   balance: number;
+  balanceDate?: string; // Fecha (YYYY-MM-DD) a la que corresponde este saldo
   currency: string;
   lastSynced: string;
   accountNumberMasked: string;

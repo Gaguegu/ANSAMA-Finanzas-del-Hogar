@@ -629,6 +629,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                       </div>
                       <p className="text-[11px] text-zinc-500 truncate">
                         {acc.bankName} • {acc.accountNumberMasked}
+                        {acc.balanceDate && (
+                          <span className="ml-1 text-emerald-800 font-semibold">
+                            (Saldo a {formatDate(acc.balanceDate)})
+                          </span>
+                        )}
                       </p>
                     </div>
 

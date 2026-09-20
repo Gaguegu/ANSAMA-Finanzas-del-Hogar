@@ -10,6 +10,7 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: 'ES76 •••• •••• 2109',
     type: 'checking',
     balance: 4850.25,
+    balanceDate: '2026-09-20',
     currency: 'EUR',
     lastSynced: new Date().toISOString(),
     color: '#004481', // BBVA Navy
@@ -26,6 +27,7 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: 'Aqua Crédito •• 8841',
     type: 'credit',
     balance: -435.60,
+    balanceDate: '2026-09-20',
     currency: 'EUR',
     lastSynced: new Date().toISOString(),
     color: '#1464A5',
@@ -42,6 +44,7 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: 'ES91 •••• •••• 7890',
     type: 'checking',
     balance: 6240.80,
+    balanceDate: '2026-09-20',
     currency: 'EUR',
     lastSynced: new Date().toISOString(),
     color: '#EC0000', // Santander Red
@@ -58,6 +61,7 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     accountNumberMasked: 'Ahorro Metas •• 4321',
     type: 'savings',
     balance: 16800.00,
+    balanceDate: '2026-09-20',
     currency: 'EUR',
     lastSynced: new Date().toISOString(),
     color: '#B50000',

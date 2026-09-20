@@ -15,10 +15,11 @@ import {
   Landmark, 
   Trash2, 
   AlertTriangle,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 import { BankAccount, Transaction } from '../types';
-import { formatCurrency, formatRelativeTime } from '../utils/storage';
+import { formatCurrency, formatRelativeTime, formatDate } from '../utils/storage';
 
 interface BankAccountsListProps {
   accounts: BankAccount[];
@@ -212,12 +213,18 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               {isInvestment ? 'Valor liquidativo' : isDeposit ? 'Capital depositado' : 'Saldo disponible'}
             </span>
             <span
-              className={`text-xl sm:text-2xl font-black tracking-tight font-feature-settings-tnum ${
+              className={`text-xl sm:text-2xl font-black tracking-tight font-feature-settings-tnum block ${
                 account.balance < 0 ? 'text-rose-600' : isDeposit ? 'text-sky-950' : 'text-zinc-950'
               }`}
             >
               {formatCurrency(account.balance)}
             </span>
+            {account.balanceDate && (
+              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-emerald-50/90 text-[10px] font-bold text-[#0E6A3B] border border-emerald-200/80">
+                <Calendar className="w-2.5 h-2.5" />
+                Saldo a: {formatDate(account.balanceDate)}
+              </span>
+            )}
           </div>
 
           <div className="text-right">

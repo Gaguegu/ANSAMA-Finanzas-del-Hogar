@@ -21,19 +21,31 @@ export function loadAppState(): AppState {
       parsed.yieldRecords = INITIAL_STATE.yieldRecords || [];
     }
 
-    // Auto-reparar cuentas afectadas por el truncamiento de separador de miles:
-    // Si el usuario introdujo "4.599,13", el parseFloat previo lo truncó a 4.599 (que se muestra como 4,60 €).
+    // Auto-reparar cuentas afectadas por el truncamiento de separador de miles y asegurar balanceDate
     let hasRepairedAccount = false;
     if (Array.isArray(parsed.accounts)) {
       parsed.accounts = parsed.accounts.map((acc: BankAccount) => {
-        if (Math.abs(acc.balance - 4.599) < 0.001) {
-          hasRepairedAccount = true;
-          return {
-            ...acc,
-            balance: 4599.13
-          };
+        let updated = { ...acc };
+        let modified = false;
+
+        // Corregir bug 4.599 -> 4599.13
+        if (Math.abs(updated.balance - 4.599) < 0.001) {
+          updated.balance = 4599.13;
+          modified = true;
         }
-        return acc;
+
+        // Asegurar que toda cuenta tenga fecha del saldo
+        if (!updated.balanceDate) {
+          updated.balanceDate = updated.lastSynced 
+            ? updated.lastSynced.split('T')[0] 
+            : new Date().toISOString().split('T')[0];
+          modified = true;
+        }
+
+        if (modified) {
+          hasRepairedAccount = true;
+        }
+        return updated;
       });
     }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Landmark, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock } from 'lucide-react';
 import { BankAccount, BankId, AccountType } from '../types';
 import { parseCurrencyInput, formatCurrency } from '../utils/storage';
 
@@ -24,6 +24,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [iban, setIban] = useState('');
   const [type, setType] = useState<AccountType>('checking');
   const [balanceStr, setBalanceStr] = useState('');
+  const [balanceDate, setBalanceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -42,6 +43,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       // Si la cuenta tenía el bug de truncamiento (4.599), corregir a 4599.13
       const currentBalance = Math.abs(accountToEdit.balance - 4.599) < 0.001 ? 4599.13 : accountToEdit.balance;
       setBalanceStr(currentBalance.toString());
+      setBalanceDate(
+        accountToEdit.balanceDate || 
+        (accountToEdit.lastSynced ? accountToEdit.lastSynced.split('T')[0] : new Date().toISOString().split('T')[0])
+      );
     } else {
       setBankId('bbva');
       setCustomBankName('');
@@ -49,6 +54,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setIban('ES76 0182 ');
       setType('checking');
       setBalanceStr('1000.00');
+      setBalanceDate(new Date().toISOString().split('T')[0]);
     }
     setError(null);
   }, [accountToEdit, isOpen]);
@@ -62,6 +68,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     const parsedBalance = parseCurrencyInput(balanceStr);
     if (isNaN(parsedBalance) || parsedBalance < 0) {
       setError('Introduce un saldo numérico válido.');
+      return;
+    }
+
+    if (!balanceDate) {
+      setError('Por favor, indica la fecha a la que corresponde este saldo.');
       return;
     }
 
@@ -139,6 +150,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       accountNumberMasked: masked,
       type,
       balance: parsedBalance,
+      balanceDate: balanceDate || new Date().toISOString().split('T')[0],
       currency: 'EUR',
       lastSynced: new Date().toISOString(),
       color,
@@ -283,8 +295,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             />
           </div>
 
-          {/* Fila con Saldo y el ÚNICO campo para IBAN / Referencia */}
+          {/* Fila con Saldo y Fecha del Saldo */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Saldo */}
             <div>
               <label className="block text-xs font-bold text-zinc-700 mb-1 flex items-center justify-between">
                 <span>
@@ -318,29 +331,95 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               </div>
             </div>
 
+            {/* Fecha del Saldo */}
             <div>
-              <label className="block text-xs font-bold text-zinc-700 mb-1">
-                {type === 'investment' 
-                  ? 'Nº Cuenta / Ref. Cartera' 
-                  : type === 'deposit'
-                    ? 'Nº Depósito / IBAN' 
-                    : 'Número IBAN'}
+              <label className="block text-xs font-bold text-zinc-700 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                  {accountToEdit ? 'Fecha del Saldo *' : 'Fecha del Saldo Inicial *'}
+                </span>
               </label>
               <input
-                type="text"
+                type="date"
                 required
-                value={iban}
-                onChange={(e) => setIban(e.target.value)}
-                placeholder={
-                  type === 'investment' 
-                    ? 'ESXX... o Ref. Cartera' 
-                    : type === 'deposit'
-                      ? 'ESXX... o Referencia'
-                      : 'ESXX XXXX XXXX XXXX XXXX XXXX'
-                }
-                className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
+                value={balanceDate}
+                onChange={(e) => setBalanceDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
               />
+              {/* Accesos rápidos de fecha */}
+              <div className="mt-1 flex items-center gap-1 text-[10px]">
+                <span className="text-zinc-400">Rápido:</span>
+                <button
+                  type="button"
+                  onClick={() => setBalanceDate(new Date().toISOString().split('T')[0])}
+                  className={`px-1.5 py-0.5 rounded font-semibold transition-colors cursor-pointer ${
+                    balanceDate === new Date().toISOString().split('T')[0]
+                      ? 'bg-emerald-100 text-emerald-800 font-bold'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Hoy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    setBalanceDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-1.5 py-0.5 rounded font-semibold bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors cursor-pointer"
+                >
+                  Ayer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    const lastDay = new Date(d.getFullYear(), d.getMonth(), 0);
+                    setBalanceDate(lastDay.toISOString().split('T')[0]);
+                  }}
+                  className="px-1.5 py-0.5 rounded font-semibold bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-colors cursor-pointer"
+                  title="Último día del mes anterior"
+                >
+                  Fin mes ant.
+                </button>
+              </div>
             </div>
+          </div>
+
+          {/* Nota explicativa de fecha para evitar confusión con saldos anteriores o posteriores */}
+          <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/90 text-[11px] text-emerald-950 flex items-start gap-2">
+            <Clock className="w-3.5 h-3.5 text-[#0E6A3B] shrink-0 mt-0.5" />
+            <p>
+              <strong>Control de fecha:</strong> Este saldo queda fijado a fecha de{' '}
+              <span className="font-bold text-[#092B19] underline decoration-emerald-500 underline-offset-2">{balanceDate}</span>. 
+              Así se evita cualquier confusión con extractos de fechas anteriores o movimientos posteriores.
+            </p>
+          </div>
+
+          {/* Campo IBAN / Referencia */}
+          <div>
+            <label className="block text-xs font-bold text-zinc-700 mb-1">
+              {type === 'investment' 
+                ? 'Nº Cuenta / Ref. Cartera' 
+                : type === 'deposit'
+                  ? 'Nº Depósito / IBAN' 
+                  : 'Número IBAN'}
+            </label>
+            <input
+              type="text"
+              required
+              value={iban}
+              onChange={(e) => setIban(e.target.value)}
+              placeholder={
+                type === 'investment' 
+                  ? 'ESXX... o Ref. Cartera' 
+                  : type === 'deposit'
+                    ? 'ESXX... o Referencia'
+                    : 'ESXX XXXX XXXX XXXX XXXX XXXX'
+              }
+              className="w-full px-3 py-2 text-xs font-mono rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
+            />
           </div>
 
           {showDeleteConfirm ? (
