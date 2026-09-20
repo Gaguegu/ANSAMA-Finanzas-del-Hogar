@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
   CreditCard, 
@@ -10,10 +10,11 @@ import {
   ShieldCheck, 
   Edit2, 
   Wifi, 
-  ExternalLink,
   TrendingUp,
   LineChart,
-  Landmark
+  Landmark,
+  Trash2,
+  Info
 } from 'lucide-react';
 import { BankAccount } from '../types';
 import { formatCurrency, formatRelativeTime } from '../utils/storage';
@@ -23,6 +24,8 @@ interface BankAccountsListProps {
   onSyncBank: (bankId: 'bbva' | 'santander') => void;
   onOpenNewAccountModal: () => void;
   onEditAccount: (account: BankAccount) => void;
+  onDeleteAccount?: (accountId: string, accountName?: string) => void;
+  onClearDemoAccounts?: () => void;
   isSyncing: boolean;
 }
 
@@ -31,6 +34,8 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   onSyncBank,
   onOpenNewAccountModal,
   onEditAccount,
+  onDeleteAccount,
+  onClearDemoAccounts,
   isSyncing
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -41,17 +46,39 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     setTimeout(() => setCopiedId(null), 1800);
   };
 
-  // Group accounts by bank and type
-  const bbvaAccounts = accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
-  const santanderAccounts = accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
+  // Check if demo accounts are present
+  const demoIds = new Set(['acc-1', 'acc-2', 'acc-3', 'acc-4']);
+  const hasDemoAccounts = accounts.some((a) => demoIds.has(a.id));
+
+  // Specialized accounts
   const investmentAccounts = accounts.filter((a) => a.type === 'investment');
   const depositAccounts = accounts.filter((a) => a.type === 'deposit');
-  const otherAccounts = accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
-
-  const bbvaTotal = bbvaAccounts.reduce((sum, a) => sum + a.balance, 0);
-  const santanderTotal = santanderAccounts.reduce((sum, a) => sum + a.balance, 0);
   const investmentTotal = investmentAccounts.reduce((sum, a) => sum + a.balance, 0);
   const depositTotal = depositAccounts.reduce((sum, a) => sum + a.balance, 0);
+
+  // Standard banking accounts (checking, savings, credit)
+  const bankingAccounts = accounts.filter((a) => a.type !== 'investment' && a.type !== 'deposit');
+
+  // Dynamically group banking accounts by bank entity
+  const bankGroups = useMemo(() => {
+    const map = new Map<string, { bankId: string; bankName: string; color: string; accounts: BankAccount[]; total: number }>();
+    for (const acc of bankingAccounts) {
+      const key = acc.bankId === 'other' ? (acc.bankName || 'other') : acc.bankId;
+      if (!map.has(key)) {
+        map.set(key, {
+          bankId: acc.bankId,
+          bankName: acc.bankName,
+          color: acc.color || '#0E6A3B',
+          accounts: [],
+          total: 0
+        });
+      }
+      const group = map.get(key)!;
+      group.accounts.push(acc);
+      group.total += acc.balance;
+    }
+    return Array.from(map.values());
+  }, [bankingAccounts]);
 
   const renderAccountCard = (account: BankAccount) => {
     const isCredit = account.type === 'credit';
@@ -72,7 +99,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         />
 
         <div>
-          {/* Header row with card type, contactless icon, and edit button */}
+          {/* Header row with card type, contactless icon, and actions */}
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               {isInvestment ? (
@@ -105,7 +132,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             <div className="flex items-center gap-1">
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                 <ShieldCheck className="w-3 h-3 text-[#0E6A3B]" />
-                Live
+                Activa
               </span>
               <button
                 onClick={() => onEditAccount(account)}
@@ -114,6 +141,19 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
+              {onDeleteAccount && (
+                <button
+                  onClick={() => {
+                    if (window.confirm(`¿Seguro que deseas eliminar la cuenta "${account.accountName}"?`)) {
+                      onDeleteAccount(account.id, account.accountName);
+                    }
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 cursor-pointer"
+                  title="Eliminar cuenta"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -183,7 +223,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   return (
     <div id="section-bank-accounts" className="space-y-6">
       
-      {/* Section Header: Saldos por Entidad Bancaria resaltado en verde */}
+      {/* Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 p-4 sm:p-5 rounded-2xl border-2 border-[#0E6A3B]/45 shadow-xs ring-1 ring-emerald-950/5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-100/90 border border-emerald-300/80 flex items-center justify-center text-[#0E6A3B] shrink-0">
@@ -193,11 +233,11 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             <div className="flex items-center gap-2">
               <h3 className="text-base sm:text-lg font-black text-zinc-950">Saldos por Entidad Bancaria</h3>
               <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-[#0E6A3B] border border-emerald-300">
-                PSD2 Activo
+                {accounts.length} {accounts.length === 1 ? 'Cuenta' : 'Cuentas'}
               </span>
             </div>
             <p className="text-xs text-zinc-600 mt-0.5">
-              Conexiones sincronizadas en tiempo real con PSD2 Open Banking
+              Control consolidado de saldos, cuentas corrientes, depósitos y carteras
             </p>
           </div>
         </div>
@@ -211,75 +251,106 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         </button>
       </div>
 
-      {/* Recuadro Banco Bilbao Vizcaya Argentaria (BBVA) resaltado con verde */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl shadow-sm ring-1 ring-emerald-950/5 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-emerald-100/90 bg-gradient-to-r from-emerald-50/50 via-white to-blue-50/30">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-[#004481] flex items-center justify-center text-white font-black text-sm tracking-wider shadow-xs">
-              BBVA
+      {/* Banner para eliminar cuentas de demostración si existen */}
+      {hasDemoAccounts && onClearDemoAccounts && (
+        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <div className="p-2 bg-amber-100 text-amber-900 rounded-xl shrink-0">
+              <Info className="w-4 h-4 text-amber-800" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h4 className="font-black text-zinc-950 text-base">Banco Bilbao Vizcaya Argentaria</h4>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#004481] border border-blue-200">
-                  PSD2 Conectado
-                </span>
-              </div>
-              <p className="text-xs text-zinc-600 mt-0.5">
-                Posición global BBVA: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(bbvaTotal)}</span>
-              </p>
+              <span className="font-extrabold text-amber-950 text-sm block">¿No utilizas BBVA o Banco Santander?</span>
+              <span className="text-amber-800 leading-relaxed">
+                Estas son cuentas de demostración predefinidas. Pulsa el botón para eliminarlas de golpe y dejar tu aplicación 100% limpia para registrar solo <strong>tus propios bancos</strong>.
+              </span>
             </div>
           </div>
-
           <button
-            onClick={() => onSyncBank('bbva')}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#004481] bg-blue-50 hover:bg-blue-100/80 border border-blue-200 rounded-xl transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
+            onClick={() => {
+              if (window.confirm('¿Confirmas que deseas eliminar las cuentas de prueba de BBVA y Santander para dejar la lista limpia?')) {
+                onClearDemoAccounts();
+              }
+            }}
+            className="px-3.5 py-2 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            Sincronizar BBVA
+            <Trash2 className="w-3.5 h-3.5" />
+            Eliminar Cuentas Demo
           </button>
         </div>
+      )}
 
-        <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {bbvaAccounts.map(renderAccountCard)}
+      {/* Empty State when 0 accounts */}
+      {accounts.length === 0 && (
+        <div className="bg-white border-2 border-dashed border-emerald-600/30 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-[#0E6A3B] flex items-center justify-center mx-auto shadow-2xs">
+            <Building2 className="w-7 h-7" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-black text-zinc-950 text-lg">¡Tu aplicación está limpia y lista para tus bancos!</h4>
+            <p className="text-xs sm:text-sm text-zinc-600 max-w-md mx-auto leading-relaxed">
+              No tienes ninguna cuenta registrada aún. Pulsa en <strong>Añadir Cuenta</strong> para registrar tu primera entidad (CaixaBank, ING, Sabadell, Openbank o cualquier otra), cuenta de ahorro, depósito o valores.
+            </p>
+          </div>
+          <button
+            onClick={onOpenNewAccountModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs cursor-pointer active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            Añadir Mi Primer Banco o Cuenta
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Recuadro Banco Santander resaltado con verde */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl shadow-sm ring-1 ring-emerald-950/5 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-emerald-100/90 bg-gradient-to-r from-emerald-50/50 via-white to-red-50/30">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-[#EC0000] flex items-center justify-center text-white font-black text-xs tracking-wider shadow-xs">
-              SAN
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="font-black text-zinc-950 text-base">Banco Santander S.A.</h4>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-red-50 text-[#EC0000] border border-red-200">
-                  PSD2 Conectado
-                </span>
+      {/* DYNAMIC BANK GROUPS (Only banks that actually have accounts will show up!) */}
+      {bankGroups.map((group) => {
+        const isBBVA = group.bankId === 'bbva';
+        const isSantander = group.bankId === 'santander';
+
+        return (
+          <div 
+            key={group.bankId + group.bankName} 
+            className="bg-white border-2 border-emerald-600/40 rounded-2xl shadow-sm ring-1 ring-emerald-950/5 overflow-hidden"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-emerald-100/90 bg-gradient-to-r from-emerald-50/40 via-white to-zinc-50/40">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-black text-sm tracking-wider shadow-xs"
+                  style={{ backgroundColor: group.color }}
+                >
+                  {isBBVA ? 'BBVA' : isSantander ? 'SAN' : group.bankName.substring(0, 3).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-black text-zinc-950 text-base">{group.bankName}</h4>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {group.accounts.length} {group.accounts.length === 1 ? 'cuenta' : 'cuentas'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-600 mt-0.5">
+                    Posición global {group.bankName}: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(group.total)}</span>
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-zinc-600 mt-0.5">
-                Posición global Santander: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(santanderTotal)}</span>
-              </p>
+
+              {/* Bank sync button only if BBVA or Santander */}
+              {(isBBVA || isSantander) && (
+                <button
+                  onClick={() => onSyncBank(isBBVA ? 'bbva' : 'santander')}
+                  disabled={isSyncing}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-xl transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Sincronizar {isBBVA ? 'BBVA' : 'Santander'}
+                </button>
+              )}
+            </div>
+
+            <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {group.accounts.map(renderAccountCard)}
             </div>
           </div>
-
-          <button
-            onClick={() => onSyncBank('santander')}
-            disabled={isSyncing}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#EC0000] bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-xl transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            Sincronizar Santander
-          </button>
-        </div>
-
-        <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {santanderAccounts.map(renderAccountCard)}
-        </div>
-      </div>
+        );
+      })}
 
       {/* Recuadro Cuentas de Valores (Inversión, Fondos y Acciones) resaltado con verde */}
       {investmentAccounts.length > 0 && (
@@ -349,21 +420,6 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
           <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
             {depositAccounts.map(renderAccountCard)}
-          </div>
-        </div>
-      )}
-
-      {/* Otras Cuentas Bancarias si existen */}
-      {otherAccounts.length > 0 && (
-        <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-4 sm:p-5 shadow-sm ring-1 ring-emerald-950/5">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-black text-zinc-950 text-base">Otras Entidades y Cuentas</h4>
-            <span className="text-xs text-zinc-500 font-medium">
-              {otherAccounts.length} {otherAccounts.length === 1 ? 'cuenta registrada' : 'cuentas registradas'}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {otherAccounts.map(renderAccountCard)}
           </div>
         </div>
       )}

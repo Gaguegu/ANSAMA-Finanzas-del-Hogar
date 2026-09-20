@@ -304,12 +304,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // Reset to 0 (all transactions removed, balances 0€)
-  const handleExecuteResetToZero = () => {
-    const zeroState = resetToZero(appState);
+  // Reset to 0 (all transactions removed, option to remove demo accounts or keep existing)
+  const handleExecuteResetToZero = (clearMode: 'clearDemo' | 'keep' | 'clearAll' = 'clearDemo') => {
+    const zeroState = resetToZero(appState, clearMode);
     onStateUpdated(zeroState);
     setShowConfirmZero(false);
-    setShowSuccessToast('¡Aplicación puesta a 0! Ya puedes introducir tus propios saldos y movimientos.');
+    setShowSuccessToast(
+      clearMode === 'clearDemo' || clearMode === 'clearAll'
+        ? '¡Cuentas demo eliminadas y aplicación limpia! Lista para tus propios bancos.'
+        : '¡Saldos puestos a 0,00 €! Cuentas conservadas.'
+    );
     setTimeout(() => {
       setShowSuccessToast(null);
       onClose();
@@ -671,31 +675,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <AlertTriangle className="w-4 h-4" />
                   </div>
                   <div>
-                    <h5 className="font-extrabold text-amber-950 text-sm">¿Confirmas que deseas dejar la aplicación a 0?</h5>
+                    <h5 className="font-extrabold text-amber-950 text-sm">¿Cómo prefieres dejar la aplicación a 0?</h5>
                     <p className="text-amber-800 mt-1 leading-relaxed">
-                      Esta acción eliminará todos los movimientos registrados ({appState.transactions.length} registros) y pondrá el saldo de todas tus cuentas bancarias a <strong>0,00 €</strong>.
-                    </p>
-                    <p className="text-amber-900 font-semibold mt-1">
-                      Podrás empezar inmediatamente a registrar tus datos y saldos reales desde cero.
+                      Se eliminarán todos los movimientos registrados ({appState.transactions.length} registros). Puedes elegir si deseas eliminar también las cuentas de demostración de BBVA y Santander si no trabajas con ellos:
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/80">
+                <div className="space-y-2 pt-1">
+                  {/* Option A: Remove demo accounts */}
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteResetToZero('clearDemo')}
+                    className="w-full text-left p-3 rounded-xl bg-white border border-amber-300 hover:border-emerald-600 hover:bg-emerald-50/50 transition-all cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-950 text-xs group-hover:text-[#0E6A3B]">
+                        1. Empezar limpio (Eliminar cuentas demo de BBVA y Santander)
+                      </span>
+                      <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                        Recomendado
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Borra las cuentas preconfiguradas que no utilizas para que puedas añadir únicamente tus propios bancos.
+                    </p>
+                  </button>
+
+                  {/* Option B: Keep accounts, set balances to 0 */}
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteResetToZero('keep')}
+                    className="w-full text-left p-3 rounded-xl bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50 transition-all cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-950 text-xs">
+                        2. Conservar cuentas y poner saldos a 0,00 €
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Mantiene los nombres de las cuentas actuales y únicamente resetea sus saldos a cero.
+                    </p>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-end pt-2 border-t border-amber-200/80">
                   <button
                     type="button"
                     onClick={() => setShowConfirmZero(false)}
                     className="px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-white/80 rounded-lg border border-zinc-300 transition-colors cursor-pointer"
                   >
                     Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleExecuteResetToZero}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Sí, poner todo a 0
                   </button>
                 </div>
               </div>

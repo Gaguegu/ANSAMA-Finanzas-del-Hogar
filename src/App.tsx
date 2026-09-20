@@ -168,6 +168,48 @@ export default function App() {
     triggerNotification(`Cuenta "${account.accountName}" guardada correctamente.`);
   };
 
+  // Delete an account
+  const handleDeleteAccount = (accountId: string, accountName?: string) => {
+    const targetAccount = appState.accounts.find((a) => a.id === accountId);
+    const updatedAccounts = appState.accounts.filter((a) => a.id !== accountId);
+    const updatedTransactions = appState.transactions.filter((t) => t.accountId !== accountId);
+    const updatedYields = (appState.yieldRecords || []).filter((y) => y.accountId !== accountId);
+
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(
+      accountName || targetAccount?.accountName
+        ? `Cuenta "${accountName || targetAccount?.accountName}" eliminada.`
+        : 'Cuenta bancaria eliminada.'
+    );
+  };
+
+  // Clear demo accounts (BBVA and Santander initial accounts)
+  const handleClearDemoAccounts = () => {
+    const demoIds = new Set(['acc-1', 'acc-2', 'acc-3', 'acc-4']);
+    const updatedAccounts = appState.accounts.filter((a) => !demoIds.has(a.id));
+    const updatedTransactions = appState.transactions.filter((t) => !demoIds.has(t.accountId));
+    const updatedYields = (appState.yieldRecords || []).filter((y) => !demoIds.has(y.accountId));
+
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification('Cuentas de prueba de BBVA y Santander eliminadas. ¡Listo para tus bancos!');
+  };
+
   // Simulate bank synchronization
   const handleExecuteSync = async (targetBankId?: 'bbva' | 'santander') => {
     setIsSyncing(true);
@@ -452,6 +494,8 @@ export default function App() {
                     setAccountToEdit(acc);
                     setIsAccountModalOpen(true);
                   }}
+                  onDeleteAccount={handleDeleteAccount}
+                  onClearDemoAccounts={handleClearDemoAccounts}
                   isSyncing={isSyncing}
                 />
               </div>
@@ -615,6 +659,7 @@ export default function App() {
           setAccountToEdit(null);
         }}
         onSaveAccount={handleSaveAccount}
+        onDeleteAccount={handleDeleteAccount}
         accountToEdit={accountToEdit}
       />
 
