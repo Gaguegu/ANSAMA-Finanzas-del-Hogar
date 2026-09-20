@@ -1,6 +1,20 @@
-export type BankId = 'bbva' | 'santander' | 'caixabank' | 'ing' | 'myinvestor' | 'degiro' | 'renta4' | 'other';
+export type BankId = 
+  | 'bbva' 
+  | 'santander' 
+  | 'caixabank' 
+  | 'ing' 
+  | 'sabadell' 
+  | 'bankinter' 
+  | 'unicaja' 
+  | 'abanca' 
+  | 'openbank' 
+  | 'myinvestor' 
+  | 'traderepublic' 
+  | 'degiro' 
+  | 'renta4' 
+  | 'other';
 
-export type AccountType = 'checking' | 'savings' | 'credit' | 'investment';
+export type AccountType = 'checking' | 'savings' | 'credit' | 'investment' | 'deposit';
 
 export interface BankAccount {
   id: string;

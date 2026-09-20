@@ -12,7 +12,8 @@ import {
   Wifi, 
   ExternalLink,
   TrendingUp,
-  LineChart
+  LineChart,
+  Landmark
 } from 'lucide-react';
 import { BankAccount } from '../types';
 import { formatCurrency, formatRelativeTime } from '../utils/storage';
@@ -41,19 +42,22 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   };
 
   // Group accounts by bank and type
-  const bbvaAccounts = accounts.filter((a) => a.bankId === 'bbva');
-  const santanderAccounts = accounts.filter((a) => a.bankId === 'santander');
+  const bbvaAccounts = accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
+  const santanderAccounts = accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
   const investmentAccounts = accounts.filter((a) => a.type === 'investment');
-  const otherAccounts = accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment');
+  const depositAccounts = accounts.filter((a) => a.type === 'deposit');
+  const otherAccounts = accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
 
   const bbvaTotal = bbvaAccounts.reduce((sum, a) => sum + a.balance, 0);
   const santanderTotal = santanderAccounts.reduce((sum, a) => sum + a.balance, 0);
   const investmentTotal = investmentAccounts.reduce((sum, a) => sum + a.balance, 0);
+  const depositTotal = depositAccounts.reduce((sum, a) => sum + a.balance, 0);
 
   const renderAccountCard = (account: BankAccount) => {
     const isCredit = account.type === 'credit';
     const isSavings = account.type === 'savings';
     const isInvestment = account.type === 'investment';
+    const isDeposit = account.type === 'deposit';
 
     return (
       <div
@@ -75,6 +79,10 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                 <div className="w-7 h-5 rounded-xs bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[#0E6A3B] shadow-2xs">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </div>
+              ) : isDeposit ? (
+                <div className="w-7 h-5 rounded-xs bg-sky-100 border border-sky-300 flex items-center justify-center text-sky-700 shadow-2xs">
+                  <Landmark className="w-3.5 h-3.5" />
+                </div>
               ) : (
                 /* Mini gold EMV chip graphic */
                 <div className="w-7 h-5 rounded-xs bg-amber-200/80 border border-amber-300/80 flex items-center justify-center p-0.5 shadow-2xs">
@@ -87,8 +95,10 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
               <Wifi className="w-3.5 h-3.5 text-zinc-400 rotate-90" />
 
-              <span className={`text-[11px] font-extrabold uppercase tracking-wider ${isInvestment ? 'text-[#0E6A3B]' : 'text-zinc-600'}`}>
-                {isInvestment ? 'Cuenta de Valores' : isCredit ? 'Tarjeta Crédito' : isSavings ? 'Ahorro' : 'Cuenta Corriente'}
+              <span className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                isInvestment ? 'text-[#0E6A3B]' : isDeposit ? 'text-sky-700' : 'text-zinc-600'
+              }`}>
+                {isInvestment ? 'Cuenta de Valores' : isDeposit ? 'Depósito Plazo Fijo' : isCredit ? 'Tarjeta Crédito' : isSavings ? 'Ahorro' : 'Cuenta Corriente'}
               </span>
             </div>
 
@@ -107,10 +117,15 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </div>
           </div>
 
-          {/* Account name */}
-          <h4 className="text-base font-bold text-zinc-950 leading-snug">
-            {account.accountName}
-          </h4>
+          {/* Account name and Bank name */}
+          <div className="flex items-baseline justify-between gap-2">
+            <h4 className="text-base font-bold text-zinc-950 leading-snug">
+              {account.accountName}
+            </h4>
+          </div>
+          <p className="text-[11px] font-bold text-zinc-500 mt-0.5">
+            {account.bankName}
+          </p>
 
           {/* Masked Card / Account digits & IBAN */}
           <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-zinc-100">
@@ -130,7 +145,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               ) : (
                 <>
                   <Copy className="w-3 h-3 text-zinc-400" />
-                  <span>{isInvestment ? 'Ref' : 'IBAN'}</span>
+                  <span>{isInvestment || isDeposit ? 'Ref' : 'IBAN'}</span>
                 </>
               )}
             </button>
@@ -141,11 +156,11 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         <div className="mt-4 pt-3 border-t border-zinc-100 flex items-end justify-between">
           <div>
             <span className="text-[11px] font-medium text-zinc-400 block">
-              {isInvestment ? 'Valor liquidativo' : 'Saldo disponible'}
+              {isInvestment ? 'Valor liquidativo' : isDeposit ? 'Capital depositado' : 'Saldo disponible'}
             </span>
             <span
               className={`text-xl sm:text-2xl font-black tracking-tight font-feature-settings-tnum ${
-                account.balance < 0 ? 'text-rose-600' : 'text-zinc-950'
+                account.balance < 0 ? 'text-rose-600' : isDeposit ? 'text-sky-950' : 'text-zinc-950'
               }`}
             >
               {formatCurrency(account.balance)}
@@ -157,7 +172,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               Actualizado {formatRelativeTime(account.lastSynced)}
             </span>
             <span className="text-[11px] font-bold text-zinc-700">
-              {isInvestment ? 'Cartera activa' : isCredit ? 'Disposición autorizada' : 'Fondos disponibles'}
+              {isInvestment ? 'Cartera activa' : isDeposit ? 'Depósito vigente' : isCredit ? 'Disposición autorizada' : 'Fondos disponibles'}
             </span>
           </div>
         </div>
@@ -302,10 +317,51 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         </div>
       )}
 
+      {/* Recuadro Depósitos a Plazo Fijo */}
+      {depositAccounts.length > 0 && (
+        <div className="bg-white border-2 border-sky-600/50 rounded-2xl shadow-sm ring-1 ring-sky-950/5 overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 border-b border-sky-100 bg-gradient-to-r from-sky-50/70 via-white to-sky-50/40">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-sky-700 flex items-center justify-center text-white font-black text-xs shadow-xs border border-sky-800">
+                <Landmark className="w-5 h-5 text-sky-100" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-black text-zinc-950 text-base">Depósitos a Plazo Fijo</h4>
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300">
+                    Rendimiento Garantizado
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 mt-0.5">
+                  Capital total en depósitos: <span className="font-extrabold text-sky-800 font-feature-settings-tnum">{formatCurrency(depositTotal)}</span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenNewAccountModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-700 hover:bg-sky-800 rounded-xl transition-all self-start sm:self-auto cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Añadir Depósito
+            </button>
+          </div>
+
+          <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {depositAccounts.map(renderAccountCard)}
+          </div>
+        </div>
+      )}
+
       {/* Otras Cuentas Bancarias si existen */}
       {otherAccounts.length > 0 && (
         <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-4 sm:p-5 shadow-sm ring-1 ring-emerald-950/5">
-          <h4 className="font-black text-zinc-950 text-base mb-3">Otras Cuentas Bancarias</h4>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-black text-zinc-950 text-base">Otras Entidades y Cuentas</h4>
+            <span className="text-xs text-zinc-500 font-medium">
+              {otherAccounts.length} {otherAccounts.length === 1 ? 'cuenta registrada' : 'cuentas registradas'}
+            </span>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {otherAccounts.map(renderAccountCard)}
           </div>

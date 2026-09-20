@@ -76,8 +76,8 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     if (currentClosure.auditedBalances?.[acc.id] !== undefined) {
       return currentClosure.auditedBalances[acc.id];
     }
-    // Si es cuenta de inversión (valores), si no se auditó, toma su saldo base
-    if (acc.type === 'investment') {
+    // Si es cuenta de inversión (valores) o depósito a plazo fijo, si no se auditó, toma su saldo base
+    if (acc.type === 'investment' || acc.type === 'deposit') {
       return acc.balance;
     }
     // Para cuentas bancarias:
@@ -594,9 +594,9 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950">
                 <p className="font-bold mb-0.5 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-[#0E6A3B]" />
-                  Ideal para Cuentas de Valores o Cierres Pasados (2025):
+                  Ideal para Cuentas de Valores, Depósitos o Cierres Pasados (2025):
                 </p>
-                Los saldos de las cuentas corrientes se han calculado automáticamente a partir de los movimientos. Para tus <strong>cuentas de valores / inversiones</strong>, introduce la valoración que tenía tu cartera a <strong>último día de {capitalizedMonth} {year}</strong>.
+                Los saldos de las cuentas corrientes se han calculado automáticamente a partir de los movimientos. Para tus <strong>cuentas de valores / inversiones</strong> y <strong>depósitos a plazo fijo</strong>, introduce o verifica el capital que tenías a <strong>último día de {capitalizedMonth} {year}</strong>.
               </div>
 
               <div className="space-y-3">
@@ -606,7 +606,9 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                     className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
                       acc.type === 'investment' 
                         ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-500/20' 
-                        : 'bg-zinc-50/80 border-zinc-200'
+                        : acc.type === 'deposit'
+                          ? 'bg-sky-50/60 border-sky-300 ring-1 ring-sky-500/20'
+                          : 'bg-zinc-50/80 border-zinc-200'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
@@ -617,6 +619,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                         {acc.type === 'investment' && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300">
                             Valores / Inversión
+                          </span>
+                        )}
+                        {acc.type === 'deposit' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-900 border border-sky-300">
+                            Depósito Plazo Fijo
                           </span>
                         )}
                       </div>

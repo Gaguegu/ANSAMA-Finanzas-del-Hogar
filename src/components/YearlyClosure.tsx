@@ -56,12 +56,13 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
   // Compute monthly balances for each bank entity
-  // Entities: BBVA, Santander, Cuentas de Valores, Otras Entidades
+  // Entities: BBVA, Santander, Cuentas de Valores, Depósitos a Plazo Fijo, Otras Entidades
   const bankEntities = useMemo(() => {
     const list = [
       { id: 'bbva', name: 'BBVA', color: '#004481' },
       { id: 'santander', name: 'Banco Santander', color: '#EC0000' },
       { id: 'investment', name: 'Cuentas de Valores', color: '#0E6A3B' },
+      { id: 'deposit', name: 'Depósitos a Plazo Fijo', color: '#0284c7' },
       { id: 'other', name: 'Otras Entidades', color: '#64748b' }
     ];
 
@@ -69,12 +70,14 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       let matchingAccounts: BankAccount[] = [];
       if (entity.id === 'investment') {
         matchingAccounts = appState.accounts.filter((a) => a.type === 'investment');
+      } else if (entity.id === 'deposit') {
+        matchingAccounts = appState.accounts.filter((a) => a.type === 'deposit');
       } else if (entity.id === 'bbva') {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment');
+        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
       } else if (entity.id === 'santander') {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment');
+        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
       } else {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment');
+        matchingAccounts = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
       }
 
       const accIds = matchingAccounts.map((a) => a.id);
