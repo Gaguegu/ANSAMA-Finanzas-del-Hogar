@@ -8,6 +8,9 @@ interface BeforeInstallPromptEvent extends Event {
 // Global flag to prevent double-reloading loops across hook instances or event listeners
 let isGlobalReloading = false;
 
+// Version information embedded in build
+const CURRENT_APP_VERSION = '2.5.0';
+
 export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean>(() => {
@@ -26,6 +29,7 @@ export function usePWA() {
   const [isAutoUpdatePaused, setIsAutoUpdatePaused] = useState<boolean>(false);
 
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isUpdatingRef = useRef<boolean>(false);
 
   const safeReload = useCallback(() => {
     if (isGlobalReloading) return;
@@ -41,7 +45,7 @@ export function usePWA() {
     // Give time to persist any unsaved local state, then reload safely
     setTimeout(() => {
       window.location.reload();
-    }, 300);
+    }, 250);
   }, []);
 
   // Check if we just reloaded after an automatic update
@@ -56,6 +60,13 @@ export function usePWA() {
     } catch {
       // ignore
     }
+  }, []);
+
+  // Helper to trigger update found state
+  const notifyUpdateFound = useCallback(() => {
+    if (isUpdatingRef.current) return;
+    setHasNewUpdate(true);
+    setUpdateFeedback('¡Nueva versión detectada! Se descargará e instalará automáticamente...');
   }, []);
 
   // Monitor installation status
@@ -108,32 +119,36 @@ export function usePWA() {
       return;
     }
 
-    navigator.serviceWorker.ready
-      .then((reg) => {
-        setSwRegistration(reg);
+    const attachRegistration = (reg: ServiceWorkerRegistration) => {
+      setSwRegistration(reg);
 
-        // Check if there is already a waiting worker
-        if (reg.waiting) {
-          setHasNewUpdate(true);
+      // Check if there is already a waiting worker
+      if (reg.waiting) {
+        notifyUpdateFound();
+      }
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed') {
+              notifyUpdateFound();
+            }
+          });
         }
+      });
+    };
 
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed') {
-                if (navigator.serviceWorker.controller) {
-                  // A new update is ready!
-                  setHasNewUpdate(true);
-                }
-              }
-            });
-          }
-        });
-      })
+    navigator.serviceWorker.ready
+      .then(attachRegistration)
       .catch((err) => {
         console.warn('Service worker ready check:', err);
       });
+
+    // Also query active registrations directly
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg) attachRegistration(reg);
+    }).catch(() => {});
 
     // Auto-reload when new controller takes over - guarded
     const handleControllerChange = () => {
@@ -147,55 +162,28 @@ export function usePWA() {
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
     };
-  }, [safeReload]);
-
-  // Periodic automatic background update checking (every 45 seconds + tab focus/online)
-  useEffect(() => {
-    if (!swRegistration) return;
-
-    const runBackgroundCheck = () => {
-      if (navigator.onLine && swRegistration) {
-        swRegistration.update().catch(() => {});
-      }
-    };
-
-    const interval = setInterval(runBackgroundCheck, 45000);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        runBackgroundCheck();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleVisibility);
-    window.addEventListener('online', runBackgroundCheck);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleVisibility);
-      window.removeEventListener('online', runBackgroundCheck);
-    };
-  }, [swRegistration]);
+  }, [safeReload, notifyUpdateFound]);
 
   // Apply update safely without leaving the screen blank
   const applyUpdate = useCallback(() => {
-    setUpdateFeedback('Aplicando actualización automáticamente...');
+    if (isUpdatingRef.current) return;
+    isUpdatingRef.current = true;
+    setUpdateFeedback('Descargando e instalando actualización automáticamente...');
+
     if (swRegistration?.waiting) {
       swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
     // Safe single reload trigger after short buffer
     setTimeout(() => {
       safeReload();
-    }, 400);
+    }, 350);
   }, [swRegistration, safeReload]);
 
-  // AUTOMATIC UPDATE: Start countdown when an update is detected
+  // AUTOMATIC UPDATE: Start 5-second countdown when an update is detected
   useEffect(() => {
     if (hasNewUpdate && !isAutoUpdatePaused) {
-      setAutoUpdateCountdown(4);
-      setUpdateFeedback('¡Nueva versión detectada! Se actualizará automáticamente en 4 segundos...');
+      setAutoUpdateCountdown(5);
+      setUpdateFeedback('¡Nueva versión detectada! Se descargará e instalará automáticamente en 5 segundos...');
 
       const interval = setInterval(() => {
         setAutoUpdateCountdown((prev) => {
@@ -221,13 +209,76 @@ export function usePWA() {
     }
   }, [hasNewUpdate, isAutoUpdatePaused, applyUpdate]);
 
+  // Periodic automatic background update checking (every 30 seconds + tab focus/online)
+  useEffect(() => {
+    const runBackgroundCheck = async () => {
+      if (!navigator.onLine || hasNewUpdate || isUpdatingRef.current) return;
+
+      // 1. Service Worker update check
+      if (swRegistration) {
+        try {
+          await swRegistration.update();
+          if (swRegistration.waiting) {
+            notifyUpdateFound();
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. Fetch remote version.json with cache bust
+      try {
+        const res = await fetch(`./version.json?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Check if remote version or buildTime is newer
+          const lastKnownBuildTime = parseInt(localStorage.getItem('ansama_app_build_time') || '0', 10);
+          if (data.buildTime && lastKnownBuildTime && data.buildTime > lastKnownBuildTime) {
+            localStorage.setItem('ansama_app_build_time', String(data.buildTime));
+            notifyUpdateFound();
+          } else if (!lastKnownBuildTime && data.buildTime) {
+            localStorage.setItem('ansama_app_build_time', String(data.buildTime));
+          }
+        }
+      } catch {
+        // offline or quiet fail
+      }
+    };
+
+    // Initial check after short delay
+    const initialTimer = setTimeout(runBackgroundCheck, 3000);
+    const interval = setInterval(runBackgroundCheck, 30000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runBackgroundCheck();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    window.addEventListener('online', runBackgroundCheck);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+      window.removeEventListener('online', runBackgroundCheck);
+    };
+  }, [swRegistration, hasNewUpdate, notifyUpdateFound]);
+
   const pauseAutoUpdate = useCallback(() => {
     setIsAutoUpdatePaused(true);
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
     }
     setAutoUpdateCountdown(null);
-    setUpdateFeedback('Actualización automática pausada. Pulsa «Actualizar» cuando desees.');
+    setUpdateFeedback('Actualización automática en pausa. Pulsa «Actualizar ahora» cuando desees.');
     setTimeout(() => setUpdateFeedback(null), 4000);
   }, []);
 
@@ -255,34 +306,60 @@ export function usePWA() {
     return false;
   }, [deferredPrompt]);
 
-  // Manual Check for Updates
+  // Manual Check for Updates (Independent of the automatic background update)
   const checkForUpdates = useCallback(async () => {
-    setIsCheckingUpdate(true);
-    setUpdateFeedback('Comprobando si hay actualizaciones disponibles...');
+    // If an update is already detected and waiting, apply immediately
+    if (hasNewUpdate) {
+      applyUpdate();
+      return;
+    }
 
+    setIsCheckingUpdate(true);
+    setUpdateFeedback('Buscando actualizaciones en el servidor...');
+
+    let updateDetected = false;
+
+    // Check Service Worker
     if ('serviceWorker' in navigator && swRegistration) {
       try {
         await swRegistration.update();
         if (swRegistration.waiting) {
-          setHasNewUpdate(true);
-          setUpdateFeedback('¡Nueva versión lista! Actualizando automáticamente...');
-          setTimeout(() => applyUpdate(), 600);
-          return;
+          updateDetected = true;
+          notifyUpdateFound();
         }
       } catch (err) {
-        console.warn('Aviso comprobación actualización:', err);
+        console.warn('Aviso comprobación actualización SW:', err);
       }
     }
 
-    // Finished checking: inform user without forcing blank reload
+    // Check version.json
+    try {
+      const res = await fetch(`./version.json?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const lastKnownBuildTime = parseInt(localStorage.getItem('ansama_app_build_time') || '0', 10);
+        if (data.buildTime && lastKnownBuildTime && data.buildTime > lastKnownBuildTime) {
+          updateDetected = true;
+          localStorage.setItem('ansama_app_build_time', String(data.buildTime));
+          notifyUpdateFound();
+        }
+      }
+    } catch {
+      // quiet
+    }
+
+    // Finished checking
     setTimeout(() => {
       setIsCheckingUpdate(false);
-      if (!hasNewUpdate) {
-        setUpdateFeedback('Tu aplicación está al día con la versión más reciente.');
+      if (!updateDetected && !hasNewUpdate) {
+        setUpdateFeedback('Tu aplicación ya está en la versión más reciente (v2.5).');
         setTimeout(() => setUpdateFeedback(null), 3500);
       }
-    }, 800);
-  }, [swRegistration, hasNewUpdate, applyUpdate]);
+    }, 700);
+  }, [swRegistration, hasNewUpdate, applyUpdate, notifyUpdateFound]);
 
   return {
     isInstalled,

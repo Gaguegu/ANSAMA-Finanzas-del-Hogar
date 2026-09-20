@@ -779,7 +779,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="text-xs font-bold text-emerald-950">Actualización Automática Activa</span>
                 </div>
                 <span className="text-[11px] text-emerald-800/90 block">
-                  La app busca nuevas versiones continuamente en segundo plano y te notifica en pantalla para actualizarse sola automáticamente sin perder ningún dato.
+                  La app detecta y descarga automáticamente las nuevas versiones, avisándote en pantalla sin que tengas que hacer nada. Independientemente, puedes usar el botón «Actualizar» de la cabecera cuando lo desees.
                 </span>
               </div>
               <span className="text-[10px] font-extrabold uppercase px-2 py-1 rounded bg-[#0E6A3B] text-white self-start sm:self-center tracking-wider shrink-0">

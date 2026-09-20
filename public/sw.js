@@ -1,5 +1,5 @@
 // Service Worker para ANSAMA Finanzas del Hogar
-const CACHE_NAME = 'ansama-cache-v1.4';
+const CACHE_NAME = 'ansama-cache-v2.5';
 const PRECACHE_ASSETS = [
   './',
   './index.html',

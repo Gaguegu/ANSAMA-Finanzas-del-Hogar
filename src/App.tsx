@@ -24,6 +24,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { InstallModal } from './components/InstallModal';
 import { MobileNav } from './components/MobileNav';
 import { LockScreen } from './components/LockScreen';
+import { AutoUpdateNotification } from './components/AutoUpdateNotification';
 import { Sparkles, CheckCircle2, RefreshCw, Info } from 'lucide-react';
 import { usePWA } from './utils/usePWA';
 
@@ -694,6 +695,16 @@ export default function App() {
         onClose={() => setIsInstallModalOpen(false)}
         onInstallDirectly={pwa.installApp}
         canPromptDirectly={pwa.isInstallable}
+      />
+
+      {/* Notificación flotante de Actualización Automática */}
+      <AutoUpdateNotification
+        hasNewUpdate={pwa.hasNewUpdate}
+        countdown={pwa.autoUpdateCountdown}
+        isPaused={pwa.isAutoUpdatePaused}
+        onApplyNow={pwa.applyUpdate}
+        onPause={pwa.pauseAutoUpdate}
+        onResume={pwa.resumeAutoUpdate}
       />
 
       {/* Pantalla de Bloqueo por Contraseña si está activada */}
