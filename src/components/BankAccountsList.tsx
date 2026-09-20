@@ -10,35 +10,45 @@ import {
   ShieldCheck, 
   Edit2, 
   Wifi, 
-  TrendingUp,
-  LineChart,
-  Landmark,
-  Trash2,
-  Info
+  TrendingUp, 
+  LineChart, 
+  Landmark, 
+  Trash2, 
+  AlertTriangle,
+  X
 } from 'lucide-react';
-import { BankAccount } from '../types';
+import { BankAccount, Transaction } from '../types';
 import { formatCurrency, formatRelativeTime } from '../utils/storage';
 
 interface BankAccountsListProps {
   accounts: BankAccount[];
+  transactions?: Transaction[];
   onSyncBank: (bankId: 'bbva' | 'santander') => void;
   onOpenNewAccountModal: () => void;
   onEditAccount: (account: BankAccount) => void;
   onDeleteAccount?: (accountId: string, accountName?: string) => void;
-  onClearDemoAccounts?: () => void;
+  onDeleteBank?: (bankId: string, bankName: string, accountIds: string[]) => void;
   isSyncing: boolean;
 }
 
 export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   accounts,
+  transactions,
   onSyncBank,
   onOpenNewAccountModal,
   onEditAccount,
   onDeleteAccount,
-  onClearDemoAccounts,
+  onDeleteBank,
   isSyncing
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [bankToDelete, setBankToDelete] = useState<{
+    bankId: string;
+    bankName: string;
+    color: string;
+    accounts: BankAccount[];
+    total: number;
+  } | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -46,9 +56,12 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     setTimeout(() => setCopiedId(null), 1800);
   };
 
-  // Check if demo accounts are present
-  const demoIds = new Set(['acc-1', 'acc-2', 'acc-3', 'acc-4']);
-  const hasDemoAccounts = accounts.some((a) => demoIds.has(a.id));
+  // Compute transactions associated with bank selected for deletion
+  const bankTransactionsCount = useMemo(() => {
+    if (!bankToDelete || !transactions) return 0;
+    const idSet = new Set(bankToDelete.accounts.map((a) => a.id));
+    return transactions.filter((t) => idSet.has(t.accountId)).length;
+  }, [bankToDelete, transactions]);
 
   // Specialized accounts
   const investmentAccounts = accounts.filter((a) => a.type === 'investment');
@@ -251,34 +264,6 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         </button>
       </div>
 
-      {/* Banner para eliminar cuentas de demostración si existen */}
-      {hasDemoAccounts && onClearDemoAccounts && (
-        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
-          <div className="flex items-start sm:items-center gap-2.5">
-            <div className="p-2 bg-amber-100 text-amber-900 rounded-xl shrink-0">
-              <Info className="w-4 h-4 text-amber-800" />
-            </div>
-            <div>
-              <span className="font-extrabold text-amber-950 text-sm block">¿No utilizas BBVA o Banco Santander?</span>
-              <span className="text-amber-800 leading-relaxed">
-                Estas son cuentas de demostración predefinidas. Pulsa el botón para eliminarlas de golpe y dejar tu aplicación 100% limpia para registrar solo <strong>tus propios bancos</strong>.
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              if (window.confirm('¿Confirmas que deseas eliminar las cuentas de prueba de BBVA y Santander para dejar la lista limpia?')) {
-                onClearDemoAccounts();
-              }
-            }}
-            className="px-3.5 py-2 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center justify-center gap-1.5 shadow-xs"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Eliminar Cuentas Demo
-          </button>
-        </div>
-      )}
-
       {/* Empty State when 0 accounts */}
       {accounts.length === 0 && (
         <div className="bg-white border-2 border-dashed border-emerald-600/30 rounded-2xl p-8 sm:p-12 text-center space-y-4 shadow-sm">
@@ -332,17 +317,32 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                 </div>
               </div>
 
-              {/* Bank sync button only if BBVA or Santander */}
-              {(isBBVA || isSantander) && (
-                <button
-                  onClick={() => onSyncBank(isBBVA ? 'bbva' : 'santander')}
-                  disabled={isSyncing}
-                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-xl transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                  Sincronizar {isBBVA ? 'BBVA' : 'Santander'}
-                </button>
-              )}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {/* Bank sync button only if BBVA or Santander */}
+                {(isBBVA || isSantander) && (
+                  <button
+                    onClick={() => onSyncBank(isBBVA ? 'bbva' : 'santander')}
+                    disabled={isSyncing}
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-zinc-800 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>Sincronizar</span>
+                  </button>
+                )}
+
+                {/* Botón Eliminar Banco */}
+                {onDeleteBank && (
+                  <button
+                    type="button"
+                    onClick={() => setBankToDelete(group)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100/80 border border-rose-200/90 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                    title={`Eliminar entidad ${group.bankName} y todas sus cuentas asociadas`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Banco</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -420,6 +420,117 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
           <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
             {depositAccounts.map(renderAccountCard)}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación para eliminar la Entidad Bancaria completa */}
+      {bankToDelete && (
+        <div 
+          id="delete-bank-modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
+        >
+          <div 
+            id="delete-bank-modal-content"
+            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-rose-200 animate-in zoom-in-95 duration-200"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-rose-100 border border-rose-200 text-rose-700 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-base sm:text-lg font-black text-zinc-950">
+                    ¿Eliminar {bankToDelete.bankName}?
+                  </h4>
+                  <span className="text-xs text-rose-600 font-bold block mt-0.5">
+                    Acción irreversible
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBankToDelete(null)}
+                className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded-lg hover:bg-zinc-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-xs text-zinc-600">
+              <p className="leading-relaxed">
+                Vas a eliminar por completo la entidad <strong>{bankToDelete.bankName}</strong> de tu aplicación. A continuación se detalla todo lo que será borrado:
+              </p>
+
+              <div className="bg-rose-50/70 border border-rose-200/90 rounded-xl p-3.5 space-y-3 text-zinc-700">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
+                  <div className="flex-1">
+                    <span className="font-bold text-zinc-900 block">
+                      {bankToDelete.accounts.length} {bankToDelete.accounts.length === 1 ? 'cuenta bancaria asociada' : 'cuentas bancarias asociadas'}:
+                    </span>
+                    <ul className="mt-1.5 space-y-1.5 text-[11px] text-zinc-600">
+                      {bankToDelete.accounts.map((acc) => (
+                        <li key={acc.id} className="flex items-center justify-between bg-white/70 px-2.5 py-1 rounded-lg border border-rose-100">
+                          <span className="font-medium text-zinc-800">
+                            • {acc.accountName} <span className="font-mono text-zinc-400">({acc.accountNumberMasked})</span>
+                          </span>
+                          <span className="font-bold text-zinc-900 font-feature-settings-tnum">{formatCurrency(acc.balance)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 pt-2.5 border-t border-rose-200/60">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
+                  <div className="flex-1">
+                    <span className="font-bold text-zinc-900">
+                      {bankTransactionsCount} {bankTransactionsCount === 1 ? 'movimiento del historial' : 'movimientos del historial'}
+                    </span>
+                    <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">
+                      Todos los ingresos, gastos y transferencias vinculados a estas cuentas se eliminarán permanentemente.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5 pt-2.5 border-t border-rose-200/60">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" />
+                  <div className="flex-1">
+                    <span className="font-bold text-zinc-900">
+                      Saldo consolidado: <span className="font-extrabold text-rose-700">{formatCurrency(bankToDelete.total)}</span>
+                    </span>
+                    <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">
+                      Este importe se descontará automáticamente de tu balance global y patrimonio neto.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setBankToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-700 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const accountIds = bankToDelete.accounts.map((a) => a.id);
+                  if (onDeleteBank) {
+                    onDeleteBank(bankToDelete.bankId, bankToDelete.bankName, accountIds);
+                  }
+                  setBankToDelete(null);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Sí, eliminar {bankToDelete.bankName}
+              </button>
+            </div>
           </div>
         </div>
       )}

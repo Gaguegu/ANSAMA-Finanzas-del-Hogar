@@ -191,12 +191,12 @@ export default function App() {
     );
   };
 
-  // Clear demo accounts (BBVA and Santander initial accounts)
-  const handleClearDemoAccounts = () => {
-    const demoIds = new Set(['acc-1', 'acc-2', 'acc-3', 'acc-4']);
-    const updatedAccounts = appState.accounts.filter((a) => !demoIds.has(a.id));
-    const updatedTransactions = appState.transactions.filter((t) => !demoIds.has(t.accountId));
-    const updatedYields = (appState.yieldRecords || []).filter((y) => !demoIds.has(y.accountId));
+  // Delete an entire bank entity and all its associated accounts & transactions
+  const handleDeleteBank = (bankId: string, bankName: string, accountIds: string[]) => {
+    const accountIdSet = new Set(accountIds);
+    const updatedAccounts = appState.accounts.filter((a) => !accountIdSet.has(a.id));
+    const updatedTransactions = appState.transactions.filter((t) => !accountIdSet.has(t.accountId));
+    const updatedYields = (appState.yieldRecords || []).filter((y) => !accountIdSet.has(y.accountId));
 
     const newState: AppState = {
       ...appState,
@@ -207,7 +207,7 @@ export default function App() {
 
     setAppState(newState);
     saveAppState(newState);
-    triggerNotification('Cuentas de prueba de BBVA y Santander eliminadas. ¡Listo para tus bancos!');
+    triggerNotification(`Entidad "${bankName}" y sus ${accountIds.length} cuenta(s) asociadas han sido eliminadas.`);
   };
 
   // Simulate bank synchronization
@@ -485,6 +485,7 @@ export default function App() {
               <div className="lg:col-span-7">
                 <BankAccountsList
                   accounts={appState.accounts}
+                  transactions={appState.transactions}
                   onSyncBank={handleQuickSyncBank}
                   onOpenNewAccountModal={() => {
                     setAccountToEdit(null);
@@ -495,7 +496,7 @@ export default function App() {
                     setIsAccountModalOpen(true);
                   }}
                   onDeleteAccount={handleDeleteAccount}
-                  onClearDemoAccounts={handleClearDemoAccounts}
+                  onDeleteBank={handleDeleteBank}
                   isSyncing={isSyncing}
                 />
               </div>
@@ -525,6 +526,7 @@ export default function App() {
           <div className="space-y-6 animate-in fade-in duration-200">
             <BankAccountsList
               accounts={appState.accounts}
+              transactions={appState.transactions}
               onSyncBank={handleQuickSyncBank}
               onOpenNewAccountModal={() => {
                 setAccountToEdit(null);
@@ -534,6 +536,8 @@ export default function App() {
                 setAccountToEdit(acc);
                 setIsAccountModalOpen(true);
               }}
+              onDeleteAccount={handleDeleteAccount}
+              onDeleteBank={handleDeleteBank}
               isSyncing={isSyncing}
             />
 
