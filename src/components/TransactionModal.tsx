@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, PlusCircle, CheckCircle2 } from 'lucide-react';
 import { BankAccount, TransactionCategory, Transaction } from '../types';
+import { parseCurrencyInput, formatCurrency } from '../utils/storage';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const parsedAmount = parseFloat(amountStr.replace(',', '.'));
+    const parsedAmount = parseCurrencyInput(amountStr);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('Por favor, introduce un importe numérico válido mayor que 0.');
       return;
@@ -147,7 +148,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="0,00"
+                  placeholder="Ej: 4.599,13 o 45,90"
                   required
                   value={amountStr}
                   onChange={(e) => setAmountStr(e.target.value)}
@@ -156,6 +157,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                   EUR
                 </span>
+              </div>
+              <div className="mt-1 min-h-[16px]">
+                {amountStr.trim() !== '' && !isNaN(parseCurrencyInput(amountStr)) && parseCurrencyInput(amountStr) > 0 ? (
+                  <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                    Interpretado: <strong className="font-extrabold">{formatCurrency(parseCurrencyInput(amountStr))}</strong>
+                  </span>
+                ) : null}
               </div>
             </div>
 

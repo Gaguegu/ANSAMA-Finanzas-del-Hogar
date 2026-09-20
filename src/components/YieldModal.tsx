@@ -13,7 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { BankAccount, YieldRecord, YieldType, Transaction } from '../types';
-import { formatCurrency } from '../utils/storage';
+import { formatCurrency, parseCurrencyInput } from '../utils/storage';
 
 interface YieldModalProps {
   isOpen: boolean;
@@ -95,7 +95,7 @@ export const YieldModal: React.FC<YieldModalProps> = ({
   // Handle Gross amount change and auto calculate withholding & net
   const handleGrossChange = (valStr: string) => {
     setGrossAmountStr(valStr);
-    const parsed = parseFloat(valStr.replace(',', '.'));
+    const parsed = parseCurrencyInput(valStr);
     if (!isNaN(parsed) && parsed > 0) {
       const withholding = Math.round(parsed * (taxRatePercent / 100) * 100) / 100;
       const net = Math.round((parsed - withholding) * 100) / 100;
@@ -107,7 +107,7 @@ export const YieldModal: React.FC<YieldModalProps> = ({
   // Handle Tax Rate % change
   const handleTaxRateChange = (rate: number) => {
     setTaxRatePercent(rate);
-    const parsedGross = parseFloat(grossAmountStr.replace(',', '.'));
+    const parsedGross = parseCurrencyInput(grossAmountStr);
     if (!isNaN(parsedGross) && parsedGross > 0) {
       const withholding = Math.round(parsedGross * (rate / 100) * 100) / 100;
       const net = Math.round((parsedGross - withholding) * 100) / 100;
@@ -119,8 +119,8 @@ export const YieldModal: React.FC<YieldModalProps> = ({
   // Handle manual Withholding change (e.g. slight roundings by the bank)
   const handleWithholdingChange = (valStr: string) => {
     setWithholdingTaxStr(valStr);
-    const parsedGross = parseFloat(grossAmountStr.replace(',', '.'));
-    const parsedWithholding = parseFloat(valStr.replace(',', '.'));
+    const parsedGross = parseCurrencyInput(grossAmountStr);
+    const parsedWithholding = parseCurrencyInput(valStr);
     if (!isNaN(parsedGross) && !isNaN(parsedWithholding)) {
       const net = Math.max(0, Math.round((parsedGross - parsedWithholding) * 100) / 100);
       setNetAmountStr(net.toFixed(2));
@@ -131,8 +131,8 @@ export const YieldModal: React.FC<YieldModalProps> = ({
   const handleSharesOrPriceChange = (sharesVal: string, perShareVal: string) => {
     setSharesCountStr(sharesVal);
     setGrossPerShareStr(perShareVal);
-    const shares = parseFloat(sharesVal.replace(',', '.'));
-    const perShare = parseFloat(perShareVal.replace(',', '.'));
+    const shares = parseCurrencyInput(sharesVal);
+    const perShare = parseCurrencyInput(perShareVal);
     if (!isNaN(shares) && !isNaN(perShare) && shares > 0 && perShare > 0) {
       const calculatedGross = Math.round(shares * perShare * 100) / 100;
       setGrossAmountStr(calculatedGross.toFixed(2));
@@ -151,15 +151,15 @@ export const YieldModal: React.FC<YieldModalProps> = ({
     if (!accountId) {
       newErrors.accountId = 'Selecciona la cuenta bancaria o broker';
     }
-    const gross = parseFloat(grossAmountStr.replace(',', '.'));
+    const gross = parseCurrencyInput(grossAmountStr);
     if (isNaN(gross) || gross <= 0) {
       newErrors.gross = 'Introduce un importe bruto válido mayor que 0';
     }
-    const withholding = parseFloat(withholdingTaxStr.replace(',', '.'));
+    const withholding = parseCurrencyInput(withholdingTaxStr);
     if (isNaN(withholding) || withholding < 0) {
       newErrors.withholding = 'Retención inválida';
     }
-    const net = parseFloat(netAmountStr.replace(',', '.'));
+    const net = parseCurrencyInput(netAmountStr);
     if (isNaN(net) || net <= 0) {
       newErrors.net = 'El importe líquido debe ser mayor que 0';
     }
@@ -171,11 +171,11 @@ export const YieldModal: React.FC<YieldModalProps> = ({
     e.preventDefault();
     if (!validate()) return;
 
-    const gross = parseFloat(grossAmountStr.replace(',', '.'));
-    const withholding = parseFloat(withholdingTaxStr.replace(',', '.'));
-    const net = parseFloat(netAmountStr.replace(',', '.'));
-    const shares = sharesCountStr ? parseFloat(sharesCountStr.replace(',', '.')) : undefined;
-    const perShare = grossPerShareStr ? parseFloat(grossPerShareStr.replace(',', '.')) : undefined;
+    const gross = parseCurrencyInput(grossAmountStr);
+    const withholding = parseCurrencyInput(withholdingTaxStr);
+    const net = parseCurrencyInput(netAmountStr);
+    const shares = sharesCountStr ? parseCurrencyInput(sharesCountStr) : undefined;
+    const perShare = grossPerShareStr ? parseCurrencyInput(grossPerShareStr) : undefined;
 
     const record: YieldRecord = {
       id: initialYield ? initialYield.id : `yd-${Date.now()}`,

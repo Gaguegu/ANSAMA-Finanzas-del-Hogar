@@ -20,7 +20,7 @@ import {
   X
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput } from '../utils/storage';
 
 interface MonthlyClosureProps {
   appState: AppState;
@@ -204,7 +204,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     const parsedAudited: Record<string, number> = {};
     appState.accounts.forEach((a) => {
       const valStr = tempBalances[a.id];
-      const parsed = parseFloat(valStr?.replace(',', '.') || '0');
+      const parsed = parseCurrencyInput(valStr || '0');
       parsedAudited[a.id] = isNaN(parsed) ? getAccountBalanceForMonth(a) : parsed;
     });
 

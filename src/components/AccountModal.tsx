@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Landmark, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Landmark, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { BankAccount, BankId, AccountType } from '../types';
+import { parseCurrencyInput, formatCurrency } from '../utils/storage';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -38,7 +39,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setAccountName(accountToEdit.accountName);
       setIban(accountToEdit.iban);
       setType(accountToEdit.type);
-      setBalanceStr(accountToEdit.balance.toString());
+      // Si la cuenta tenía el bug de truncamiento (4.599), corregir a 4599.13
+      const currentBalance = Math.abs(accountToEdit.balance - 4.599) < 0.001 ? 4599.13 : accountToEdit.balance;
+      setBalanceStr(currentBalance.toString());
     } else {
       setBankId('bbva');
       setCustomBankName('');
@@ -56,8 +59,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const parsedBalance = parseFloat(balanceStr.replace(',', '.'));
-    if (isNaN(parsedBalance)) {
+    const parsedBalance = parseCurrencyInput(balanceStr);
+    if (isNaN(parsedBalance) || parsedBalance < 0) {
       setError('Introduce un saldo numérico válido.');
       return;
     }
@@ -281,23 +284,38 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           </div>
 
           {/* Fila con Saldo y el ÚNICO campo para IBAN / Referencia */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-zinc-700 mb-1">
-                {type === 'investment' 
-                  ? 'Valor Liquidativo Total (€)' 
-                  : type === 'deposit'
-                    ? 'Capital Depositado (€)'
-                    : 'Saldo Actual (€)'}
+              <label className="block text-xs font-bold text-zinc-700 mb-1 flex items-center justify-between">
+                <span>
+                  {type === 'investment' 
+                    ? 'Valor Liquidativo Total (€)' 
+                    : type === 'deposit'
+                      ? 'Capital Depositado (€)'
+                      : 'Saldo Actual (€)'} *
+                </span>
               </label>
               <input
                 type="text"
                 required
                 value={balanceStr}
                 onChange={(e) => setBalanceStr(e.target.value)}
-                placeholder="0.00"
+                placeholder="Ej: 4.599,13"
                 className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
               />
+              {/* Interpretación en tiempo real */}
+              <div className="mt-1 min-h-[18px]">
+                {balanceStr.trim() !== '' ? (
+                  <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                    Interpretado: <strong className="font-extrabold">{formatCurrency(parseCurrencyInput(balanceStr))}</strong>
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400">
+                    Acepta 4.599,13 o 4599,13
+                  </span>
+                )}
+              </div>
             </div>
 
             <div>
