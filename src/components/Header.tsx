@@ -16,6 +16,7 @@ import {
   Lock
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
+import { APP_VERSION } from '../version';
 
 interface HeaderProps {
   lastSync: string;
@@ -152,15 +153,15 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Número de Versión en un Círculo Destacado */}
+            {/* Placa de Versión del Sistema con ancho y tamaño generoso para mostrar 2.5.3 completo */}
             <div 
               id="app-version-badge"
-              title="Versión actual del sistema: 2.5"
-              className="flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-[#092B19] border-2 border-emerald-400 text-white shadow-xs ring-2 ring-emerald-950/15 shrink-0 select-none cursor-default group transition-transform hover:scale-105"
+              title={`Versión actual del sistema: ${APP_VERSION}`}
+              className="flex items-center justify-center h-9 sm:h-10 px-3 sm:px-3.5 rounded-2xl bg-[#092B19] border-2 border-emerald-400 text-white shadow-xs ring-2 ring-emerald-950/15 shrink-0 select-none cursor-default group transition-transform hover:scale-105"
             >
               <div className="flex flex-col items-center justify-center leading-none">
-                <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-tighter text-emerald-300">VER</span>
-                <span className="text-[10px] sm:text-xs font-black text-white">2.5</span>
+                <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-emerald-300">VERSIÓN</span>
+                <span className="text-xs sm:text-sm font-black text-white font-mono mt-0.5">{APP_VERSION}</span>
               </div>
             </div>
           </div>

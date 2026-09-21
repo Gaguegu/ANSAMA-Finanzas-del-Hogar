@@ -21,6 +21,7 @@ import {
 import { AppState } from '../types';
 import { saveAppState, resetToDefaults, resetToZero } from '../utils/storage';
 import { encryptData, decryptData, hashPassword } from '../utils/crypto';
+import { APP_VERSION } from '../version';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -811,10 +812,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-full bg-[#092B19] border border-emerald-400 text-white flex items-center justify-center text-[10px] font-black">
-                2.5
+              <div className="px-2.5 py-0.5 rounded-full bg-[#092B19] border border-emerald-400 text-white flex items-center justify-center text-[11px] font-black font-mono">
+                v{APP_VERSION}
               </div>
-              <span className="text-[11px] font-semibold text-zinc-500">ANSAMA Finanzas v2.5</span>
+              <span className="text-[11px] font-semibold text-zinc-500">ANSAMA Finanzas v{APP_VERSION}</span>
             </div>
             <button
               onClick={onClose}
