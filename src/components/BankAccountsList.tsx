@@ -15,12 +15,14 @@ import {
   Landmark, 
   Trash2, 
   AlertTriangle,
+  AlertCircle,
   X,
   Calendar,
   FileSpreadsheet
 } from 'lucide-react';
 import { BankAccount, Transaction, AccountType } from '../types';
-import { formatCurrency, formatRelativeTime, formatDate } from '../utils/storage';
+import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions } from '../utils/storage';
+import { SyncAccountBalanceModal } from './SyncAccountBalanceModal';
 
 interface BankAccountsListProps {
   accounts: BankAccount[];
@@ -28,6 +30,7 @@ interface BankAccountsListProps {
   onSyncBank: (bankId: 'bbva' | 'santander') => void;
   onOpenNewAccountModal: (initialType?: AccountType) => void;
   onEditAccount: (account: BankAccount) => void;
+  onSaveAccount?: (account: BankAccount) => void;
   onDeleteAccount?: (accountId: string, accountName?: string) => void;
   onDeleteBank?: (bankId: string, bankName: string, accountIds: string[]) => void;
   onOpenImportModal?: (targetAccountId?: string) => void;
@@ -40,12 +43,14 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   onSyncBank,
   onOpenNewAccountModal,
   onEditAccount,
+  onSaveAccount,
   onDeleteAccount,
   onDeleteBank,
   onOpenImportModal,
   isSyncing
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [accountToSyncBalance, setAccountToSyncBalance] = useState<BankAccount | null>(null);
   const [bankToDelete, setBankToDelete] = useState<{
     bankId: string;
     bankName: string;
@@ -103,6 +108,14 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     const isInvestment = account.type === 'investment';
     const isDeposit = account.type === 'deposit';
 
+    const recalc = transactions ? recalculateAccountBalanceFromTransactions(account, transactions) : null;
+    const hasDiscrepancy = Boolean(
+      recalc && 
+      recalc.hasNewerTransactions && 
+      recalc.transactionCount > 0 && 
+      Math.abs(recalc.calculatedBalance - account.balance) >= 0.01
+    );
+
     return (
       <div
         key={account.id}
@@ -147,6 +160,14 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => setAccountToSyncBalance(account)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200/90 border border-zinc-200 px-2 py-0.5 rounded-lg transition-all cursor-pointer"
+                title={`Ajustar o sincronizar saldo de ${account.accountName}`}
+              >
+                <RefreshCw className="w-3 h-3 text-[#0E6A3B]" />
+                <span>Saldo</span>
+              </button>
               {onOpenImportModal && (
                 <button
                   onClick={() => onOpenImportModal(account.id)}
@@ -249,6 +270,51 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Alerta si hay movimientos que modifican el saldo tras la fecha fijada */}
+        {hasDiscrepancy && recalc && (
+          <div className="mt-3.5 pt-3 border-t border-amber-200/90 bg-amber-50/90 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-3.5 sm:px-4 rounded-b-xl space-y-2.5">
+            <div className="flex items-start gap-2 text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold text-amber-950 block">
+                  Saldo desactualizado respecto a tus movimientos
+                </span>
+                <p className="text-[11px] text-amber-800 leading-snug">
+                  Hay {recalc.transactionCount} movimientos desde el {formatDate(account.balanceDate)}. Saldo calculado: <strong className="font-mono font-extrabold text-amber-950">{formatCurrency(recalc.calculatedBalance)}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSaveAccount) {
+                    onSaveAccount({
+                      ...account,
+                      balance: recalc.calculatedBalance,
+                      balanceDate: recalc.latestTransactionDate || new Date().toISOString().split('T')[0],
+                      lastSynced: new Date().toISOString()
+                    });
+                  } else {
+                    setAccountToSyncBalance(account);
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#0E6A3B] hover:bg-[#094d2a] text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Actualizar saldo a {formatCurrency(recalc.calculatedBalance)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountToSyncBalance(account)}
+                className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-lg border border-amber-300 transition-all cursor-pointer"
+              >
+                Ver detalle
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -571,6 +637,18 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Sincronización y Ajuste de Saldo */}
+      <SyncAccountBalanceModal
+        isOpen={Boolean(accountToSyncBalance)}
+        onClose={() => setAccountToSyncBalance(null)}
+        account={accountToSyncBalance}
+        transactions={transactions || []}
+        onSaveAccount={(updated) => {
+          if (onSaveAccount) onSaveAccount(updated);
+          setAccountToSyncBalance(null);
+        }}
+      />
 
     </div>
   );

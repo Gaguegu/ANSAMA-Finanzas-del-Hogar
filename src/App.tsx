@@ -168,20 +168,27 @@ export default function App() {
   const handleImportTransactions = (
     transactions: Array<Omit<Transaction, 'id'>>,
     accountId: string,
-    updateBalance: boolean
+    updateBalance: boolean = true,
+    explicitBalance?: number,
+    explicitBalanceDate?: string
   ) => {
     const { newState, importedCount } = importStatementTransactions(
       appState,
       transactions,
       accountId,
-      updateBalance
+      updateBalance,
+      explicitBalance,
+      explicitBalanceDate
     );
     setAppState(newState);
     saveAppState(newState);
-    const targetAcc = appState.accounts.find((a) => a.id === accountId);
+    const targetAcc = newState.accounts.find((a) => a.id === accountId);
     const bankName = targetAcc ? `${targetAcc.bankName} (${targetAcc.accountName})` : 'tu cuenta';
+    const balanceInfo = updateBalance && targetAcc
+      ? ` Saldo disponible actualizado a ${formatCurrency(targetAcc.balance)} (fecha: ${targetAcc.balanceDate || 'hoy'}).`
+      : '';
     triggerNotification(
-      `¡Éxito! Se han importado ${importedCount} movimientos reales en ${bankName}.`
+      `¡Éxito! Se han importado ${importedCount} movimientos en ${bankName}.${balanceInfo}`
     );
   };
 
@@ -532,6 +539,7 @@ export default function App() {
                     setAccountModalInitialType(undefined);
                     setIsAccountModalOpen(true);
                   }}
+                  onSaveAccount={handleSaveAccount}
                   onDeleteAccount={handleDeleteAccount}
                   onDeleteBank={handleDeleteBank}
                   onOpenImportModal={handleOpenImportModal}
@@ -573,6 +581,7 @@ export default function App() {
                 setAccountModalInitialType(undefined);
                 setIsAccountModalOpen(true);
               }}
+              onSaveAccount={handleSaveAccount}
               onDeleteAccount={handleDeleteAccount}
               onDeleteBank={handleDeleteBank}
               onOpenImportModal={handleOpenImportModal}
@@ -732,6 +741,7 @@ export default function App() {
         }}
         accountToEdit={accountToEdit}
         initialType={accountModalInitialType}
+        transactions={appState.transactions}
       />
 
       <SettingsModal

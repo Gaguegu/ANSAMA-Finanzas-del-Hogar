@@ -149,7 +149,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         // Check if it is an encrypted ANSAMA payload
         if (parsed.app === 'ANSAMA_FINANZAS_PROTECTED' && parsed.ciphertext) {
           setPendingEncryptedContent(content);
-          setImportPasswordInput(currentPassword || '');
+          setImportPasswordInput(''); // Security: Never auto-fill password on restore. User must type it manually.
           setImportPasswordError(null);
           return;
         }
@@ -662,7 +662,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     setImportPasswordInput(e.target.value);
                     setImportPasswordError(null);
                   }}
-                  placeholder="Contraseña del archivo..."
+                  autoComplete="off"
+                  data-1p-ignore="true"
+                  placeholder="Introduce la contraseña del archivo manualmente..."
                   className="w-full pl-3 pr-10 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   autoFocus
                 />

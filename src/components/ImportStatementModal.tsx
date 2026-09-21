@@ -14,7 +14,8 @@ import {
   Sparkles,
   SlidersHorizontal,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 import { BankAccount, TransactionCategory, Transaction } from '../types';
 import { 
@@ -24,7 +25,7 @@ import {
   ParsedStatementRow,
   StatementColumnMapping 
 } from '../utils/statementParser';
-import { formatCurrency } from '../utils/storage';
+import { formatCurrency, formatDate } from '../utils/storage';
 
 interface ImportStatementModalProps {
   isOpen: boolean;
@@ -36,7 +37,9 @@ interface ImportStatementModalProps {
   onImport: (
     transactions: Array<Omit<Transaction, 'id'>>,
     accountId: string,
-    updateBalance: boolean
+    updateBalance: boolean,
+    explicitBalance?: number,
+    explicitBalanceDate?: string
   ) => void;
 }
 
@@ -54,7 +57,9 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
   const [currentMapping, setCurrentMapping] = useState<StatementColumnMapping | null>(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(initialAccountId || '');
-  const [updateBalance, setUpdateBalance] = useState<boolean>(false);
+  const [balanceUpdateMode, setBalanceUpdateMode] = useState<'statement' | 'delta' | 'manual' | 'none'>('delta');
+  const [manualBalanceInput, setManualBalanceInput] = useState<string>('');
+  const [manualBalanceDate, setManualBalanceDate] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [rows, setRows] = useState<ParsedStatementRow[]>([]);
@@ -91,6 +96,16 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       setCurrentMapping(result.suggestedMapping);
       setRows(result.rows);
 
+      if (result.detectedStatementBalance !== undefined) {
+        setBalanceUpdateMode('statement');
+      } else {
+        setBalanceUpdateMode('delta');
+      }
+
+      if (result.rows.length > 0) {
+        setManualBalanceDate(result.rows[0].date);
+      }
+
       if (result.rows.length === 0) {
         setShowColumnConfig(true);
         setErrorMsg('No se detectaron movimientos automáticamente. Revisa y selecciona las columnas correspondientes abajo.');
@@ -122,7 +137,33 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       existingTransactions
     );
 
+    let newDetBalance: number | undefined;
+    let newDetBalanceDate: string | undefined;
+    let newNetDelta = 0;
+    for (const r of newRows) {
+      if (r.type === 'income') newNetDelta += r.amount;
+      else newNetDelta -= r.amount;
+      if (newDetBalance === undefined && r.balanceAfter !== undefined) {
+        newDetBalance = r.balanceAfter;
+        newDetBalanceDate = r.date;
+      }
+    }
+
     setRows(newRows);
+    setParseResult(prev => prev ? {
+      ...prev,
+      suggestedMapping: newMapping,
+      rows: newRows,
+      detectedStatementBalance: newDetBalance,
+      detectedStatementBalanceDate: newDetBalanceDate,
+      netMovementDelta: Math.round(newNetDelta * 100) / 100,
+      latestTransactionDate: newRows.length > 0 ? newRows[0].date : undefined
+    } : null);
+
+    if (newDetBalance !== undefined && balanceUpdateMode !== 'manual' && balanceUpdateMode !== 'none') {
+      setBalanceUpdateMode('statement');
+    }
+
     if (newRows.length > 0) {
       setErrorMsg(null);
     } else {
@@ -173,13 +214,49 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
   const selectedCount = rows.filter(r => r.selected).length;
   const duplicateCount = rows.filter(r => r.isDuplicate).length;
 
+  const selectedAccount = accounts.find(a => a.id === activeAccountId);
+  const selectedRows = rows.filter(r => r.selected);
+  const selectedIncomes = selectedRows.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0);
+  const selectedExpenses = selectedRows.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+  const netSelectedDelta = Math.round((selectedIncomes - selectedExpenses) * 100) / 100;
+  
+  const currentAccountBalance = selectedAccount?.balance ?? 0;
+  const deltaTargetBalance = selectedAccount?.type === 'credit'
+    ? Math.round((currentAccountBalance - netSelectedDelta) * 100) / 100
+    : Math.round((currentAccountBalance + netSelectedDelta) * 100) / 100;
+
+  const latestDateOfSelected = selectedRows.length > 0
+    ? selectedRows.reduce((latest, r) => (r.date > latest ? r.date : latest), '')
+    : new Date().toISOString().split('T')[0];
+
+  const detectedBalance = parseResult?.detectedStatementBalance;
+  const detectedDate = parseResult?.detectedStatementBalanceDate || latestDateOfSelected;
+
+  // Determining explicit balance to pass
+  let targetBalanceNumber: number | undefined;
+  let targetBalanceDate: string | undefined;
+  const shouldUpdateBalance = balanceUpdateMode !== 'none';
+
+  if (balanceUpdateMode === 'statement' && detectedBalance !== undefined) {
+    targetBalanceNumber = detectedBalance;
+    targetBalanceDate = detectedDate;
+  } else if (balanceUpdateMode === 'manual') {
+    const parsedManual = parseFloat(manualBalanceInput.replace(/\./g, '').replace(',', '.'));
+    if (!isNaN(parsedManual)) {
+      targetBalanceNumber = parsedManual;
+      targetBalanceDate = manualBalanceDate || new Date().toISOString().split('T')[0];
+    }
+  } else if (balanceUpdateMode === 'delta') {
+    targetBalanceNumber = deltaTargetBalance;
+    targetBalanceDate = latestDateOfSelected;
+  }
+
   const handleConfirmImport = () => {
     if (!activeAccountId) {
       setErrorMsg('Debes seleccionar la cuenta bancaria de destino.');
       return;
     }
 
-    const selectedRows = rows.filter(r => r.selected);
     if (selectedRows.length === 0) {
       setErrorMsg('Selecciona al menos un movimiento para importar.');
       return;
@@ -196,7 +273,13 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       isSimulated: false
     }));
 
-    onImport(transactionsToImport, activeAccountId, updateBalance);
+    onImport(
+      transactionsToImport,
+      activeAccountId,
+      shouldUpdateBalance,
+      (balanceUpdateMode === 'statement' || balanceUpdateMode === 'manual') ? targetBalanceNumber : undefined,
+      targetBalanceDate
+    );
     handleReset();
     onClose();
   };
@@ -208,9 +291,10 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
     setShowColumnConfig(false);
     setRows([]);
     setErrorMsg(null);
+    setBalanceUpdateMode('delta');
+    setManualBalanceInput('');
+    setManualBalanceDate('');
   };
-
-  const selectedAccount = accounts.find(a => a.id === activeAccountId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/65 backdrop-blur-xs animate-in fade-in">
@@ -313,53 +397,192 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
           {parseResult && (
             <div className="space-y-4">
               
-              {/* Barra superior de configuración de la cuenta */}
-              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-zinc-800">
-                      Cuenta bancaria de destino:
-                    </label>
-                    {parseResult.suggestedAccountId === activeAccountId && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                        <Sparkles className="w-3 h-3 text-[#0E6A3B]" />
-                        Banco detectado automáticamente
-                      </span>
-                    )}
+              {/* Barra superior de configuración de la cuenta y saldo */}
+              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-zinc-800">
+                        Cuenta bancaria de destino:
+                      </label>
+                      {parseResult.suggestedAccountId === activeAccountId && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                          <Sparkles className="w-3 h-3 text-[#0E6A3B]" />
+                          Banco detectado automáticamente
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={activeAccountId}
+                      onChange={(e) => setSelectedAccountId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs font-bold text-zinc-900 bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600"
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.bankName} - {acc.accountName} ({acc.accountNumberMasked}) - Saldo actual: {formatCurrency(acc.balance)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={activeAccountId}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-bold text-zinc-900 bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600"
-                  >
-                    {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.bankName} - {acc.accountName} ({acc.accountNumberMasked}) - Saldo: {formatCurrency(acc.balance)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-zinc-500 mt-1">
-                    Puedes cambiar de cuenta si deseas asignar estos movimientos a otra entidad.
-                  </p>
-                </div>
 
-                <div className="flex flex-col justify-center">
-                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={updateBalance}
-                      onChange={(e) => setUpdateBalance(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 rounded text-[#0E6A3B] focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <div className="text-xs">
-                      <span className="font-bold text-zinc-900 block">Actualizar saldo de la cuenta con los movimientos</span>
-                      <span className="text-[11px] text-zinc-500">
-                        {updateBalance 
-                          ? 'El saldo actual sumará/restará los movimientos importados.' 
-                          : 'Mantendrá el saldo actual intacto (recomendado si ya lo tienes al día).'}
+                  <div className="p-3 bg-white rounded-xl border border-zinc-200/80 text-xs">
+                    <div className="flex justify-between items-center text-[11px] text-zinc-500 mb-1">
+                      <span>Saldo registrado en la app:</span>
+                      <span className="font-semibold text-zinc-700">
+                        {selectedAccount?.balanceDate ? `a fecha ${formatDate(selectedAccount.balanceDate)}` : 'sin fecha fijada'}
                       </span>
                     </div>
-                  </label>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-base font-extrabold text-zinc-900 font-mono">
+                        {formatCurrency(currentAccountBalance)}
+                      </span>
+                      <span className={`text-xs font-bold font-mono ${netSelectedDelta >= 0 ? 'text-emerald-700' : 'text-zinc-700'}`}>
+                        {netSelectedDelta >= 0 ? `+${formatCurrency(netSelectedDelta)}` : formatCurrency(netSelectedDelta)} neto ({selectedCount} mov.)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Opciones de actualización de saldo */}
+                <div className="pt-2 border-t border-zinc-200/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                      ¿Cómo deseas actualizar el saldo de {selectedAccount?.bankName || 'la cuenta'}?
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Opción A: Si hay saldo detectado en el archivo */}
+                    {detectedBalance !== undefined && (
+                      <label 
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          balanceUpdateMode === 'statement' 
+                            ? 'bg-emerald-50/80 border-emerald-500 ring-1 ring-emerald-500' 
+                            : 'bg-white border-zinc-200 hover:border-zinc-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="balanceMode"
+                          checked={balanceUpdateMode === 'statement'}
+                          onChange={() => setBalanceUpdateMode('statement')}
+                          className="mt-1 text-[#0E6A3B] focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <div className="text-xs">
+                          <span className="font-bold text-zinc-900 flex items-center gap-1.5">
+                            Fijar saldo del extracto
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">Recomendado</span>
+                          </span>
+                          <span className="text-[13px] font-extrabold text-emerald-800 font-mono block my-0.5">
+                            {formatCurrency(detectedBalance)}
+                          </span>
+                          <span className="text-[11px] text-zinc-500">
+                            Detectado en el extracto ({formatDate(detectedDate)})
+                          </span>
+                        </div>
+                      </label>
+                    )}
+
+                    {/* Opción B: Sumar / restar movimientos al saldo actual */}
+                    <label 
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        balanceUpdateMode === 'delta' 
+                          ? 'bg-emerald-50/80 border-emerald-500 ring-1 ring-emerald-500' 
+                          : 'bg-white border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="balanceMode"
+                        checked={balanceUpdateMode === 'delta'}
+                        onChange={() => setBalanceUpdateMode('delta')}
+                        className="mt-1 text-[#0E6A3B] focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <div className="text-xs">
+                        <span className="font-bold text-zinc-900 block">
+                          Calcular por movimientos
+                        </span>
+                        <span className="text-[13px] font-extrabold text-zinc-900 font-mono block my-0.5">
+                          {formatCurrency(deltaTargetBalance)}
+                        </span>
+                        <span className="text-[11px] text-zinc-500">
+                          {formatCurrency(currentAccountBalance)} {netSelectedDelta >= 0 ? '+' : ''}{formatCurrency(netSelectedDelta)}
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Opción C: No tocar el saldo */}
+                    <label 
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        balanceUpdateMode === 'none' 
+                          ? 'bg-emerald-50/80 border-emerald-500 ring-1 ring-emerald-500' 
+                          : 'bg-white border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="balanceMode"
+                        checked={balanceUpdateMode === 'none'}
+                        onChange={() => setBalanceUpdateMode('none')}
+                        className="mt-1 text-[#0E6A3B] focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <div className="text-xs">
+                        <span className="font-bold text-zinc-900 block">
+                          No modificar el saldo
+                        </span>
+                        <span className="text-[13px] font-bold text-zinc-700 font-mono block my-0.5">
+                          Mantener {formatCurrency(currentAccountBalance)}
+                        </span>
+                        <span className="text-[11px] text-zinc-500">
+                          Solo importar movimientos sin alterar el saldo
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Opción D: Fijar saldo manualmente */}
+                    <label 
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        balanceUpdateMode === 'manual' 
+                          ? 'bg-emerald-50/80 border-emerald-500 ring-1 ring-emerald-500' 
+                          : 'bg-white border-zinc-200 hover:border-zinc-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="balanceMode"
+                        checked={balanceUpdateMode === 'manual'}
+                        onChange={() => setBalanceUpdateMode('manual')}
+                        className="mt-1 text-[#0E6A3B] focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <div className="text-xs w-full">
+                        <span className="font-bold text-zinc-900 block">
+                          Fijar saldo exacto manual
+                        </span>
+                        {balanceUpdateMode === 'manual' ? (
+                          <div className="mt-1.5 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              placeholder="Ej: 4599.13"
+                              value={manualBalanceInput}
+                              onChange={(e) => setManualBalanceInput(e.target.value)}
+                              className="w-full px-2 py-1 text-xs border border-zinc-300 rounded font-mono font-bold bg-white"
+                            />
+                            <input
+                              type="date"
+                              value={manualBalanceDate}
+                              onChange={(e) => setManualBalanceDate(e.target.value)}
+                              className="w-full px-2 py-1 text-[11px] border border-zinc-300 rounded bg-white"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-zinc-500 block mt-0.5">
+                            Escribir el importe exacto que ves hoy en tu banco
+                          </span>
+                        )}
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -479,10 +702,27 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                         ))}
                       </select>
                     </div>
+
+                    {/* Columna Saldo / Disponible (opcional) */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                        Columna Saldo / Disponible (opcional):
+                      </label>
+                      <select
+                        value={currentMapping.balanceCol || ''}
+                        onChange={(e) => handleUpdateMapping({ ...currentMapping, balanceCol: e.target.value || undefined })}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                      >
+                        <option value="">-- Ninguna (calcular por suma) --</option>
+                        {parseResult.headers.map((h, i) => (
+                          <option key={i} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <p className="text-[11px] text-zinc-500">
-                    Cambiar las columnas recalculará los movimientos en tiempo real.
+                    Cambiar las columnas recalculará los movimientos y el saldo detectado en tiempo real.
                   </p>
                 </div>
               )}
@@ -587,7 +827,14 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
               className="px-5 py-2.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />
-              Importar {selectedCount} Movimientos Reales
+              <span>
+                Importar {selectedCount} Movimientos
+                {shouldUpdateBalance && targetBalanceNumber !== undefined ? (
+                  <span className="opacity-90 font-mono ml-1 font-semibold">
+                    (Fijar saldo: {formatCurrency(targetBalanceNumber)})
+                  </span>
+                ) : null}
+              </span>
             </button>
           )}
         </div>

@@ -13,6 +13,7 @@ export interface ParsedStatementRow {
   rawRow: Record<string, any>;
   selected: boolean;
   isDuplicate?: boolean;
+  balanceAfter?: number;
 }
 
 export interface StatementColumnMapping {
@@ -21,6 +22,7 @@ export interface StatementColumnMapping {
   amountCol: string;
   incomeCol?: string; // si vienen en columnas separadas (ingreso / cargo)
   expenseCol?: string;
+  balanceCol?: string; // columna opcional de saldo o disponible en el extracto
 }
 
 export interface ParseResult {
@@ -34,6 +36,10 @@ export interface ParseResult {
   rawPreviewRows: any[][];
   rawData: any[][];
   headerRowIndex: number;
+  detectedStatementBalance?: number;
+  detectedStatementBalanceDate?: string;
+  netMovementDelta: number;
+  latestTransactionDate?: string;
 }
 
 // Palabras clave para categorización inteligente automática en España
@@ -267,6 +273,7 @@ export function extractRowsWithMapping(
   const amountIdx = headers.indexOf(mapping.amountCol);
   const incomeIdx = mapping.incomeCol ? headers.indexOf(mapping.incomeCol) : -1;
   const expenseIdx = mapping.expenseCol ? headers.indexOf(mapping.expenseCol) : -1;
+  const balanceIdx = mapping.balanceCol ? headers.indexOf(mapping.balanceCol) : -1;
 
   for (let r = headerRowIndex + 1; r < rawData.length; r++) {
     const rawRowArray = rawData[r];
@@ -323,6 +330,15 @@ export function extractRowsWithMapping(
     const absAmount = Math.abs(signedAmount);
     const suggestedCategory = guessCategory(title, signedAmount, categories);
 
+    // Extraer saldo posterior si existe columna de saldo/disponible
+    let balanceAfter: number | undefined;
+    if (balanceIdx >= 0) {
+      const bVal = parseAmountNumber(rawRowArray[balanceIdx]);
+      if (bVal !== null) {
+        balanceAfter = bVal;
+      }
+    }
+
     // Detección de duplicado
     const isDuplicate = existingTransactions.some((tx) => {
       return (
@@ -348,7 +364,8 @@ export function extractRowsWithMapping(
       suggestedCategoryId: suggestedCategory,
       rawRow,
       selected: !isDuplicate,
-      isDuplicate
+      isDuplicate,
+      balanceAfter
     });
   }
 
@@ -559,12 +576,31 @@ export function parseStatementFile(
     }
   }
 
+  // 5. COLUMNA DE SALDO O DISPONIBLE (muy común en BBVA 'Disponible', Santander 'Saldo', CaixaBank 'Saldo')
+  let balanceCol: string | undefined;
+  for (let i = 0; i < lowerHeaders.length; i++) {
+    const h = lowerHeaders[i];
+    if (h.includes('disponible') || h.includes('saldo') || h.includes('balance')) {
+      // Evitar colisión si esa columna ya se asignó a importe o fecha o concepto
+      if (
+        headers[i] !== amountCol &&
+        headers[i] !== incomeCol &&
+        headers[i] !== expenseCol &&
+        headers[i] !== dateCol &&
+        headers[i] !== titleCol
+      ) {
+        balanceCol = headers[i];
+        break;
+      }
+    }
+  }
+
   // Fallbacks de columnas por índice si fuera necesario
   if (!dateCol && headers.length > 0) dateCol = headers[0];
   if (!titleCol && headers.length > 1) titleCol = headers[1];
   if (!amountCol && !incomeCol && headers.length > 2) {
-    // Buscar la primera columna que no sea date ni title
-    const available = headers.filter(h => h !== dateCol && h !== titleCol);
+    // Buscar la primera columna que no sea date ni title ni balance
+    const available = headers.filter(h => h !== dateCol && h !== titleCol && h !== balanceCol);
     amountCol = available.length > 0 ? available[0] : headers[Math.min(2, headers.length - 1)];
   }
 
@@ -573,7 +609,8 @@ export function parseStatementFile(
     titleCol: titleCol || headers[1] || 'Columna_2',
     amountCol: amountCol || headers[Math.min(2, headers.length - 1)] || 'Columna_3',
     incomeCol: incomeCol || undefined,
-    expenseCol: expenseCol || undefined
+    expenseCol: expenseCol || undefined,
+    balanceCol: balanceCol || undefined
   };
 
   // Deducir cuenta bancaria por IBAN o nombre del banco
@@ -675,6 +712,32 @@ export function parseStatementFile(
   // Muestra de primeras 5 filas para vista previa / configuración manual
   const rawPreviewRows = rawData.slice(headerRowIndex + 1, headerRowIndex + 6);
 
+  // Calcular delta neto de movimientos y detectar saldo final si existe
+  let netMovementDelta = 0;
+  let detectedStatementBalance: number | undefined;
+  let detectedStatementBalanceDate: string | undefined;
+  let latestTransactionDate: string | undefined;
+
+  for (const row of rows) {
+    if (row.type === 'income') {
+      netMovementDelta += row.amount;
+    } else {
+      netMovementDelta -= row.amount;
+    }
+  }
+
+  // Como rows está ordenado cronológicamente descendente, la primera fila es la más reciente
+  if (rows.length > 0) {
+    latestTransactionDate = rows[0].date;
+    for (const r of rows) {
+      if (r.balanceAfter !== undefined) {
+        detectedStatementBalance = r.balanceAfter;
+        detectedStatementBalanceDate = r.date;
+        break;
+      }
+    }
+  }
+
   return {
     fileName,
     sheetName: selectedSheetName,
@@ -685,6 +748,10 @@ export function parseStatementFile(
     suggestedAccountId,
     rawPreviewRows,
     rawData,
-    headerRowIndex
+    headerRowIndex,
+    detectedStatementBalance,
+    detectedStatementBalanceDate,
+    netMovementDelta: Math.round(netMovementDelta * 100) / 100,
+    latestTransactionDate
   };
 }

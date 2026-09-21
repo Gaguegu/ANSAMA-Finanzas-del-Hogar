@@ -419,7 +419,9 @@ export function importStatementTransactions(
   currentState: AppState,
   transactionsToImport: Array<Omit<Transaction, 'id'>>,
   accountId: string,
-  updateAccountBalance: boolean = false
+  updateAccountBalance: boolean = true,
+  explicitBalance?: number,
+  explicitBalanceDate?: string
 ): { newState: AppState; importedCount: number } {
   if (!transactionsToImport || transactionsToImport.length === 0) {
     return { newState: currentState, importedCount: 0 };
@@ -447,10 +449,25 @@ export function importStatementTransactions(
   });
 
   if (targetAcc && updateAccountBalance) {
-    if (targetAcc.type === 'credit') {
-      targetAcc.balance -= netBalanceDelta;
+    if (explicitBalance !== undefined && !isNaN(explicitBalance)) {
+      targetAcc.balance = Math.round(explicitBalance * 100) / 100;
+      targetAcc.balanceDate = explicitBalanceDate || new Date().toISOString().split('T')[0];
     } else {
-      targetAcc.balance += netBalanceDelta;
+      if (targetAcc.type === 'credit') {
+        targetAcc.balance = Math.round((targetAcc.balance - netBalanceDelta) * 100) / 100;
+      } else {
+        targetAcc.balance = Math.round((targetAcc.balance + netBalanceDelta) * 100) / 100;
+      }
+      // Actualizar la fecha del saldo al movimiento más reciente de los importados
+      let latestTxDate = explicitBalanceDate || '';
+      if (!latestTxDate && newTransactions.length > 0) {
+        latestTxDate = newTransactions.reduce((latest, tx) => {
+          return tx.date > latest ? tx.date : latest;
+        }, '');
+      }
+      if (latestTxDate) {
+        targetAcc.balanceDate = latestTxDate;
+      }
     }
     targetAcc.lastSynced = new Date().toISOString();
   }
@@ -478,5 +495,66 @@ export function importStatementTransactions(
 
   saveAppState(newState);
   return { newState, importedCount: newTransactions.length };
+}
+
+/**
+ * Recalcula el saldo de una cuenta a partir de los movimientos registrados
+ */
+export function recalculateAccountBalanceFromTransactions(
+  account: BankAccount,
+  transactions: Transaction[]
+): {
+  baseBalance: number;
+  baseDate: string;
+  calculatedBalance: number;
+  incomesTotal: number;
+  expensesTotal: number;
+  netDelta: number;
+  transactionCount: number;
+  latestTransactionDate: string;
+  hasNewerTransactions: boolean;
+} {
+  const accountTxs = transactions.filter((t) => t.accountId === account.id);
+  const baseDate = account.balanceDate || '';
+  
+  // Movimientos en la fecha del saldo o posteriores
+  const relevantTxs = baseDate
+    ? accountTxs.filter((t) => t.date >= baseDate)
+    : accountTxs;
+
+  const incomesTotal = relevantTxs
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const expensesTotal = relevantTxs
+    .filter((t) => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const netDelta = Math.round((incomesTotal - expensesTotal) * 100) / 100;
+
+  let calculatedBalance: number;
+  if (account.type === 'credit') {
+    calculatedBalance = Math.round((account.balance - netDelta) * 100) / 100;
+  } else {
+    calculatedBalance = Math.round((account.balance + netDelta) * 100) / 100;
+  }
+
+  const latestTransactionDate = accountTxs.length > 0
+    ? accountTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), '')
+    : baseDate || new Date().toISOString().split('T')[0];
+
+  const hasNewerTransactions = Boolean(baseDate && latestTransactionDate && latestTransactionDate > baseDate);
+
+  return {
+    baseBalance: account.balance,
+    baseDate,
+    calculatedBalance,
+    incomesTotal: Math.round(incomesTotal * 100) / 100,
+    expensesTotal: Math.round(expensesTotal * 100) / 100,
+    netDelta,
+    transactionCount: relevantTxs.length,
+    latestTransactionDate,
+    hasNewerTransactions
+  };
 }
 

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock, RotateCcw } from 'lucide-react';
-import { BankAccount, BankId, AccountType } from '../types';
-import { parseCurrencyInput, formatCurrency } from '../utils/storage';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock, RotateCcw, RefreshCw } from 'lucide-react';
+import { BankAccount, BankId, AccountType, Transaction } from '../types';
+import { parseCurrencyInput, formatCurrency, formatDate, recalculateAccountBalanceFromTransactions } from '../utils/storage';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface AccountModalProps {
   onDeleteAccount?: (id: string) => void;
   accountToEdit?: BankAccount | null;
   initialType?: AccountType;
+  transactions?: Transaction[];
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({
@@ -18,7 +19,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onSaveAccount,
   onDeleteAccount,
   accountToEdit,
-  initialType
+  initialType,
+  transactions
 }) => {
   const [bankId, setBankId] = useState<BankId | ''>('');
   const [customBankName, setCustomBankName] = useState('');
@@ -29,6 +31,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [balanceDate, setBalanceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const recalc = useMemo(() => {
+    if (!accountToEdit || !transactions) return null;
+    return recalculateAccountBalanceFromTransactions(accountToEdit, transactions);
+  }, [accountToEdit, transactions]);
 
   const resetFormToBlank = (targetType?: AccountType) => {
     setBankId('');
@@ -440,6 +447,36 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Sugerencia de saldo si hay movimientos registrados en la app */}
+          {recalc && recalc.transactionCount > 0 && (
+            <div className="p-3 bg-emerald-50/80 border border-emerald-300/80 rounded-2xl text-xs space-y-1.5 animate-in fade-in">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="font-bold text-emerald-950 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                    Saldo calculado según movimientos:
+                  </span>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Se han encontrado <strong className="font-bold">{recalc.transactionCount} movimientos</strong> desde el {accountToEdit?.balanceDate ? formatDate(accountToEdit.balanceDate) : 'inicio'}. Saldo resultante: <strong className="font-mono font-extrabold text-emerald-950">{formatCurrency(recalc.calculatedBalance)}</strong>
+                    {recalc.latestTransactionDate && ` (al ${formatDate(recalc.latestTransactionDate)})`}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBalanceStr(recalc.calculatedBalance.toString());
+                    if (recalc.latestTransactionDate) {
+                      setBalanceDate(recalc.latestTransactionDate);
+                    }
+                  }}
+                  className="shrink-0 px-2.5 py-1 text-[11px] font-bold text-white bg-[#0E6A3B] hover:bg-[#094d2a] rounded-lg shadow-2xs transition-colors cursor-pointer"
+                >
+                  Usar este saldo
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Nota explicativa de fecha para evitar confusión con saldos anteriores o posteriores */}
           <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/90 text-[11px] text-emerald-950 flex items-start gap-2">
