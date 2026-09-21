@@ -25,11 +25,15 @@ export interface StatementColumnMapping {
 
 export interface ParseResult {
   fileName: string;
+  sheetName: string;
   headers: string[];
   suggestedMapping: StatementColumnMapping;
   rows: ParsedStatementRow[];
   totalDetected: number;
   suggestedAccountId?: string;
+  rawPreviewRows: any[][];
+  rawData: any[][];
+  headerRowIndex: number;
 }
 
 // Palabras clave para categorización inteligente automática en España
@@ -116,38 +120,74 @@ export function guessCategory(text: string, amount: number, categories: Transact
 
 // Normaliza fechas en formato DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD o fechas seriales de Excel
 export function parseDateString(val: any): string | null {
-  if (!val) return null;
+  if (val === undefined || val === null || val === '') return null;
 
-  // Si viene como número serial de Excel (ej: 45320)
+  // Si viene como objeto Date nativo de JS
+  if (val instanceof Date) {
+    if (!isNaN(val.getTime())) {
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return null;
+  }
+
+  // Si viene como número serial de Excel (ej: 46286 para 2026-09-21)
   if (typeof val === 'number') {
-    const jsDate = XLSX.SSF.parse_date_code(val);
-    if (jsDate) {
-      const y = jsDate.y;
-      const m = String(jsDate.m).padStart(2, '0');
-      const d = String(jsDate.d).padStart(2, '0');
+    if (val > 20000 && val < 90000) {
+      const utcDate = new Date(Math.round((val - 25569) * 86400 * 1000));
+      const y = utcDate.getUTCFullYear();
+      const m = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(utcDate.getUTCDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     }
   }
 
-  const str = String(val).trim();
+  let str = String(val).trim();
+  if (!str) return null;
 
-  // YYYY-MM-DD
-  if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(str)) {
-    const parts = str.split(/[-/.]/);
-    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-  }
-
-  // DD/MM/YYYY o DD-MM-YYYY
-  if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$/.test(str)) {
-    const parts = str.split(/[-/.]/);
-    let year = parts[2];
+  // 1. Formato DD/MM/YYYY o DD-MM-YYYY o DD.MM.YYYY (incluso si tiene hora como 21/09/2026 17:18:52)
+  const dmyMatch = str.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
+  if (dmyMatch) {
+    let year = dmyMatch[3];
     if (year.length === 2) year = '20' + year;
-    const month = parts[1].padStart(2, '0');
-    const day = parts[0].padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const month = parseInt(dmyMatch[2], 10);
+    const day = parseInt(dmyMatch[1], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
   }
 
-  // Intentar con Date nativo
+  // 2. Formato YYYY-MM-DD o YYYY/MM/DD
+  const ymdMatch = str.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = parseInt(ymdMatch[2], 10);
+    const day = parseInt(ymdMatch[3], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // 3. Formato con mes en texto español (ej: 21-sep-2026 o 21 sep 2026)
+  const spanishMonths: Record<string, string> = {
+    ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
+    jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12'
+  };
+  const textMonthMatch = str.toLowerCase().match(/\b(\d{1,2})[-/\s]([a-z]{3,4})[-/\s](\d{2,4})\b/);
+  if (textMonthMatch) {
+    const day = parseInt(textMonthMatch[1], 10);
+    const monthStr = textMonthMatch[2].slice(0, 3);
+    let year = textMonthMatch[3];
+    if (year.length === 2) year = '20' + year;
+    const monthNum = spanishMonths[monthStr];
+    if (monthNum && day >= 1 && day <= 31) {
+      return `${year}-${monthNum}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // 4. Intentar con Date nativo
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
     const y = parsed.getFullYear();
@@ -159,16 +199,39 @@ export function parseDateString(val: any): string | null {
   return null;
 }
 
-// Normaliza números españoles: "1.234,56", "-50,20 €", "1234.56"
+// Normaliza números españoles: "1.234,56", "-50,20 €", "-42,50 EUR", "42,50-", "(42,50)"
 export function parseAmountNumber(val: any): number | null {
   if (val === undefined || val === null || val === '') return null;
   if (typeof val === 'number') return isNaN(val) ? null : val;
 
   let str = String(val).trim();
-  // Quitar símbolos de divisa y espacios
-  str = str.replace(/[€$£\s]/g, '');
-
   if (str === '' || str === '-') return null;
+
+  let isNegative = false;
+
+  // Detectar formato negativo con paréntesis contable: (42,50)
+  if (/^\(.*\)$/.test(str)) {
+    isNegative = true;
+    str = str.replace(/[()]/g, '');
+  }
+
+  // Detectar signos menos Unicode: − (U+2212), – (U+2013), — (U+2014)
+  str = str.replace(/[\u2212\u2013\u2014]/g, '-');
+
+  // Detectar signo menos al final: 42,50- o 42.50 -
+  if (/[-]$/.test(str.trim())) {
+    isNegative = true;
+    str = str.replace(/[-]$/, '').trim();
+  }
+
+  if (str.includes('-')) {
+    isNegative = true;
+    str = str.replace(/-/g, '');
+  }
+
+  // Quitar símbolos de divisa (EUR, €, $, etc.), letras y espacios
+  str = str.replace(/[€$£a-zA-Z\s]/g, '');
+  if (str === '') return null;
 
   // Si tiene tanto punto como coma, ej: 1.250,50 o 1,250.50
   if (str.includes('.') && str.includes(',')) {
@@ -185,7 +248,113 @@ export function parseAmountNumber(val: any): number | null {
   }
 
   const num = parseFloat(str);
-  return isNaN(num) ? null : num;
+  if (isNaN(num)) return null;
+  return isNegative ? -Math.abs(num) : num;
+}
+
+// Función pura para extraer movimientos con un mapeo de columnas específico
+export function extractRowsWithMapping(
+  rawData: any[][],
+  headers: string[],
+  headerRowIndex: number,
+  mapping: StatementColumnMapping,
+  categories: TransactionCategory[],
+  existingTransactions: Transaction[] = []
+): ParsedStatementRow[] {
+  const rows: ParsedStatementRow[] = [];
+  const dateIdx = headers.indexOf(mapping.dateCol);
+  const titleIdx = headers.indexOf(mapping.titleCol);
+  const amountIdx = headers.indexOf(mapping.amountCol);
+  const incomeIdx = mapping.incomeCol ? headers.indexOf(mapping.incomeCol) : -1;
+  const expenseIdx = mapping.expenseCol ? headers.indexOf(mapping.expenseCol) : -1;
+
+  for (let r = headerRowIndex + 1; r < rawData.length; r++) {
+    const rawRowArray = rawData[r];
+    if (!rawRowArray || rawRowArray.length === 0) continue;
+
+    // Verificar si la fila está completamente vacía
+    const hasAnyValue = rawRowArray.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== '');
+    if (!hasAnyValue) continue;
+
+    // Extraer fecha
+    const rawDateVal = dateIdx >= 0 ? rawRowArray[dateIdx] : null;
+    const parsedDate = parseDateString(rawDateVal);
+    if (!parsedDate) continue; // Si no hay fecha válida, probablemente sea un pie de página o saldo
+
+    // Extraer concepto
+    let title = titleIdx >= 0 ? String(rawRowArray[titleIdx] || '').trim() : '';
+    if (!title) {
+      title = 'Movimiento bancario';
+    }
+
+    // Extraer importe
+    let signedAmount: number | null = null;
+
+    if (incomeIdx >= 0 && expenseIdx >= 0) {
+      const incVal = parseAmountNumber(rawRowArray[incomeIdx]);
+      const expVal = parseAmountNumber(rawRowArray[expenseIdx]);
+
+      if (incVal !== null && incVal !== 0) {
+        signedAmount = Math.abs(incVal);
+      } else if (expVal !== null && expVal !== 0) {
+        signedAmount = -Math.abs(expVal);
+      }
+    }
+
+    if (signedAmount === null && amountIdx >= 0) {
+      signedAmount = parseAmountNumber(rawRowArray[amountIdx]);
+    }
+
+    // Si la columna seleccionada no tenía número, buscar en columnas adyacentes que sí tengan importe
+    if (signedAmount === null) {
+      for (let c = 0; c < rawRowArray.length; c++) {
+        if (c === dateIdx || c === titleIdx) continue;
+        const testNum = parseAmountNumber(rawRowArray[c]);
+        if (testNum !== null) {
+          signedAmount = testNum;
+          break;
+        }
+      }
+    }
+
+    if (signedAmount === null) continue;
+
+    const type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
+    const absAmount = Math.abs(signedAmount);
+    const suggestedCategory = guessCategory(title, signedAmount, categories);
+
+    // Detección de duplicado
+    const isDuplicate = existingTransactions.some((tx) => {
+      return (
+        tx.date === parsedDate &&
+        Math.abs(tx.amount - absAmount) < 0.01 &&
+        tx.type === type &&
+        tx.title.toLowerCase().trim() === title.toLowerCase().trim()
+      );
+    });
+
+    const rawRow: Record<string, any> = {};
+    headers.forEach((h, idx) => {
+      rawRow[h] = rawRowArray[idx] !== undefined ? rawRowArray[idx] : '';
+    });
+
+    rows.push({
+      id: `row-${r}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      originalIndex: r,
+      date: parsedDate,
+      title,
+      amount: absAmount,
+      type,
+      suggestedCategoryId: suggestedCategory,
+      rawRow,
+      selected: !isDuplicate,
+      isDuplicate
+    });
+  }
+
+  // Ordenar cronológicamente descendente
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  return rows;
 }
 
 // Analiza el contenido de un archivo (Buffer / ArrayBuffer)
@@ -196,51 +365,91 @@ export function parseStatementFile(
   existingAccounts: BankAccount[] = [],
   existingTransactions: Transaction[] = []
 ): ParseResult {
-  // Leer libro de trabajo con XLSX
-  const workbook = XLSX.read(fileData, { type: 'array', cellDates: false });
-  const firstSheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[firstSheetName];
-
-  // Convertir a matriz bidimensional de filas
-  const rawData: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-
-  if (!rawData || rawData.length === 0) {
-    throw new Error('El archivo está vacío o no tiene datos reconocibles.');
+  // Leer libro con cellDates: true para que XLSX parsee fechas nativas de Excel
+  const workbook = XLSX.read(fileData, { type: 'array', cellDates: true });
+  
+  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+    throw new Error('El archivo no contiene hojas de cálculo válidas.');
   }
 
-  // Buscar la fila de cabecera real
-  // Muchos bancos españoles (BBVA, CaixaBank, Santander) ponen las primeras 2-6 líneas con metadatos
-  let headerRowIndex = -1;
-  let headers: string[] = [];
+  // Encontrar la hoja con más datos
+  let selectedSheetName = workbook.SheetNames[0];
+  let rawData: any[][] = [];
 
-  const dateKeywords = ['fecha', 'f. operacion', 'f. oper', 'f. valor', 'f. valoracion', 'date', 'operación'];
-  const titleKeywords = ['concepto', 'descripcion', 'descripción', 'detalle', 'movimiento', 'concept', 'operacion', 'beneficiario'];
-  const amountKeywords = ['importe', 'cantidad', 'monto', 'saldo', 'cargo', 'abono', 'amount', 'movimiento'];
-
-  for (let r = 0; r < Math.min(rawData.length, 25); r++) {
-    const row = rawData[r].map((cell) => String(cell || '').toLowerCase().trim());
-    
-    const hasDate = row.some(cell => dateKeywords.some(kw => cell.includes(kw)));
-    const hasTitle = row.some(cell => titleKeywords.some(kw => cell.includes(kw)));
-    const hasAmount = row.some(cell => amountKeywords.some(kw => cell.includes(kw)));
-
-    if (hasDate && (hasTitle || hasAmount)) {
-      headerRowIndex = r;
-      headers = rawData[r].map((cell, idx) => {
-        const cleaned = String(cell || '').trim();
-        return cleaned !== '' ? cleaned : `Columna_${idx + 1}`;
-      });
-      break;
+  for (const sName of workbook.SheetNames) {
+    const s = workbook.Sheets[sName];
+    if (!s) continue;
+    const data: any[][] = XLSX.utils.sheet_to_json(s, { header: 1, defval: '' });
+    if (data.length > rawData.length) {
+      rawData = data;
+      selectedSheetName = sName;
     }
   }
 
-  // Si no se encontró cabecera con palabras clave, tomar la primera fila con más de 2 celdas con texto
+  if (!rawData || rawData.length === 0) {
+    throw new Error('La hoja de cálculo está vacía o no tiene datos reconocibles.');
+  }
+
+  // Función auxiliar de normalización sin acentos
+  const norm = (s: any) => 
+    String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  // Palabras clave bancarias
+  const dateKeywords = ['fecha', 'f.oper', 'f. oper', 'f.valor', 'f. valor', 'date', 'operacion', 'valoracion'];
+  const titleKeywords = ['concepto', 'descripcion', 'detalle', 'beneficiario', 'observacion', 'datos'];
+  const amountKeywords = ['importe', 'cargo', 'abono', 'monto', 'cantidad', 'saldo', 'haber', 'debe'];
+  const metaExcludeKeywords = ['extracto', 'titular', 'periodo', 'iban', 'nº de cuenta', 'nro cuenta', 'cuenta:'];
+
+  // Evaluar filas candidatas a cabecera
+  const candidateRows: Array<{ r: number; score: number; headers: string[] }> = [];
+
+  for (let r = 0; r < Math.min(rawData.length, 35); r++) {
+    const row = rawData[r];
+    if (!row || row.length === 0) continue;
+    
+    const nonEmpties = row.filter(c => String(c || '').trim() !== '');
+    if (nonEmpties.length < 2) continue;
+
+    const rowNormalized = row.map(norm);
+    let score = 0;
+
+    const hasDate = rowNormalized.some(c => dateKeywords.some(kw => c.includes(kw)));
+    const hasTitle = rowNormalized.some(c => titleKeywords.some(kw => c.includes(kw)));
+    const hasAmount = rowNormalized.some(c => amountKeywords.some(kw => c.includes(kw)));
+    const isMetadata = rowNormalized.some(c => metaExcludeKeywords.some(kw => c.includes(kw)));
+
+    if (hasDate) score += 3;
+    if (hasTitle) score += 3;
+    if (hasAmount) score += 3;
+    if (rowNormalized.some(c => c.includes('divisa') || c.includes('disponible') || c.includes('movimiento'))) score += 1;
+    if (isMetadata && nonEmpties.length < 4) score -= 4;
+
+    if (score >= 4 || (hasDate && (hasTitle || hasAmount))) {
+      const hdrs = row.map((cell, idx) => {
+        const cleaned = String(cell || '').trim();
+        return cleaned !== '' ? cleaned : `Columna_${idx + 1}`;
+      });
+      candidateRows.push({ r, score, headers: hdrs });
+    }
+  }
+
+  // Ordenar candidatas por mayor puntuación
+  candidateRows.sort((a, b) => b.score - a.score);
+
+  let headerRowIndex = candidateRows.length > 0 ? candidateRows[0].r : -1;
+  let headers: string[] = candidateRows.length > 0 ? candidateRows[0].headers : [];
+
+  // Si no se encontró por palabras clave, buscar la primera fila con 3 o más columnas con texto
   if (headerRowIndex === -1) {
     for (let r = 0; r < Math.min(rawData.length, 10); r++) {
-      const nonEmpties = rawData[r].filter(c => String(c).trim() !== '');
+      const nonEmpties = rawData[r].filter(c => String(c || '').trim() !== '');
       if (nonEmpties.length >= 3) {
         headerRowIndex = r;
-        headers = rawData[r].map((c, idx) => String(c).trim() || `Columna_${idx + 1}`);
+        headers = rawData[r].map((c, idx) => String(c || '').trim() || `Columna_${idx + 1}`);
         break;
       }
     }
@@ -248,7 +457,7 @@ export function parseStatementFile(
 
   if (headerRowIndex === -1) {
     headerRowIndex = 0;
-    headers = (rawData[0] || []).map((c, idx) => String(c).trim() || `Columna_${idx + 1}`);
+    headers = (rawData[0] || []).map((c, idx) => String(c || '').trim() || `Columna_${idx + 1}`);
   }
 
   // Detectar columnas sugeridas
@@ -258,12 +467,12 @@ export function parseStatementFile(
   let incomeCol = '';
   let expenseCol = '';
 
-  const lowerHeaders = headers.map(h => h.toLowerCase());
+  const lowerHeaders = headers.map(h => norm(h));
 
-  // Fecha
+  // 1. FECHA: Priorizar 'f. oper', 'f.oper', 'fecha operacion', 'fecha'
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('f. operacion') || h.includes('f. oper') || h === 'fecha' || h.startsWith('fecha op')) {
+    if (h.includes('f.oper') || h.includes('f. oper') || h.includes('fecha oper') || h === 'fecha') {
       dateCol = headers[i];
       break;
     }
@@ -277,10 +486,10 @@ export function parseStatementFile(
     }
   }
 
-  // Concepto / Título
+  // 2. CONCEPTO: Priorizar 'concepto', 'descripcion', 'detalle'
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('concepto') || h.includes('descripcion') || h.includes('descripción') || h.includes('detalle')) {
+    if (h.includes('concepto') || h.includes('descripcion') || h.includes('detalle')) {
       titleCol = headers[i];
       break;
     }
@@ -294,7 +503,7 @@ export function parseStatementFile(
     }
   }
 
-  // Columnas separadas de Ingreso y Gasto (comunes en algunos bancos)
+  // 3. COLUMNAS SEPARADAS DE INGRESO / GASTO
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
     if (h.includes('abono') || h.includes('ingreso') || h.includes('haber')) {
@@ -305,57 +514,91 @@ export function parseStatementFile(
     }
   }
 
-  // Si no hay columnas separadas, buscar columna única de Importe
+  // 4. IMPORTE ÚNICO:
+  // IMPORTANTE: 'Importe' siempre tiene prioridad sobre 'Movimiento' (en BBVA 'Movimiento' es el tipo de operación en texto)
   if (!incomeCol || !expenseCol) {
+    // Primero buscar explícitamente 'importe', 'monto', 'cantidad'
     for (let i = 0; i < lowerHeaders.length; i++) {
       const h = lowerHeaders[i];
-      if (h.includes('importe') || h.includes('monto') || h.includes('cantidad') || h === 'movimiento') {
+      if (h.includes('importe') || h.includes('monto') || h.includes('cantidad')) {
         amountCol = headers[i];
         break;
       }
     }
+
+    // Si aún no se encontró, probar qué columna en las filas siguientes contiene números reales
+    if (!amountCol) {
+      for (let i = 0; i < headers.length; i++) {
+        if (headers[i] === dateCol || headers[i] === titleCol) continue;
+        // Testear las primeras 5 filas con datos
+        let numericCount = 0;
+        let testRows = 0;
+        for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 6); r++) {
+          if (!rawData[r] || rawData[r].length <= i) continue;
+          testRows++;
+          if (parseAmountNumber(rawData[r][i]) !== null) {
+            numericCount++;
+          }
+        }
+        if (testRows > 0 && numericCount / testRows >= 0.6) {
+          amountCol = headers[i];
+          break;
+        }
+      }
+    }
+
+    // Fallback final a palabras como movimiento o saldo
+    if (!amountCol) {
+      for (let i = 0; i < lowerHeaders.length; i++) {
+        const h = lowerHeaders[i];
+        if (h.includes('movimiento') || h.includes('saldo')) {
+          amountCol = headers[i];
+          break;
+        }
+      }
+    }
   }
 
-  // Si no detectó Fecha o Concepto o Importe, usar índices por defecto
+  // Fallbacks de columnas por índice si fuera necesario
   if (!dateCol && headers.length > 0) dateCol = headers[0];
   if (!titleCol && headers.length > 1) titleCol = headers[1];
-  if (!amountCol && !incomeCol && headers.length > 2) amountCol = headers[2];
+  if (!amountCol && !incomeCol && headers.length > 2) {
+    // Buscar la primera columna que no sea date ni title
+    const available = headers.filter(h => h !== dateCol && h !== titleCol);
+    amountCol = available.length > 0 ? available[0] : headers[Math.min(2, headers.length - 1)];
+  }
 
   const suggestedMapping: StatementColumnMapping = {
-    dateCol,
-    titleCol,
-    amountCol: amountCol || headers[Math.min(2, headers.length - 1)],
+    dateCol: dateCol || headers[0] || 'Columna_1',
+    titleCol: titleCol || headers[1] || 'Columna_2',
+    amountCol: amountCol || headers[Math.min(2, headers.length - 1)] || 'Columna_3',
     incomeCol: incomeCol || undefined,
     expenseCol: expenseCol || undefined
   };
 
-  // Intentar deducir la cuenta bancaria si el archivo o los metadatos iniciales mencionan el banco o IBAN
+  // Deducir cuenta bancaria por IBAN o nombre del banco
   let suggestedAccountId: string | undefined;
-  const rawTextSnippet = (fileName + ' ' + rawData.slice(0, 15).map(r => r.join(' ')).join(' ')).toLowerCase();
+  const rawTextSnippet = (fileName + ' ' + rawData.slice(0, 20).map(r => (r || []).join(' ')).join(' ')).toLowerCase();
   const normalizedSnippet = rawTextSnippet.replace(/[\s\-_.]+/g, '');
 
-  // 1. Buscar coincidencia exacta por IBAN o número de cuenta
   for (const acc of existingAccounts) {
     const rawIban = acc.iban ? acc.iban.toLowerCase().replace(/[\s\-_.]+/g, '') : '';
     const lastDigits = acc.accountNumberMasked.replace(/\D/g, '');
     
-    // Coincidencia con IBAN completo o los últimos 10-12 dígitos del IBAN
     if (rawIban.length >= 8 && (normalizedSnippet.includes(rawIban) || normalizedSnippet.includes(rawIban.slice(-10)))) {
       suggestedAccountId = acc.id;
       break;
     }
 
-    // Coincidencia con los últimos 4 o más dígitos enmascarados
     if (lastDigits.length >= 4 && (rawTextSnippet.includes(lastDigits) || normalizedSnippet.includes(lastDigits))) {
       suggestedAccountId = acc.id;
       break;
     }
   }
 
-  // 2. Si aún no hay cuenta sugerida, buscar por nombre o identificador de entidad bancaria
   if (!suggestedAccountId) {
     const bankKeywordsMap: Record<string, string[]> = {
-      bbva: ['bbva', 'banco bilbao'],
+      bbva: ['bbva', 'banco bilbao', 'últimos movimientos'],
       santander: ['santander', 'banco santander', 'openbank'],
       caixabank: ['caixa', 'caixabank', 'la caixa', 'imagin', 'bankia'],
       ing: ['ing', 'ing direct', 'cuenta nomina ing', 'cuenta naranja'],
@@ -383,92 +626,65 @@ export function parseStatementFile(
     }
   }
 
-  // Parsear filas de datos
-  const rows: ParsedStatementRow[] = [];
-  const dateIdx = headers.indexOf(suggestedMapping.dateCol);
-  const titleIdx = headers.indexOf(suggestedMapping.titleCol);
-  const amountIdx = headers.indexOf(suggestedMapping.amountCol);
-  const incomeIdx = suggestedMapping.incomeCol ? headers.indexOf(suggestedMapping.incomeCol) : -1;
-  const expenseIdx = suggestedMapping.expenseCol ? headers.indexOf(suggestedMapping.expenseCol) : -1;
+  // Extraer movimientos usando la función pura
+  let rows = extractRowsWithMapping(
+    rawData,
+    headers,
+    headerRowIndex,
+    suggestedMapping,
+    categories,
+    existingTransactions
+  );
 
-  for (let r = headerRowIndex + 1; r < rawData.length; r++) {
-    const rawRowArray = rawData[r];
-    if (!rawRowArray || rawRowArray.length === 0) continue;
+  // Si con la primera fila candidata salieron 0 movimientos y hay más candidatas, probar la siguiente
+  if (rows.length === 0 && candidateRows.length > 1) {
+    for (let c = 1; c < candidateRows.length; c++) {
+      const nextCandidate = candidateRows[c];
+      const nextHeaders = nextCandidate.headers;
+      const nextDateCol = nextHeaders.find(h => norm(h).includes('fecha') || norm(h).includes('f.oper')) || nextHeaders[0];
+      const nextTitleCol = nextHeaders.find(h => norm(h).includes('concepto') || norm(h).includes('descrip')) || nextHeaders[1];
+      const nextAmountCol = nextHeaders.find(h => norm(h).includes('importe') || norm(h).includes('monto') || norm(h).includes('cantidad')) || nextHeaders[2];
 
-    // Objeto con los nombres de cabecera
-    const rawRow: Record<string, any> = {};
-    headers.forEach((h, idx) => {
-      rawRow[h] = rawRowArray[idx] !== undefined ? rawRowArray[idx] : '';
-    });
+      const nextMapping: StatementColumnMapping = {
+        dateCol: nextDateCol,
+        titleCol: nextTitleCol,
+        amountCol: nextAmountCol
+      };
 
-    // Extraer fecha
-    const rawDateVal = dateIdx >= 0 ? rawRowArray[dateIdx] : null;
-    const parsedDate = parseDateString(rawDateVal);
-    if (!parsedDate) continue; // Si la fila no tiene una fecha válida, probablemente sea un pie de página o saldo
+      const testRows = extractRowsWithMapping(
+        rawData,
+        nextHeaders,
+        nextCandidate.r,
+        nextMapping,
+        categories,
+        existingTransactions
+      );
 
-    // Extraer concepto
-    let title = titleIdx >= 0 ? String(rawRowArray[titleIdx] || '').trim() : '';
-    if (!title) {
-      title = 'Movimiento bancario';
-    }
-
-    // Extraer importe
-    let signedAmount: number | null = null;
-
-    if (incomeIdx >= 0 && expenseIdx >= 0) {
-      const incVal = parseAmountNumber(rawRowArray[incomeIdx]);
-      const expVal = parseAmountNumber(rawRowArray[expenseIdx]);
-
-      if (incVal !== null && incVal !== 0) {
-        signedAmount = Math.abs(incVal);
-      } else if (expVal !== null && expVal !== 0) {
-        signedAmount = -Math.abs(expVal);
+      if (testRows.length > 0) {
+        headerRowIndex = nextCandidate.r;
+        headers = nextHeaders;
+        suggestedMapping.dateCol = nextDateCol;
+        suggestedMapping.titleCol = nextTitleCol;
+        suggestedMapping.amountCol = nextAmountCol;
+        rows = testRows;
+        break;
       }
     }
-
-    if (signedAmount === null && amountIdx >= 0) {
-      signedAmount = parseAmountNumber(rawRowArray[amountIdx]);
-    }
-
-    if (signedAmount === null) continue; // Si no hay importe válido, omitir
-
-    const type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
-    const absAmount = Math.abs(signedAmount);
-    const suggestedCategory = guessCategory(title, signedAmount, categories);
-
-    // Detección de duplicado contra los movimientos ya existentes en la app
-    const isDuplicate = existingTransactions.some((tx) => {
-      return (
-        tx.date === parsedDate &&
-        Math.abs(tx.amount - absAmount) < 0.01 &&
-        tx.type === type &&
-        tx.title.toLowerCase().trim() === title.toLowerCase().trim()
-      );
-    });
-
-    rows.push({
-      id: `row-${r}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      originalIndex: r,
-      date: parsedDate,
-      title,
-      amount: absAmount,
-      type,
-      suggestedCategoryId: suggestedCategory,
-      rawRow,
-      selected: !isDuplicate, // Si es duplicado, desmarcarlo por defecto para no duplicar
-      isDuplicate
-    });
   }
 
-  // Ordenar cronológicamente descendente (más recientes primero)
-  rows.sort((a, b) => b.date.localeCompare(a.date));
+  // Muestra de primeras 5 filas para vista previa / configuración manual
+  const rawPreviewRows = rawData.slice(headerRowIndex + 1, headerRowIndex + 6);
 
   return {
     fileName,
+    sheetName: selectedSheetName,
     headers,
     suggestedMapping,
     rows,
     totalDetected: rows.length,
-    suggestedAccountId
+    suggestedAccountId,
+    rawPreviewRows,
+    rawData,
+    headerRowIndex
   };
 }

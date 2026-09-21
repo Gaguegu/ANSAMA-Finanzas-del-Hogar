@@ -11,13 +11,18 @@ import {
   Info,
   Check,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { BankAccount, TransactionCategory, Transaction } from '../types';
 import { 
   parseStatementFile, 
+  extractRowsWithMapping,
   ParseResult, 
-  ParsedStatementRow 
+  ParsedStatementRow,
+  StatementColumnMapping 
 } from '../utils/statementParser';
 import { formatCurrency } from '../utils/storage';
 
@@ -46,6 +51,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [currentMapping, setCurrentMapping] = useState<StatementColumnMapping | null>(null);
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(initialAccountId || '');
   const [updateBalance, setUpdateBalance] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -79,14 +86,17 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
         existingTransactions
       );
 
-      if (result.rows.length === 0) {
-        setErrorMsg('No se detectaron movimientos válidos en el archivo. Asegúrate de que contenga columnas de Fecha, Concepto e Importe.');
-        return;
-      }
-
       setFile(selectedFile);
       setParseResult(result);
+      setCurrentMapping(result.suggestedMapping);
       setRows(result.rows);
+
+      if (result.rows.length === 0) {
+        setShowColumnConfig(true);
+        setErrorMsg('No se detectaron movimientos automáticamente. Revisa y selecciona las columnas correspondientes abajo.');
+      } else {
+        setShowColumnConfig(false);
+      }
 
       if (result.suggestedAccountId) {
         setSelectedAccountId(result.suggestedAccountId);
@@ -96,6 +106,27 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || 'Error al leer el archivo. Comprueba que sea un archivo Excel (.xlsx, .xls) o CSV válido.');
+    }
+  };
+
+  const handleUpdateMapping = (newMapping: StatementColumnMapping) => {
+    setCurrentMapping(newMapping);
+    if (!parseResult) return;
+
+    const newRows = extractRowsWithMapping(
+      parseResult.rawData,
+      parseResult.headers,
+      parseResult.headerRowIndex,
+      newMapping,
+      categories,
+      existingTransactions
+    );
+
+    setRows(newRows);
+    if (newRows.length > 0) {
+      setErrorMsg(null);
+    } else {
+      setErrorMsg('No se encontraron importes válidos con las columnas seleccionadas.');
     }
   };
 
@@ -173,6 +204,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
   const handleReset = () => {
     setFile(null);
     setParseResult(null);
+    setCurrentMapping(null);
+    setShowColumnConfig(false);
     setRows([]);
     setErrorMsg(null);
   };
@@ -196,7 +229,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                 Importar Extracto Bancario Real
               </h3>
               <p className="text-[11px] text-zinc-500 font-medium">
-                Sube tu archivo de Excel (.xlsx, .xls) o CSV descargado de tu banco
+                Compatible con BBVA, Santander, CaixaBank, ING, Sabadell y todos los bancos (.xlsx, .xls, .csv)
               </p>
             </div>
           </div>
@@ -212,8 +245,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -240,7 +273,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                     Arrastra aquí tu extracto de banco o haz clic para examinar
                   </h4>
                   <p className="text-xs text-zinc-500 mt-1">
-                    Formatos compatibles: <strong>Excel (.xlsx, .xls)</strong> y archivos de texto <strong>CSV</strong>
+                    Formatos compatibles: <strong>Excel (.xlsx, .xls)</strong> y archivos <strong>CSV</strong>
                   </p>
                 </div>
                 <button
@@ -266,11 +299,11 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                   ¿Cómo descargar el extracto desde tu banca online?
                 </div>
                 <p className="leading-relaxed">
-                  Entra a la web o app de tu entidad (<strong>BBVA, Santander, CaixaBank, Openbank, ING, Sabadell, Bankinter, MyInvestor, etc.</strong>), dirígete a la sección de <em>Cuentas &gt; Movimientos</em> y pulsa en el botón <strong>«Descargar»</strong> o <strong>«Exportar a Excel / CSV»</strong>.
+                  Entra a tu banco (<strong>BBVA, Santander, CaixaBank, ING, Openbank, Sabadell, Bankinter, MyInvestor, etc.</strong>), dirígete a <em>Cuentas &gt; Movimientos</em> y pulsa en <strong>«Descargar»</strong> o <strong>«Exportar a Excel / CSV»</strong>.
                 </p>
                 <div className="flex items-center gap-2 text-[11px] text-emerald-800 font-semibold pt-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  La lectura se hace 100% en tu ordenador. Ningún dato viaja a servidores externos.
+                  La lectura se procesa 100% en tu navegador de forma privada y segura.
                 </div>
               </div>
             </div>
@@ -330,7 +363,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                 </div>
               </div>
 
-              {/* Estadísticas de detección */}
+              {/* Estadísticas de detección y botón de configuración de columnas */}
               <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs">
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet className="w-4 h-4 text-[#0E6A3B]" />
@@ -346,33 +379,113 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                   </span>
                 )}
 
-                <div className="flex items-center gap-1.5 ml-auto">
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowColumnConfig(prev => !prev)}
+                    className="text-[11px] font-bold text-emerald-900 bg-emerald-100/80 hover:bg-emerald-200/80 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3 h-3 text-[#0E6A3B]" />
+                    <span>Ajustar columnas</span>
+                    {showColumnConfig ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  <span className="text-zinc-300">|</span>
+
                   <button
                     type="button"
                     onClick={() => handleSelectAll(true)}
-                    className="text-[11px] font-bold text-[#0E6A3B] hover:underline px-2 py-0.5"
+                    className="text-[11px] font-bold text-[#0E6A3B] hover:underline px-1.5 py-0.5"
                   >
-                    Marcar todos
+                    Todos
                   </button>
-                  <span className="text-zinc-300">|</span>
                   <button
                     type="button"
                     onClick={() => handleSelectAll(false)}
-                    className="text-[11px] font-bold text-zinc-600 hover:underline px-2 py-0.5"
+                    className="text-[11px] font-bold text-zinc-600 hover:underline px-1.5 py-0.5"
                   >
-                    Desmarcar todos
+                    Ninguno
                   </button>
                   <span className="text-zinc-300">|</span>
                   <button
                     type="button"
                     onClick={handleReset}
-                    className="text-[11px] font-bold text-zinc-600 hover:text-zinc-900 px-2 py-0.5 flex items-center gap-1"
+                    className="text-[11px] font-bold text-zinc-600 hover:text-zinc-900 px-1.5 py-0.5 flex items-center gap-1"
                   >
                     <RotateCcw className="w-3 h-3" />
                     Cambiar archivo
                   </button>
                 </div>
               </div>
+
+              {/* Panel de Configuración Manual de Columnas (desplegable) */}
+              {showColumnConfig && currentMapping && (
+                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                      Configuración de columnas del extracto
+                    </h5>
+                    <span className="text-[11px] text-zinc-500">
+                      Hoja: <strong>{parseResult.sheetName}</strong> (Fila cabecera #{parseResult.headerRowIndex + 1})
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Columna Fecha */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                        Columna de Fecha:
+                      </label>
+                      <select
+                        value={currentMapping.dateCol}
+                        onChange={(e) => handleUpdateMapping({ ...currentMapping, dateCol: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                      >
+                        {parseResult.headers.map((h, i) => (
+                          <option key={i} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Columna Concepto */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                        Columna de Concepto / Título:
+                      </label>
+                      <select
+                        value={currentMapping.titleCol}
+                        onChange={(e) => handleUpdateMapping({ ...currentMapping, titleCol: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                      >
+                        {parseResult.headers.map((h, i) => (
+                          <option key={i} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Columna Importe */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                        Columna de Importe:
+                      </label>
+                      <select
+                        value={currentMapping.amountCol}
+                        onChange={(e) => handleUpdateMapping({ ...currentMapping, amountCol: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                      >
+                        {parseResult.headers.map((h, i) => (
+                          <option key={i} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-500">
+                    Cambiar las columnas recalculará los movimientos en tiempo real.
+                  </p>
+                </div>
+              )}
 
               {/* Tabla con scroll de movimientos detectados */}
               <div className="border border-zinc-200 rounded-2xl overflow-hidden shadow-2xs bg-white max-h-[380px] overflow-y-auto">
@@ -482,3 +595,4 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
     </div>
   );
 };
+
