@@ -7,7 +7,8 @@ import {
   Building2, 
   Sparkles,
   ArrowRight,
-  Clock
+  Clock,
+  FileSpreadsheet
 } from 'lucide-react';
 import { BankSyncResult } from '../types';
 import { formatCurrency, formatRelativeTime } from '../utils/storage';
@@ -17,13 +18,15 @@ interface SyncModalProps {
   onClose: () => void;
   onExecuteSync: (bankId?: 'bbva' | 'santander', fromDate?: string) => Promise<{ results: BankSyncResult[]; addedCount: number }>;
   lastGlobalSync: string;
+  onOpenImportModal?: () => void;
 }
 
 export const SyncModal: React.FC<SyncModalProps> = ({
   isOpen,
   onClose,
   onExecuteSync,
-  lastGlobalSync
+  lastGlobalSync,
+  onOpenImportModal
 }) => {
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'completed'>('idle');
   const [selectedTarget, setSelectedTarget] = useState<'all' | 'bbva' | 'santander'>('all');
@@ -112,12 +115,42 @@ export const SyncModal: React.FC<SyncModalProps> = ({
         <div className="p-6">
           {syncState === 'idle' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 leading-relaxed">
-                <p className="font-bold flex items-center gap-1.5 mb-1 text-emerald-900">
-                  <ShieldCheck className="w-4 h-4 text-[#0E6A3B] shrink-0" />
-                  Conexión Simulada Segura
+              
+              {/* Opción destacada: Cargar movimientos reales con Excel/CSV */}
+              {onOpenImportModal && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-[#0E6A3B]/40 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#0E6A3B] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <FileSpreadsheet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-emerald-950">
+                        ¿Quieres cargar tus movimientos reales?
+                      </h4>
+                      <p className="text-[11px] text-emerald-800 font-medium leading-normal">
+                        Importa directamente el archivo Excel (.xlsx) o CSV descargado de BBVA, Santander, CaixaBank, Openbank u otro banco.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenImportModal();
+                    }}
+                    className="w-full sm:w-auto px-3.5 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all shadow-xs shrink-0 cursor-pointer text-center"
+                  >
+                    Importar Extracto Real
+                  </button>
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-700 leading-relaxed">
+                <p className="font-bold flex items-center gap-1.5 mb-1 text-zinc-900">
+                  <ShieldCheck className="w-4 h-4 text-zinc-600 shrink-0" />
+                  Sincronización de Demostración (Simulada)
                 </p>
-                Esta función simula la descarga automática de extractos bancarios de tus cuentas de <strong>BBVA</strong> y <strong>Banco Santander</strong>, incorporando nuevos movimientos simulados y actualizando tus saldos locales sin exponer credenciales reales.
+                Esta opción genera movimientos ficticios de prueba para comprobar el funcionamiento visual de la interfaz. Si deseas tus datos reales, utiliza el botón superior de <strong>Importar Extracto Real</strong>.
               </div>
 
               {/* Target Bank Selection */}

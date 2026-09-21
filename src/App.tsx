@@ -4,6 +4,7 @@ import {
   loadAppState, 
   saveAppState, 
   simulateBankSync, 
+  importStatementTransactions,
   formatCurrency,
   formatRelativeTime 
 } from './utils/storage';
@@ -22,6 +23,7 @@ import { SyncModal } from './components/SyncModal';
 import { AccountModal } from './components/AccountModal';
 import { SettingsModal } from './components/SettingsModal';
 import { InstallModal } from './components/InstallModal';
+import { ImportStatementModal } from './components/ImportStatementModal';
 import { MobileNav } from './components/MobileNav';
 import { LockScreen } from './components/LockScreen';
 import { AutoUpdateNotification } from './components/AutoUpdateNotification';
@@ -33,6 +35,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [importTargetAccountId, setImportTargetAccountId] = useState<string | undefined>(undefined);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState<boolean>(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
@@ -153,6 +157,32 @@ export default function App() {
     setAppState(newState);
     saveAppState(newState);
     triggerNotification('Movimiento eliminado y saldo restaurado.');
+  };
+
+  const handleOpenImportModal = (targetAccountId?: string) => {
+    setImportTargetAccountId(targetAccountId);
+    setIsImportModalOpen(true);
+  };
+
+  // Import Real Statement Transactions (Excel / CSV)
+  const handleImportTransactions = (
+    transactions: Array<Omit<Transaction, 'id'>>,
+    accountId: string,
+    updateBalance: boolean
+  ) => {
+    const { newState, importedCount } = importStatementTransactions(
+      appState,
+      transactions,
+      accountId,
+      updateBalance
+    );
+    setAppState(newState);
+    saveAppState(newState);
+    const targetAcc = appState.accounts.find((a) => a.id === accountId);
+    const bankName = targetAcc ? `${targetAcc.bankName} (${targetAcc.accountName})` : 'tu cuenta';
+    triggerNotification(
+      `¡Éxito! Se han importado ${importedCount} movimientos reales en ${bankName}.`
+    );
   };
 
   // Save (add or update) account
@@ -446,6 +476,7 @@ export default function App() {
         isSyncing={isSyncing}
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
         onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+        onOpenImportModal={() => handleOpenImportModal()}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -503,6 +534,7 @@ export default function App() {
                   }}
                   onDeleteAccount={handleDeleteAccount}
                   onDeleteBank={handleDeleteBank}
+                  onOpenImportModal={handleOpenImportModal}
                   isSyncing={isSyncing}
                 />
               </div>
@@ -523,6 +555,7 @@ export default function App() {
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenImportModal={() => setIsImportModalOpen(true)}
             />
           </div>
         )}
@@ -542,6 +575,7 @@ export default function App() {
               }}
               onDeleteAccount={handleDeleteAccount}
               onDeleteBank={handleDeleteBank}
+              onOpenImportModal={handleOpenImportModal}
               isSyncing={isSyncing}
             />
 
@@ -551,6 +585,7 @@ export default function App() {
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenImportModal={() => handleOpenImportModal()}
             />
           </div>
         )}
@@ -569,6 +604,7 @@ export default function App() {
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenImportModal={() => setIsImportModalOpen(true)}
             />
           </div>
         )}
@@ -582,6 +618,7 @@ export default function App() {
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenImportModal={() => setIsImportModalOpen(true)}
             />
           </div>
         )}
@@ -658,6 +695,20 @@ export default function App() {
         onClose={() => setIsSyncModalOpen(false)}
         onExecuteSync={handleExecuteSync}
         lastGlobalSync={appState.lastGlobalSync}
+        onOpenImportModal={() => setIsImportModalOpen(true)}
+      />
+
+      <ImportStatementModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportTargetAccountId(undefined);
+        }}
+        accounts={appState.accounts}
+        categories={appState.categories}
+        existingTransactions={appState.transactions}
+        initialAccountId={importTargetAccountId}
+        onImport={handleImportTransactions}
       />
 
       <AccountModal

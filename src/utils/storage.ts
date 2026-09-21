@@ -414,3 +414,69 @@ export async function simulateBankSync(
   saveAppState(newState);
   return { newState, results, addedCount: totalNewAdded };
 }
+
+export function importStatementTransactions(
+  currentState: AppState,
+  transactionsToImport: Array<Omit<Transaction, 'id'>>,
+  accountId: string,
+  updateAccountBalance: boolean = false
+): { newState: AppState; importedCount: number } {
+  if (!transactionsToImport || transactionsToImport.length === 0) {
+    return { newState: currentState, importedCount: 0 };
+  }
+
+  const accountsCopy = [...currentState.accounts];
+  const targetAcc = accountsCopy.find((a) => a.id === accountId);
+
+  let netBalanceDelta = 0;
+  const newTransactions: Transaction[] = transactionsToImport.map((item, idx) => {
+    const txId = `tx-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    if (item.type === 'income') {
+      netBalanceDelta += item.amount;
+    } else {
+      netBalanceDelta -= item.amount;
+    }
+
+    return {
+      ...item,
+      id: txId,
+      accountId: accountId,
+      isSimulated: false
+    };
+  });
+
+  if (targetAcc && updateAccountBalance) {
+    if (targetAcc.type === 'credit') {
+      targetAcc.balance -= netBalanceDelta;
+    } else {
+      targetAcc.balance += netBalanceDelta;
+    }
+    targetAcc.lastSynced = new Date().toISOString();
+  }
+
+  // Detección automática de Rendimientos (intereses / dividendos)
+  const currentYields = currentState.yieldRecords || [];
+  const newAutoYields: YieldRecord[] = [];
+
+  for (const tx of newTransactions) {
+    const detected = detectYieldFromTransaction(tx);
+    if (detected) {
+      const alreadyExists = currentYields.some((y) => y.transactionId === tx.id);
+      if (!alreadyExists) {
+        newAutoYields.push(createAutoYieldRecord(tx, detected));
+      }
+    }
+  }
+
+  const newState: AppState = {
+    ...currentState,
+    accounts: accountsCopy,
+    transactions: [...newTransactions, ...currentState.transactions],
+    yieldRecords: [...newAutoYields, ...currentYields]
+  };
+
+  saveAppState(newState);
+  return { newState, importedCount: newTransactions.length };
+}
+

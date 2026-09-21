@@ -10,7 +10,8 @@ import {
   Building,
   RotateCcw,
   FileText,
-  Plus
+  Plus,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate } from '../utils/storage';
@@ -21,6 +22,7 @@ interface TransactionsTableProps {
   categories: TransactionCategory[];
   onDeleteTransaction: (id: string) => void;
   onOpenNewTransactionModal: () => void;
+  onOpenImportModal?: () => void;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
@@ -28,7 +30,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   accounts,
   categories,
   onDeleteTransaction,
-  onOpenNewTransactionModal
+  onOpenNewTransactionModal,
+  onOpenImportModal
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBank, setFilterBank] = useState<string>('all');
@@ -39,6 +42,17 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     const map = new Map<string, BankAccount>();
     accounts.forEach((a) => map.set(a.id, a));
     return map;
+  }, [accounts]);
+
+  // Lista única de bancos disponibles
+  const availableBanks = useMemo(() => {
+    const bankSet = new Map<string, string>();
+    accounts.forEach((acc) => {
+      if (!bankSet.has(acc.bankId)) {
+        bankSet.set(acc.bankId, acc.bankName);
+      }
+    });
+    return Array.from(bankSet.entries()).map(([id, name]) => ({ id, name }));
   }, [accounts]);
 
   const categoryMap = useMemo(() => {
@@ -97,17 +111,32 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             </span>
           </div>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Extracto de cuentas BBVA, Santander y operaciones registradas
+            Extracto de cuentas bancarias y operaciones registradas
           </p>
         </div>
 
-        <button
-          onClick={onOpenNewTransactionModal}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all cursor-pointer self-start md:self-auto shadow-2xs active:scale-95"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Añadir Movimiento
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenImportModal && (
+            <button
+              id="btn-import-statement"
+              onClick={onOpenImportModal}
+              title="Importar extracto en Excel (.xlsx) o CSV descargado de tu banco"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#0E6A3B]" />
+              Importar Extracto (Excel/CSV)
+            </button>
+          )}
+
+          <button
+            id="btn-add-transaction-table"
+            onClick={onOpenNewTransactionModal}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Añadir Movimiento
+          </button>
+        </div>
       </div>
 
       {/* Filter Controls Row */}
@@ -130,11 +159,14 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterBank}
             onChange={(e) => setFilterBank(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold cursor-pointer"
           >
             <option value="all">Todos los Bancos</option>
-            <option value="bbva">Solo BBVA</option>
-            <option value="santander">Solo Santander</option>
+            {availableBanks.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
           </select>
         </div>
 

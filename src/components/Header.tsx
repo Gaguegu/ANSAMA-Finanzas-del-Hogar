@@ -13,7 +13,8 @@ import {
   Calendar,
   BarChart3,
   Coins,
-  Lock
+  Lock,
+  FileSpreadsheet
 } from 'lucide-react';
 import { formatRelativeTime } from '../utils/storage';
 import { APP_VERSION } from '../version';
@@ -23,6 +24,7 @@ interface HeaderProps {
   isSyncing: boolean;
   onOpenSyncModal: () => void;
   onOpenNewTransactionModal: () => void;
+  onOpenImportModal?: () => void;
   onOpenSettingsModal: () => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -45,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   isSyncing,
   onOpenSyncModal,
   onOpenNewTransactionModal,
+  onOpenImportModal,
   onOpenSettingsModal,
   activeTab,
   setActiveTab,
@@ -172,19 +175,32 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               id="btn-add-transaction"
               onClick={onOpenNewTransactionModal}
-              title="Añadir nuevo gasto o ingreso"
+              title="Añadir nuevo gasto o ingreso manual"
               className="h-9 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-[#0E6A3B] hover:bg-[#0a522d] text-white transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
             >
               <Plus className="w-4 h-4 shrink-0" />
               <span>Nuevo Movimiento</span>
             </button>
 
-            {/* 2. Botón Sincronizar Bancos */}
+            {/* 2. Botón Importar Extracto Excel/CSV */}
+            {onOpenImportModal && (
+              <button
+                id="btn-header-import-statement"
+                onClick={onOpenImportModal}
+                title="Importar extracto en Excel (.xlsx) o CSV descargado de tu banco"
+                className="h-9 sm:h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-300 transition-all shadow-xs active:scale-95 cursor-pointer shrink-0"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+                <span>Importar Extracto</span>
+              </button>
+            )}
+
+            {/* 3. Botón Sincronizar Bancos */}
             <button
               id="btn-sync-banks"
               onClick={onOpenSyncModal}
               disabled={isSyncing}
-              title="Sincronización bancaria con PSD2"
+              title="Sincronización bancaria simulada"
               className="h-9 sm:h-10 px-3 sm:px-3.5 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-xs active:scale-95 disabled:opacity-75 cursor-pointer shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? 'animate-spin text-emerald-400' : 'text-zinc-300'}`} />
