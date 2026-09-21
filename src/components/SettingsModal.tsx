@@ -66,6 +66,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [exportPasswordInput, setExportPasswordInput] = useState('');
   const [showExportPasswordModal, setShowExportPasswordModal] = useState(false);
   const [isEncryptingExport, setIsEncryptingExport] = useState(false);
+  const [showExportPassword, setShowExportPassword] = useState(false);
+  const [showImportPassword, setShowImportPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -577,17 +579,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 El archivo se blindará con cifrado criptográfico. Para restaurarlo en el futuro o en otro equipo, se te solicitará esta contraseña:
               </p>
               <div>
-                <label className="block text-[10px] font-semibold text-zinc-400 uppercase mb-1">
-                  Contraseña de Cifrado
-                </label>
-                <input
-                  type="password"
-                  value={exportPasswordInput}
-                  onChange={(e) => setExportPasswordInput(e.target.value)}
-                  placeholder="Escribe la contraseña para proteger el archivo..."
-                  className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  autoFocus
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-semibold text-zinc-400 uppercase">
+                    Contraseña de Cifrado
+                  </label>
+                  {appState.security?.hasPassword && (
+                    <span className="text-[10px] font-medium text-emerald-400">
+                      Pre-rellenada con tu contraseña actual de entrada
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type={showExportPassword ? 'text' : 'password'}
+                    value={exportPasswordInput}
+                    onChange={(e) => setExportPasswordInput(e.target.value)}
+                    placeholder="Escribe la contraseña para proteger el archivo..."
+                    className="w-full pl-3 pr-10 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowExportPassword(!showExportPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 rounded transition-colors cursor-pointer"
+                    title={showExportPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  >
+                    {showExportPassword ? (
+                      <EyeOff className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1.5 leading-normal">
+                  Puedes conservar tu contraseña habitual o cambiarla por otra específica para este archivo.
+                </p>
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
@@ -628,18 +654,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               )}
 
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showImportPassword ? 'text' : 'password'}
                   value={importPasswordInput}
                   onChange={(e) => {
                     setImportPasswordInput(e.target.value);
                     setImportPasswordError(null);
                   }}
                   placeholder="Contraseña del archivo..."
-                  className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="w-full pl-3 pr-10 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                   autoFocus
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowImportPassword(!showImportPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 rounded transition-colors cursor-pointer"
+                  title={showImportPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  {showImportPassword ? (
+                    <EyeOff className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
