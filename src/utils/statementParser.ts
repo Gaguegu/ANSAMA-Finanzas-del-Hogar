@@ -613,54 +613,87 @@ export function parseStatementFile(
     balanceCol: balanceCol || undefined
   };
 
-  // Deducir cuenta bancaria por IBAN o nombre del banco
+  // Deducir cuenta bancaria mediante puntuación ponderada (Nombre de archivo > Metadatos de cabecera > IBAN)
+  // IMPORTANTE: Nunca buscar coincidencias en los conceptos de los movimientos (porque las transferencias suelen mencionar otros bancos)
   let suggestedAccountId: string | undefined;
-  const rawTextSnippet = (fileName + ' ' + rawData.slice(0, 20).map(r => (r || []).join(' ')).join(' ')).toLowerCase();
-  const normalizedSnippet = rawTextSnippet.replace(/[\s\-_.]+/g, '');
+  
+  const cleanFileName = fileName.toLowerCase().replace(/[^a-z0-9áéíóúüñ]/g, ' ');
+  const headerMetaRows = rawData.slice(0, Math.max(headerRowIndex, 3));
+  const headerMetaText = headerMetaRows.map(r => (r || []).join(' ')).join(' ').toLowerCase();
+  const normalizedMetaText = headerMetaText.replace(/[\s\-_.]+/g, '');
+
+  const bankKeywordsMap: Record<string, string[]> = {
+    bbva: ['bbva', 'banco bilbao', 'últimos movimientos'],
+    santander: ['santander', 'banco santander'],
+    caixabank: ['caixa', 'caixabank', 'la caixa', 'imagin', 'bankia'],
+    ing: ['ing', 'ing direct', 'cuenta nomina ing', 'cuenta naranja'],
+    sabadell: ['sabadell', 'banco sabadell'],
+    bankinter: ['bankinter', 'coinc'],
+    unicaja: ['unicaja', 'liberbank'],
+    abanca: ['abanca'],
+    openbank: ['openbank', 'banco openbank'],
+    myinvestor: ['myinvestor', 'andbank'],
+    traderepublic: ['trade republic', 'traderepublic'],
+    degiro: ['degiro', 'flatex'],
+    renta4: ['renta 4', 'renta4']
+  };
+
+  let bestAccount: BankAccount | null = null;
+  let highestScore = 0;
 
   for (const acc of existingAccounts) {
+    let score = 0;
+    const bName = acc.bankName.trim().toLowerCase();
+    const accName = acc.accountName.trim().toLowerCase();
     const rawIban = acc.iban ? acc.iban.toLowerCase().replace(/[\s\-_.]+/g, '') : '';
     const lastDigits = acc.accountNumberMasked.replace(/\D/g, '');
-    
-    if (rawIban.length >= 8 && (normalizedSnippet.includes(rawIban) || normalizedSnippet.includes(rawIban.slice(-10)))) {
-      suggestedAccountId = acc.id;
-      break;
+
+    // 1. Coincidencia de nombre de banco en el nombre del archivo (MÁXIMA PRIORIDAD)
+    // Ej: "extracto Imagin.xls" con banco "Imagin" -> 400 puntos
+    if (bName.length >= 3 && cleanFileName.includes(bName)) {
+      score += 400;
     }
 
-    if (lastDigits.length >= 4 && (rawTextSnippet.includes(lastDigits) || normalizedSnippet.includes(lastDigits))) {
-      suggestedAccountId = acc.id;
-      break;
+    // 2. Coincidencia de nombre de cuenta en el nombre del archivo
+    if (accName.length >= 4 && cleanFileName.includes(accName)) {
+      score += 200;
+    }
+
+    // 3. IBAN completo o últimos 10 dígitos en la cabecera/metadatos iniciales del extracto
+    if (rawIban.length >= 10 && normalizedMetaText.includes(rawIban)) {
+      score += 350;
+    } else if (rawIban.length >= 8 && normalizedMetaText.includes(rawIban.slice(-10))) {
+      score += 250;
+    }
+
+    // 4. Nombre de banco exacto en las primeras filas de metadatos (donde el banco estampa su cabecera)
+    if (bName.length >= 3 && headerMetaText.includes(bName)) {
+      score += 150;
+    }
+
+    // 5. Palabras clave específicas del banco en nombre de archivo o cabecera
+    const bId = acc.bankId.toLowerCase();
+    const keywords = bankKeywordsMap[bId] || [bName, bId];
+    for (const kw of keywords) {
+      if (kw.length >= 3) {
+        if (cleanFileName.includes(kw)) score += 120;
+        else if (headerMetaText.includes(kw)) score += 60;
+      }
+    }
+
+    // 6. Últimos dígitos en la cabecera (sólo si no es un número genérico)
+    if (lastDigits.length >= 4 && headerMetaText.includes(lastDigits)) {
+      score += 40;
+    }
+
+    if (score > highestScore) {
+      highestScore = score;
+      bestAccount = acc;
     }
   }
 
-  if (!suggestedAccountId) {
-    const bankKeywordsMap: Record<string, string[]> = {
-      bbva: ['bbva', 'banco bilbao', 'últimos movimientos'],
-      santander: ['santander', 'banco santander', 'openbank'],
-      caixabank: ['caixa', 'caixabank', 'la caixa', 'imagin', 'bankia'],
-      ing: ['ing', 'ing direct', 'cuenta nomina ing', 'cuenta naranja'],
-      sabadell: ['sabadell', 'banco sabadell'],
-      bankinter: ['bankinter', 'coinc'],
-      unicaja: ['unicaja', 'liberbank'],
-      abanca: ['abanca'],
-      openbank: ['openbank'],
-      myinvestor: ['myinvestor', 'andbank'],
-      traderepublic: ['trade republic'],
-      degiro: ['degiro', 'flatex'],
-      renta4: ['renta 4', 'renta4']
-    };
-
-    for (const acc of existingAccounts) {
-      const bName = acc.bankName.toLowerCase();
-      const bId = acc.bankId.toLowerCase();
-      const keywords = bankKeywordsMap[bId] || [bName, bId];
-
-      const matchesBank = keywords.some(kw => rawTextSnippet.includes(kw));
-      if (matchesBank) {
-        suggestedAccountId = acc.id;
-        break;
-      }
-    }
+  if (bestAccount && highestScore >= 50) {
+    suggestedAccountId = bestAccount.id;
   }
 
   // Extraer movimientos usando la función pura

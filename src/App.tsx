@@ -159,6 +159,121 @@ export default function App() {
     triggerNotification('Movimiento eliminado y saldo restaurado.');
   };
 
+  // Move transactions between accounts and synchronize balances
+  const handleMoveTransactions = (
+    transactionIds: string[],
+    targetAccountId: string,
+    adjustBalances: boolean = true
+  ) => {
+    const idSet = new Set(transactionIds);
+    const txsToMove = appState.transactions.filter((t) => idSet.has(t.id));
+    if (txsToMove.length === 0) return;
+
+    const targetAccount = appState.accounts.find((a) => a.id === targetAccountId);
+    if (!targetAccount) return;
+
+    let updatedAccounts = [...appState.accounts];
+
+    if (adjustBalances) {
+      // Agrupar neto por cuenta de origen
+      const deltasBySource: Record<string, number> = {};
+      let netTargetDelta = 0;
+      let latestTxDate = '';
+
+      for (const tx of txsToMove) {
+        if (tx.accountId === targetAccountId) continue;
+        const delta = tx.type === 'income' ? tx.amount : -tx.amount;
+        deltasBySource[tx.accountId] = (deltasBySource[tx.accountId] || 0) + delta;
+        netTargetDelta += delta;
+        if (tx.date > latestTxDate) latestTxDate = tx.date;
+      }
+
+      updatedAccounts = updatedAccounts.map((acc) => {
+        // Cuenta de destino (recibe los movimientos)
+        if (acc.id === targetAccountId) {
+          const newBal = acc.type === 'credit'
+            ? acc.balance - netTargetDelta
+            : acc.balance + netTargetDelta;
+          return {
+            ...acc,
+            balance: Math.round(newBal * 100) / 100,
+            balanceDate: latestTxDate && (!acc.balanceDate || latestTxDate > acc.balanceDate) ? latestTxDate : acc.balanceDate,
+            lastSynced: new Date().toISOString()
+          };
+        }
+        // Cuenta de origen (se le restan los movimientos que se equivocaron)
+        if (deltasBySource[acc.id] !== undefined) {
+          const srcDelta = deltasBySource[acc.id];
+          const newBal = acc.type === 'credit'
+            ? acc.balance + srcDelta
+            : acc.balance - srcDelta;
+          return {
+            ...acc,
+            balance: Math.round(newBal * 100) / 100,
+            lastSynced: new Date().toISOString()
+          };
+        }
+        return acc;
+      });
+    }
+
+    const updatedTransactions = appState.transactions.map((t) => {
+      if (idSet.has(t.id)) {
+        return { ...t, accountId: targetAccountId };
+      }
+      return t;
+    });
+
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(
+      `¡Listo! ${txsToMove.length} movimiento(s) trasladados a ${targetAccount.bankName} (${targetAccount.accountName})${adjustBalances ? ' y saldos ajustados correctamente.' : '.'}`
+    );
+  };
+
+  // Batch delete transactions with balance rollback
+  const handleBatchDeleteTransactions = (transactionIds: string[], revertBalances: boolean = true) => {
+    const idSet = new Set(transactionIds);
+    const txsToDelete = appState.transactions.filter((t) => idSet.has(t.id));
+    if (txsToDelete.length === 0) return;
+
+    let updatedAccounts = [...appState.accounts];
+    if (revertBalances) {
+      const deltasByAccount: Record<string, number> = {};
+      for (const tx of txsToDelete) {
+        const delta = tx.type === 'income' ? tx.amount : -tx.amount;
+        deltasByAccount[tx.accountId] = (deltasByAccount[tx.accountId] || 0) + delta;
+      }
+      updatedAccounts = updatedAccounts.map((acc) => {
+        if (deltasByAccount[acc.id] !== undefined) {
+          const delta = deltasByAccount[acc.id];
+          const restored = acc.type === 'credit' ? acc.balance + delta : acc.balance - delta;
+          return {
+            ...acc,
+            balance: Math.round(restored * 100) / 100
+          };
+        }
+        return acc;
+      });
+    }
+
+    const updatedTransactions = appState.transactions.filter((t) => !idSet.has(t.id));
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions
+    };
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(`${txsToDelete.length} movimiento(s) eliminados${revertBalances ? ' y saldos restaurados.' : '.'}`);
+  };
+
   const handleOpenImportModal = (targetAccountId?: string) => {
     setImportTargetAccountId(targetAccountId);
     setIsImportModalOpen(true);
@@ -564,6 +679,8 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
               onOpenImportModal={() => setIsImportModalOpen(true)}
+              onMoveTransactions={handleMoveTransactions}
+              onBatchDeleteTransactions={handleBatchDeleteTransactions}
             />
           </div>
         )}
@@ -595,6 +712,8 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
               onOpenImportModal={() => handleOpenImportModal()}
+              onMoveTransactions={handleMoveTransactions}
+              onBatchDeleteTransactions={handleBatchDeleteTransactions}
             />
           </div>
         )}
@@ -614,6 +733,8 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
               onOpenImportModal={() => setIsImportModalOpen(true)}
+              onMoveTransactions={handleMoveTransactions}
+              onBatchDeleteTransactions={handleBatchDeleteTransactions}
             />
           </div>
         )}
@@ -628,6 +749,8 @@ export default function App() {
               onDeleteTransaction={handleDeleteTransaction}
               onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
               onOpenImportModal={() => setIsImportModalOpen(true)}
+              onMoveTransactions={handleMoveTransactions}
+              onBatchDeleteTransactions={handleBatchDeleteTransactions}
             />
           </div>
         )}

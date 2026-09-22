@@ -113,7 +113,10 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
         setShowColumnConfig(false);
       }
 
-      if (result.suggestedAccountId) {
+      if (initialAccountId) {
+        // Respetar de forma estricta la cuenta desde la que el usuario pulsó "Importar"
+        setSelectedAccountId(initialAccountId);
+      } else if (result.suggestedAccountId) {
         setSelectedAccountId(result.suggestedAccountId);
       } else if (accounts.length > 0 && !selectedAccountId) {
         setSelectedAccountId(accounts[0].id);

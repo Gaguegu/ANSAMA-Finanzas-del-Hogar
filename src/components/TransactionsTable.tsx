@@ -1,17 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
-  Filter, 
   Trash2, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
   Sparkles, 
-  Calendar,
-  Building,
-  RotateCcw,
-  FileText,
-  Plus,
-  FileSpreadsheet
+  RotateCcw, 
+  Plus, 
+  FileSpreadsheet,
+  ArrowRightLeft,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate } from '../utils/storage';
@@ -23,6 +23,8 @@ interface TransactionsTableProps {
   onDeleteTransaction: (id: string) => void;
   onOpenNewTransactionModal: () => void;
   onOpenImportModal?: () => void;
+  onMoveTransactions?: (transactionIds: string[], targetAccountId: string, adjustBalances: boolean) => void;
+  onBatchDeleteTransactions?: (transactionIds: string[], revertBalances: boolean) => void;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
@@ -31,12 +33,20 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   categories,
   onDeleteTransaction,
   onOpenNewTransactionModal,
-  onOpenImportModal
+  onOpenImportModal,
+  onMoveTransactions,
+  onBatchDeleteTransactions
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBank, setFilterBank] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+
+  // Selección múltiple para traslados o borrado por lotes
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [targetAccountIdForMove, setTargetAccountIdForMove] = useState<string>('');
+  const [adjustBalancesOnMove, setAdjustBalancesOnMove] = useState(true);
 
   const accountMap = useMemo(() => {
     const map = new Map<string, BankAccount>();
@@ -60,6 +70,64 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     categories.forEach((c) => map.set(c.id, c));
     return map;
   }, [categories]);
+
+  // Detección proactiva de extractos asignados a la entidad errónea (ej. extracto Imagin asignado a Openbank)
+  const statementMismatches = useMemo(() => {
+    if (!onMoveTransactions || accounts.length < 2) return [];
+
+    const mismatches: Array<{
+      key: string;
+      txs: Transaction[];
+      detectedBankName: string;
+      currentAccount: BankAccount;
+      targetAccount: BankAccount;
+    }> = [];
+
+    // Buscar en notas que contengan "extracto <banco>"
+    const noteRegex = /extracto\s+([a-zA-Z0-9áéíóúüñ\-_.]+)/i;
+    const grouped = new Map<string, Transaction[]>();
+
+    for (const tx of transactions) {
+      if (!tx.note) continue;
+      const m = tx.note.match(noteRegex);
+      if (m && m[1]) {
+        const keyword = m[1].toLowerCase().replace(/\.(xls|xlsx|csv)$/i, '').trim();
+        if (keyword.length >= 3) {
+          const list = grouped.get(keyword) || [];
+          list.push(tx);
+          grouped.set(keyword, list);
+        }
+      }
+    }
+
+    grouped.forEach((txList, keyword) => {
+      // Buscar cuenta que coincida con la palabra clave del archivo
+      const targetAcc = accounts.find((acc) => {
+        const bName = acc.bankName.toLowerCase();
+        const bId = acc.bankId.toLowerCase();
+        return bName.includes(keyword) || keyword.includes(bName) || bId.includes(keyword);
+      });
+
+      if (targetAcc) {
+        // Movimientos cuya cuenta asignada NO sea la cuenta sugerida
+        const wrongTxs = txList.filter((tx) => tx.accountId !== targetAcc.id);
+        if (wrongTxs.length > 0) {
+          const currentAcc = accountMap.get(wrongTxs[0].accountId);
+          if (currentAcc && currentAcc.id !== targetAcc.id) {
+            mismatches.push({
+              key: `${keyword}-${targetAcc.id}-${currentAcc.id}`,
+              txs: wrongTxs,
+              detectedBankName: targetAcc.bankName,
+              currentAccount: currentAcc,
+              targetAccount: targetAcc
+            });
+          }
+        }
+      }
+    });
+
+    return mismatches;
+  }, [transactions, accounts, accountMap, onMoveTransactions]);
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
@@ -98,11 +166,101 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     setFilterCategory('all');
   };
 
+  // Manejadores de selección
+  const toggleSelectTx = (id: string) => {
+    setSelectedTxIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllFilteredSelected = filteredTransactions.length > 0 && filteredTransactions.every((tx) => selectedTxIds.has(tx.id));
+
+  const toggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      setSelectedTxIds((prev) => {
+        const next = new Set(prev);
+        filteredTransactions.forEach((tx) => next.delete(tx.id));
+        return next;
+      });
+    } else {
+      setSelectedTxIds((prev) => {
+        const next = new Set(prev);
+        filteredTransactions.forEach((tx) => next.add(tx.id));
+        return next;
+      });
+    }
+  };
+
+  const handleOpenMoveModal = () => {
+    if (selectedTxIds.size === 0) return;
+    // Seleccionar por defecto la primera cuenta distinta
+    const firstSelected = transactions.find((t) => selectedTxIds.has(t.id));
+    const altAccount = accounts.find((a) => a.id !== firstSelected?.accountId);
+    setTargetAccountIdForMove(altAccount ? altAccount.id : (accounts[0]?.id || ''));
+    setIsMoveModalOpen(true);
+  };
+
+  const handleConfirmMove = () => {
+    if (!onMoveTransactions || !targetAccountIdForMove || selectedTxIds.size === 0) return;
+    onMoveTransactions(Array.from(selectedTxIds), targetAccountIdForMove, adjustBalancesOnMove);
+    setSelectedTxIds(new Set());
+    setIsMoveModalOpen(false);
+  };
+
+  const handleBatchDelete = () => {
+    if (!onBatchDeleteTransactions || selectedTxIds.size === 0) return;
+    if (confirm(`¿Estás seguro de que deseas eliminar ${selectedTxIds.size} movimiento(s) seleccionados? Se restaurarán los saldos en las cuentas.`)) {
+      onBatchDeleteTransactions(Array.from(selectedTxIds), true);
+      setSelectedTxIds(new Set());
+    }
+  };
+
   return (
-    <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6">
+    <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 space-y-4">
       
-      {/* Title & Filter Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-emerald-100/90">
+      {/* Banner de corrección automática para extractos asignados a la entidad errónea */}
+      {statementMismatches.map((mismatch) => (
+        <div 
+          key={mismatch.key}
+          className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs animate-in fade-in"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-extrabold text-xs sm:text-sm text-amber-900">
+                Movimientos de extracto detectados en otra entidad
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5 leading-snug">
+                Se han detectado <strong>{mismatch.txs.length} movimientos</strong> del archivo de extracto vinculados por error a <strong>{mismatch.currentAccount.bankName}</strong> ({mismatch.currentAccount.accountName}). Corresponden a la entidad <strong>{mismatch.targetAccount.bankName}</strong> ({mismatch.targetAccount.accountName}).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                if (onMoveTransactions) {
+                  onMoveTransactions(mismatch.txs.map((t) => t.id), mismatch.targetAccount.id, true);
+                }
+              }}
+              className="w-full md:w-auto px-4 py-2 bg-[#0E6A3B] hover:bg-[#094d2a] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>Mover a {mismatch.targetAccount.bankName} y actualizar saldos</span>
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* Title & Action Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base sm:text-lg font-black text-zinc-950">Historial Consolidado de Movimientos</h3>
@@ -139,8 +297,51 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
       </div>
 
+      {/* Barra de acciones en lote si hay selección */}
+      {selectedTxIds.size > 0 && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 animate-in fade-in">
+          <div className="flex items-center gap-2 font-bold">
+            <CheckCircle2 className="w-4 h-4 text-[#0E6A3B]" />
+            <span>{selectedTxIds.size} movimiento(s) seleccionados</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {onMoveTransactions && (
+              <button
+                type="button"
+                onClick={handleOpenMoveModal}
+                className="px-3 py-1.5 bg-[#0E6A3B] hover:bg-[#0a522d] text-white font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Mover a otra cuenta...</span>
+              </button>
+            )}
+
+            {onBatchDeleteTransactions && (
+              <button
+                type="button"
+                onClick={handleBatchDelete}
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-800 font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Eliminar lote</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSelectedTxIds(new Set())}
+              className="p-1.5 text-zinc-500 hover:text-zinc-800 rounded-lg cursor-pointer"
+              title="Cancelar selección"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 my-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         
         {/* Search input */}
         <div className="relative">
@@ -202,7 +403,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {hasActiveFilters && (
-        <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 mb-4 text-xs text-emerald-950">
+        <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-950">
           <span className="font-medium">Filtros aplicados ({filteredTransactions.length} encontrados)</span>
           <button
             onClick={resetFilters}
@@ -219,12 +420,26 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-zinc-200/80 text-[11px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-50/50">
-              <th className="py-3 px-3.5 rounded-l-lg">Fecha</th>
+              <th className="py-3 px-3 rounded-l-lg w-10 text-center">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllFiltered}
+                  className="text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                  title={isAllFilteredSelected ? 'Deseleccionar todos' : 'Seleccionar todos los visibles'}
+                >
+                  {isAllFilteredSelected ? (
+                    <CheckSquare className="w-4 h-4 text-[#0E6A3B]" />
+                  ) : (
+                    <Square className="w-4 h-4" />
+                  )}
+                </button>
+              </th>
+              <th className="py-3 px-3">Fecha</th>
               <th className="py-3 px-3.5">Concepto & Detalle</th>
               <th className="py-3 px-3.5">Categoría</th>
               <th className="py-3 px-3.5">Cuenta / Entidad</th>
               <th className="py-3 px-3.5 text-right">Importe</th>
-              <th className="py-3 px-3.5 text-center rounded-r-lg">Acción</th>
+              <th className="py-3 px-3.5 text-center rounded-r-lg w-20">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 text-xs">
@@ -233,13 +448,28 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 const account = accountMap.get(tx.accountId);
                 const category = categoryMap.get(tx.categoryId);
                 const isIncome = tx.type === 'income';
+                const isSelected = selectedTxIds.has(tx.id);
 
                 return (
                   <tr 
                     key={tx.id} 
-                    className="hover:bg-zinc-50/70 transition-colors group"
+                    className={`transition-colors group ${isSelected ? 'bg-emerald-50/60' : 'hover:bg-zinc-50/70'}`}
                   >
-                    <td className="py-3.5 px-3.5 text-zinc-500 whitespace-nowrap font-medium font-feature-settings-tnum">
+                    <td className="py-3.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelectTx(tx.id)}
+                        className="text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-4 h-4 text-[#0E6A3B]" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-zinc-500 whitespace-nowrap font-medium font-feature-settings-tnum">
                       {formatDate(tx.date)}
                     </td>
 
@@ -254,7 +484,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                         )}
                       </div>
                       {tx.note && (
-                        <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-xs">
+                        <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-xs" title={tx.note}>
                           {tx.note}
                         </div>
                       )}
@@ -284,7 +514,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       {account ? (
                         <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
                           <span
-                            className="w-2 h-2 rounded-full"
+                            className="w-2 h-2 rounded-full shrink-0"
                             style={{ backgroundColor: account.color }}
                           />
                           <span className="font-bold text-[11px] text-zinc-900">{account.bankName}</span>
@@ -302,24 +532,41 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     </td>
 
                     <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => {
-                          if (confirm(`¿Eliminar el movimiento "${tx.title}"?`)) {
-                            onDeleteTransaction(tx.id);
-                          }
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                        title="Eliminar movimiento"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {onMoveTransactions && accounts.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTxIds(new Set([tx.id]));
+                              const altAccount = accounts.find((a) => a.id !== tx.accountId);
+                              setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
+                              setIsMoveModalOpen(true);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
+                            title="Mover movimiento a otra cuenta bancaria"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (confirm(`¿Eliminar el movimiento "${tx.title}"?`)) {
+                              onDeleteTransaction(tx.id);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                          title="Eliminar movimiento"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-zinc-400">
+                <td colSpan={7} className="py-12 text-center text-zinc-400">
                   <p className="font-medium text-sm">No se encontraron movimientos con los filtros seleccionados</p>
                   <p className="text-xs text-zinc-400 mt-1">Prueba a restablecer los filtros de búsqueda</p>
                 </td>
@@ -336,9 +583,27 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             const account = accountMap.get(tx.accountId);
             const category = categoryMap.get(tx.categoryId);
             const isIncome = tx.type === 'income';
+            const isSelected = selectedTxIds.has(tx.id);
 
             return (
-              <div key={tx.id} className="py-3.5 flex items-start justify-between gap-3">
+              <div 
+                key={tx.id} 
+                className={`py-3.5 flex items-start justify-between gap-3 ${isSelected ? 'bg-emerald-50/50 p-2 rounded-xl' : ''}`}
+              >
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectTx(tx.id)}
+                    className="text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                  >
+                    {isSelected ? (
+                      <CheckSquare className="w-4 h-4 text-[#0E6A3B]" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                     <span className="text-xs text-zinc-400 font-medium font-feature-settings-tnum">
@@ -386,17 +651,34 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
                   </span>
 
-                  <button
-                    onClick={() => {
-                      if (confirm(`¿Eliminar movimiento "${tx.title}"?`)) {
-                        onDeleteTransaction(tx.id);
-                      }
-                    }}
-                    className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                    title="Eliminar movimiento"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 mt-2">
+                    {onMoveTransactions && accounts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTxIds(new Set([tx.id]));
+                          const altAccount = accounts.find((a) => a.id !== tx.accountId);
+                          setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
+                          setIsMoveModalOpen(true);
+                        }}
+                        className="p-1.5 text-zinc-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
+                        title="Mover a otra cuenta"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm(`¿Eliminar movimiento "${tx.title}"?`)) {
+                          onDeleteTransaction(tx.id);
+                        }
+                      }}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                      title="Eliminar movimiento"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -407,6 +689,91 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           </div>
         )}
       </div>
+
+      {/* Modal para mover movimientos a otra cuenta bancaria */}
+      {isMoveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-zinc-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#0E6A3B] flex items-center justify-center">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-zinc-950">
+                    Mover movimientos de cuenta
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    {selectedTxIds.size} movimiento(s) seleccionados
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMoveModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Cuenta bancaria de destino:
+                </label>
+                <select
+                  value={targetAccountIdForMove}
+                  onChange={(e) => setTargetAccountIdForMove(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-bold text-zinc-900 bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 cursor-pointer"
+                >
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.bankName} - {acc.accountName} ({formatCurrency(acc.balance)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl">
+                <label className="flex items-start gap-2.5 cursor-pointer text-xs text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={adjustBalancesOnMove}
+                    onChange={(e) => setAdjustBalancesOnMove(e.target.checked)}
+                    className="mt-0.5 rounded text-[#0E6A3B] focus:ring-emerald-500"
+                  />
+                  <div>
+                    <span className="font-bold text-zinc-900 block">
+                      Ajustar saldos automáticamente
+                    </span>
+                    <span className="text-[11px] text-zinc-500 leading-snug block mt-0.5">
+                      Resta los importes de la cuenta de origen y los suma en la cuenta de destino, actualizando la fecha de saldo al movimiento más reciente.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setIsMoveModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMove}
+                className="px-4 py-2 text-xs font-bold bg-[#0E6A3B] hover:bg-[#0a522d] text-white rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                Mover y Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
