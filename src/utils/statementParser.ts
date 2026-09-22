@@ -252,9 +252,24 @@ export function parseAmountNumber(val: any): number | null {
     return null;
   }
 
-  // Si tiene palabras bancarias de más de 3 letras que no sean divisas (EUR, USD, CHF, GBP)
-  const nonCurrencyWords = str.match(/[a-df-rt-zA-DF-RT-Z]{4,}/g);
-  if (nonCurrencyWords && nonCurrencyWords.length > 0) {
+  // Si contiene nombres de meses o patrones de fechas (ej: "21 sept 2026", "10/09/2026")
+  const dateMonthPattern = /\b(ene|feb|mar|abr|may|jun|jul|ago|sep|sept|oct|nov|dic|jan|aug|oct|dec|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i;
+  if (dateMonthPattern.test(str)) {
+    return null;
+  }
+
+  // Si parece una fecha con separadores (ej: 21/09/2026 o 21-09-2026)
+  if (/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/.test(str)) {
+    return null;
+  }
+
+  // Si tiene palabras de texto generales de más de 3 letras que no sean divisas reconocidas
+  const cleanWords = str.replace(/[€$£]/g, '').trim().split(/\s+/);
+  const hasGeneralWords = cleanWords.some(w => {
+    const lettersOnly = w.replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ]/g, '').toUpperCase();
+    return lettersOnly.length >= 3 && !['EUR', 'USD', 'CHF', 'GBP', 'CAD', 'AUD'].includes(lettersOnly);
+  });
+  if (hasGeneralWords) {
     return null;
   }
 

@@ -183,8 +183,9 @@ export async function parsePdfStatementFile(
       // Buscar en las siguientes líneas la fecha ("a 21 sept 2026") y el saldo del banco custodio (Citibank, Deutsche Bank, etc.)
       for (let k = i; k < Math.min(allLines.length, i + 15); k++) {
         const subLine = allLines[k];
+        const subLineNorm = norm(subLine.fullText);
 
-        // Fecha del balance
+        // Fecha del balance (ej: "a 21 sept 2026")
         if (!detectedStatementBalanceDate) {
           const dMatch = subLine.fullText.match(/\b(\d{1,2}\s+[a-z]{3,4}\s+\d{4})\b/i);
           if (dMatch) {
@@ -193,12 +194,25 @@ export async function parsePdfStatementFile(
           }
         }
 
-        // Importe del saldo (ej: "Citibank   87.544,92 €")
-        for (let j = subLine.items.length - 1; j >= 0; j--) {
-          const val = parseAmountNumber(subLine.items[j].str);
-          if (val !== null && val > 0 && Math.abs(val) < 100000000) {
-            detectedStatementBalance = val;
-            break;
+        // Importe del saldo de la cuenta de efectivo (ej: "Citibank 87.544,92 €")
+        // IMPORTANTE: Solo extraer si es una línea de entidad bancaria custodia o cuentas colectivas, NUNCA de la línea con la fecha
+        const isCustodianLine =
+          subLineNorm.includes('citibank') ||
+          subLineNorm.includes('deutsche') ||
+          subLineNorm.includes('j.p. morgan') ||
+          subLineNorm.includes('jp morgan') ||
+          subLineNorm.includes('solaris') ||
+          subLineNorm.includes('cuentas colectivas') ||
+          subLineNorm.includes('omnibus') ||
+          subLineNorm.includes('efectivo');
+
+        if (isCustodianLine) {
+          for (let j = subLine.items.length - 1; j >= 0; j--) {
+            const val = parseAmountNumber(subLine.items[j].str);
+            if (val !== null && val > 0 && Math.abs(val) < 100000000) {
+              detectedStatementBalance = val;
+              break;
+            }
           }
         }
         if (detectedStatementBalance !== undefined && detectedStatementBalanceDate) break;
