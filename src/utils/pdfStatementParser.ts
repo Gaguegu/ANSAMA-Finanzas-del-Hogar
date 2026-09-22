@@ -170,35 +170,76 @@ export async function parsePdfStatementFile(
   let detectedStatementBalance: number | undefined;
   let detectedStatementBalanceDate: string | undefined;
 
-  for (const line of allLines) {
-    const lineNorm = norm(line.fullText);
+  // A. Búsqueda específica en "RESUMEN DEL BALANCE" (Trade Republic / brokers)
+  for (let i = 0; i < allLines.length; i++) {
+    const lineNorm = norm(allLines[i].fullText);
     if (
-      lineNorm.includes('saldo final') ||
-      lineNorm.includes('saldo al cierre') ||
-      lineNorm.includes('saldo de cierre') ||
-      lineNorm.includes('closing balance') ||
-      lineNorm.includes('end balance') ||
-      lineNorm.includes('kontostand am ende') ||
-      lineNorm.includes('saldo disponible al') ||
-      lineNorm.includes('saldo a fecha')
+      lineNorm.includes('resumen del balance') ||
+      lineNorm.includes('balance summary') ||
+      lineNorm.includes('saldenubersicht') ||
+      lineNorm.includes('cuentas colectivas') ||
+      lineNorm.includes('omnibus trust')
     ) {
-      // Buscar el importe en los items de esta línea
-      for (let i = line.items.length - 1; i >= 0; i--) {
-        const val = parseAmountNumber(line.items[i].str);
-        if (val !== null && Math.abs(val) < 10000000) {
-          detectedStatementBalance = val;
-          break;
+      // Buscar en las siguientes líneas la fecha ("a 21 sept 2026") y el saldo del banco custodio (Citibank, Deutsche Bank, etc.)
+      for (let k = i; k < Math.min(allLines.length, i + 15); k++) {
+        const subLine = allLines[k];
+
+        // Fecha del balance
+        if (!detectedStatementBalanceDate) {
+          const dMatch = subLine.fullText.match(/\b(\d{1,2}\s+[a-z]{3,4}\s+\d{4})\b/i);
+          if (dMatch) {
+            const parsedD = parseDateString(dMatch[1]);
+            if (parsedD) detectedStatementBalanceDate = parsedD;
+          }
         }
-      }
-      // Buscar posible fecha en la misma línea
-      for (const item of line.items) {
-        const d = parseDateString(item.str);
-        if (d) {
-          detectedStatementBalanceDate = d;
-          break;
+
+        // Importe del saldo (ej: "Citibank   87.544,92 €")
+        for (let j = subLine.items.length - 1; j >= 0; j--) {
+          const val = parseAmountNumber(subLine.items[j].str);
+          if (val !== null && val > 0 && Math.abs(val) < 100000000) {
+            detectedStatementBalance = val;
+            break;
+          }
         }
+        if (detectedStatementBalance !== undefined && detectedStatementBalanceDate) break;
       }
       if (detectedStatementBalance !== undefined) break;
+    }
+  }
+
+  // B. Búsqueda genérica estándar ("Saldo final", "Saldo de cierre", etc.)
+  if (detectedStatementBalance === undefined) {
+    for (const line of allLines) {
+      const lineNorm = norm(line.fullText);
+      if (
+        lineNorm.includes('saldo final') ||
+        lineNorm.includes('saldo al cierre') ||
+        lineNorm.includes('saldo de cierre') ||
+        lineNorm.includes('closing balance') ||
+        lineNorm.includes('end balance') ||
+        lineNorm.includes('kontostand am ende') ||
+        lineNorm.includes('saldo disponible al') ||
+        lineNorm.includes('saldo a fecha') ||
+        lineNorm.includes('saldo actual')
+      ) {
+        // Buscar el importe en los items de esta línea
+        for (let i = line.items.length - 1; i >= 0; i--) {
+          const val = parseAmountNumber(line.items[i].str);
+          if (val !== null && Math.abs(val) < 100000000) {
+            detectedStatementBalance = val;
+            break;
+          }
+        }
+        // Buscar posible fecha en la misma línea
+        for (const item of line.items) {
+          const d = parseDateString(item.str);
+          if (d) {
+            detectedStatementBalanceDate = d;
+            break;
+          }
+        }
+        if (detectedStatementBalance !== undefined) break;
+      }
     }
   }
 
@@ -258,7 +299,7 @@ export async function parsePdfStatementFile(
     const items = line.items;
     if (items.length < 2) continue;
 
-    // Comprobar si la línea comienza con una fecha válida (DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.)
+    // Comprobar si la línea comienza con una fecha válida (DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD, o '10 sept' + '2026')
     let parsedDate: string | null = null;
     let dateItemIdx = -1;
 
@@ -268,6 +309,27 @@ export async function parsePdfStatementFile(
         parsedDate = d;
         dateItemIdx = j;
         break;
+      }
+      // Probar uniendo dos items de la misma línea (ej: items[0]='10 sept', items[1]='2026')
+      if (j + 1 < items.length) {
+        const combined = `${items[j].str} ${items[j + 1].str}`;
+        const dComb = parseDateString(combined);
+        if (dComb) {
+          parsedDate = dComb;
+          dateItemIdx = j + 1;
+          break;
+        }
+      }
+      // Probar uniendo con el primer item de la siguiente línea (Trade Republic suele poner el año abajo: '10 sept' \n '2026')
+      if (i + 1 < allLines.length) {
+        const nextFirst = allLines[i + 1].items[0]?.str || '';
+        const combinedNext = `${items[j].str} ${nextFirst}`;
+        const dNext = parseDateString(combinedNext);
+        if (dNext) {
+          parsedDate = dNext;
+          dateItemIdx = j;
+          break;
+        }
       }
     }
 
@@ -281,7 +343,8 @@ export async function parsePdfStatementFile(
       lineNorm.includes('total cargos') ||
       lineNorm.includes('total abonos') ||
       lineNorm.includes('iban:') ||
-      lineNorm.includes('pagina ')
+      lineNorm.includes('pagina ') ||
+      lineNorm.includes('resumen del balance')
     ) {
       continue;
     }
@@ -316,21 +379,51 @@ export async function parsePdfStatementFile(
     // Reglas semánticas por Tipo de operación bancaria (Trade Republic / Bancos habituales)
     const titleNorm = norm(titleText);
     const isExplicitIncome =
-      titleNorm.includes('interes') ||
+      titleNorm.includes('rentabilidad') ||
+      titleNorm.includes('dividend') ||
       titleNorm.includes('dividendo') ||
+      titleNorm.includes('interes') ||
+      titleNorm.includes('interest') ||
+      titleNorm.includes('zinsen') ||
       titleNorm.includes('saveback') ||
       titleNorm.includes('abono') ||
       titleNorm.includes('ingreso') ||
-      titleNorm.includes('deposito');
+      titleNorm.includes('deposito') ||
+      titleNorm.includes('deposit') ||
+      titleNorm.includes('rendimiento') ||
+      titleNorm.includes('cashback') ||
+      titleNorm.includes('recompensa') ||
+      titleNorm.includes('premio') ||
+      titleNorm.includes('distribucion') ||
+      titleNorm.includes('einlage') ||
+      titleNorm.includes('gutschrift');
 
     const isExplicitExpense =
       titleNorm.includes('operar') ||
       titleNorm.includes('compra') ||
+      titleNorm.includes('buy') ||
+      titleNorm.includes('kauf') ||
+      titleNorm.includes('orden') ||
+      titleNorm.includes('order') ||
       titleNorm.includes('cargo') ||
       titleNorm.includes('retirada') ||
+      titleNorm.includes('withdrawal') ||
+      titleNorm.includes('auszahlung') ||
       titleNorm.includes('pago') ||
+      titleNorm.includes('payment') ||
       titleNorm.includes('tarjeta') ||
-      titleNorm.includes('comision');
+      titleNorm.includes('card') ||
+      titleNorm.includes('round up') ||
+      titleNorm.includes('roundup') ||
+      titleNorm.includes('comision') ||
+      titleNorm.includes('fee') ||
+      titleNorm.includes('gebühr') ||
+      titleNorm.includes('custodia') ||
+      titleNorm.includes('custody') ||
+      titleNorm.includes('impuesto') ||
+      titleNorm.includes('tax') ||
+      titleNorm.includes('retencion') ||
+      titleNorm.includes('steuer');
 
     if (numericItems.length >= 2) {
       // Habitualmente: Penúltimo = Importe de operación, Último = Saldo posterior
@@ -349,7 +442,6 @@ export async function parsePdfStatementFile(
       } else if (isExplicitExpense) {
         transactionType = 'expense';
       } else {
-        // Comparar con el saldo posterior si es posible
         transactionType = 'expense';
       }
     } else {
@@ -417,19 +509,38 @@ export async function parsePdfStatementFile(
     }
   }
 
-  // Ordenar cronológicamente descendente
-  rows.sort((a, b) => b.date.localeCompare(a.date));
-
-  // Detectar saldo final desde la operación más reciente si no se encontró en cabecera
-  if (detectedStatementBalance === undefined && rows.length > 0) {
-    for (const r of rows) {
-      if (r.balanceAfter !== undefined) {
-        detectedStatementBalance = r.balanceAfter;
-        detectedStatementBalanceDate = r.date;
-        break;
+  // Verificación matemática de signo basada en el saldo continuo (balanceAfter)
+  // En extractos bancarios cronológicos (antiguo -> nuevo), la diferencia entre saldos consecutivos
+  // confirma con 100% de precisión si el movimiento fue ingreso o gasto:
+  for (let k = 1; k < rows.length; k++) {
+    const prev = rows[k - 1];
+    const curr = rows[k];
+    if (prev.balanceAfter !== undefined && curr.balanceAfter !== undefined) {
+      const diff = Math.round((curr.balanceAfter - prev.balanceAfter) * 100) / 100;
+      if (Math.abs(Math.abs(diff) - curr.amount) < 0.05) {
+        if (diff > 0 && curr.type !== 'income') {
+          curr.type = 'income';
+          curr.suggestedCategoryId = guessCategory(curr.title, curr.amount, categories);
+        } else if (diff < 0 && curr.type !== 'expense') {
+          curr.type = 'expense';
+          curr.suggestedCategoryId = guessCategory(curr.title, -curr.amount, categories);
+        }
       }
     }
   }
+
+  // Si no se encontró el saldo en cabecera ni en RESUMEN DEL BALANCE,
+  // el último movimiento del extracto (o el primero si fuera descendente) contiene el saldo final real
+  if (detectedStatementBalance === undefined && rows.length > 0) {
+    const withBal = [...rows].reverse().find(r => r.balanceAfter !== undefined);
+    if (withBal && withBal.balanceAfter !== undefined) {
+      detectedStatementBalance = withBal.balanceAfter;
+      detectedStatementBalanceDate = withBal.date;
+    }
+  }
+
+  // Ordenar cronológicamente descendente para mostrar al usuario (más recientes primero)
+  rows.sort((a, b) => b.date.localeCompare(a.date) || b.originalIndex - a.originalIndex);
 
   let netMovementDelta = 0;
   for (const r of rows) {
