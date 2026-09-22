@@ -3,6 +3,7 @@ import {
   X, 
   UploadCloud, 
   FileSpreadsheet, 
+  FileText,
   CheckCircle2, 
   AlertCircle, 
   Building2, 
@@ -25,6 +26,7 @@ import {
   ParsedStatementRow,
   StatementColumnMapping 
 } from '../utils/statementParser';
+import { parsePdfStatementFile } from '../utils/pdfStatementParser';
 import { formatCurrency, formatDate } from '../utils/storage';
 
 interface ImportStatementModalProps {
@@ -84,13 +86,23 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
     setErrorMsg(null);
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
-      const result = parseStatementFile(
-        arrayBuffer,
-        selectedFile.name,
-        categories,
-        accounts,
-        existingTransactions
-      );
+      const isPdf = selectedFile.name.toLowerCase().endsWith('.pdf');
+
+      const result = isPdf
+        ? await parsePdfStatementFile(
+            arrayBuffer,
+            selectedFile.name,
+            categories,
+            accounts,
+            existingTransactions
+          )
+        : parseStatementFile(
+            arrayBuffer,
+            selectedFile.name,
+            categories,
+            accounts,
+            existingTransactions
+          );
 
       setFile(selectedFile);
       setParseResult(result);
@@ -323,7 +335,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                 Importar Extracto Bancario Real
               </h3>
               <p className="text-[11px] text-zinc-500 font-medium">
-                Compatible con BBVA, Santander, CaixaBank, ING, Sabadell y todos los bancos (.xlsx, .xls, .csv)
+                Compatible con PDF oficial (.pdf), Excel (.xlsx, .xls) y CSV (Trade Republic, BBVA, Santander, CaixaBank, ING...)
               </p>
             </div>
           </div>
@@ -367,8 +379,11 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                     Arrastra aquí tu extracto de banco o haz clic para examinar
                   </h4>
                   <p className="text-xs text-zinc-500 mt-1">
-                    Formatos compatibles: <strong>Excel (.xlsx, .xls)</strong> y archivos <strong>CSV</strong>
+                    Formatos compatibles: <strong>PDF oficial (.pdf)</strong>, <strong>Excel (.xlsx, .xls)</strong> y <strong>CSV</strong>
                   </p>
+                  <span className="inline-block mt-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
+                    ⭐ Admite directamente el PDF descargado de Trade Republic (sin convertir)
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -380,7 +395,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                   id={fileInputId}
                   ref={fileInputRef}
                   type="file" 
-                  accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  accept=".pdf,.xlsx,.xls,.csv,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                   onChange={handleFileChange}
                   className="hidden" 
                 />
@@ -390,10 +405,11 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
               <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200/90 text-xs text-zinc-600 space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-zinc-800">
                   <Info className="w-4 h-4 text-[#0E6A3B]" />
-                  ¿Cómo descargar el extracto desde tu banca online?
+                  ¿Cómo descargar el extracto desde tu banco o broker?
                 </div>
                 <p className="leading-relaxed">
-                  Entra a tu banco (<strong>BBVA, Santander, CaixaBank, ING, Openbank, Sabadell, Bankinter, MyInvestor, etc.</strong>), dirígete a <em>Cuentas &gt; Movimientos</em> y pulsa en <strong>«Descargar»</strong> o <strong>«Exportar a Excel / CSV»</strong>.
+                  En <strong>Trade Republic</strong>: Ve a tu perfil en la app o web &gt; <em>Documentos / Actividad &gt; Extracto de cuenta</em> y descarga directamente el archivo <strong>PDF</strong>.
+                  En otros bancos (<strong>BBVA, Santander, CaixaBank, ING</strong>): entra a <em>Cuentas &gt; Movimientos</em> y descarga en <strong>PDF, Excel o CSV</strong>.
                 </p>
                 <div className="flex items-center gap-2 text-[11px] text-emerald-800 font-semibold pt-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -599,7 +615,11 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
               {/* Estadísticas de detección y botón de configuración de columnas */}
               <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs">
                 <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-[#0E6A3B]" />
+                  {parseResult.fileName.toLowerCase().endsWith('.pdf') ? (
+                    <FileText className="w-4 h-4 text-rose-600" />
+                  ) : (
+                    <FileSpreadsheet className="w-4 h-4 text-[#0E6A3B]" />
+                  )}
                   <span className="font-bold text-emerald-950">{parseResult.fileName}</span>
                   <span className="text-emerald-800">
                     ({rows.length} detectados, <strong>{selectedCount} seleccionados</strong>)

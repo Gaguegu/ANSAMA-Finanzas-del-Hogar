@@ -19,7 +19,7 @@ export interface ParsedStatementRow {
 export interface StatementColumnMapping {
   dateCol: string;
   titleCol: string;
-  amountCol: string;
+  amountCol?: string;
   incomeCol?: string; // si vienen en columnas separadas (ingreso / cargo)
   expenseCol?: string;
   balanceCol?: string; // columna opcional de saldo o disponible en el extracto
@@ -441,9 +441,29 @@ export function extractRowsWithMapping(
 
     if (signedAmount === null || Math.abs(signedAmount) > 10000000) continue;
 
-    const type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
+    let type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
+
+    // Regla semántica bancaria: Si la columna no traía signo negativo pero el concepto indica compra o gasto
+    // (muy frecuente en extractos de Trade Republic donde 'Operar' es compra pero el número viene sin signo)
+    if (signedAmount > 0 && !(incomeIdx >= 0 && expenseIdx >= 0)) {
+      const lowerTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const isExplicitExpense =
+        lowerTitle.startsWith('operar') ||
+        lowerTitle.includes('compra') ||
+        lowerTitle.includes('cargo') ||
+        lowerTitle.includes('comision') ||
+        lowerTitle.includes('retirada') ||
+        lowerTitle.includes('pago con tarjeta') ||
+        lowerTitle.includes('tarjeta') ||
+        lowerTitle.includes('suscripcion');
+
+      if (isExplicitExpense && !lowerTitle.includes('venta') && !lowerTitle.includes('interes') && !lowerTitle.includes('dividendo')) {
+        type = 'expense';
+      }
+    }
+
     const absAmount = Math.abs(signedAmount);
-    const suggestedCategory = guessCategory(title, signedAmount, categories);
+    const suggestedCategory = guessCategory(title, type === 'income' ? absAmount : -absAmount, categories);
 
     // Extraer saldo posterior si existe columna de saldo/disponible
     let balanceAfter: number | undefined;
