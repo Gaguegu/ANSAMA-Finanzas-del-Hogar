@@ -96,9 +96,13 @@ export function guessCategory(text: string, amount: number, categories: Transact
       const nomCat = categories.find(c => c.name.toLowerCase().includes('nómina') || c.id === 'cat-nomina');
       if (nomCat) return nomCat.id;
     }
-    if (lower.includes('dividendo') || lower.includes('interes') || lower.includes('rendimiento') || lower.includes('cupon')) {
-      const renCat = categories.find(c => c.name.toLowerCase().includes('rendimiento') || c.id === 'cat-rendimientos');
+    if (lower.includes('dividendo') || lower.includes('interes') || lower.includes('rendimiento') || lower.includes('cupon') || lower.includes('efectivo al')) {
+      const renCat = categories.find(c => c.name.toLowerCase().includes('rendimiento') || c.name.toLowerCase().includes('interes') || c.id === 'cat-rendimientos');
       if (renCat) return renCat.id;
+    }
+    if (lower.includes('transferencia') || lower.includes('traspaso') || lower.includes('bizum') || lower.includes('deposito') || lower.includes('ingreso') || lower.includes('abono')) {
+      const bizCat = categories.find(c => c.name.toLowerCase().includes('transferencia') || c.id === 'cat-bizum-ingreso' || c.name.toLowerCase().includes('bizum'));
+      if (bizCat) return bizCat.id;
     }
   }
 
@@ -208,10 +212,24 @@ export function parseDateString(val: any): string | null {
 // Normaliza números españoles: "1.234,56", "-50,20 €", "-42,50 EUR", "42,50-", "(42,50)"
 export function parseAmountNumber(val: any): number | null {
   if (val === undefined || val === null || val === '') return null;
-  if (typeof val === 'number') return isNaN(val) ? null : val;
+  if (typeof val === 'number') {
+    if (isNaN(val) || Math.abs(val) > 20000000) return null;
+    return val;
+  }
 
   let str = String(val).trim();
   if (str === '' || str === '-') return null;
+
+  // Si contiene un IBAN o número de cuenta bancaria (ej. "ES17...", "DE...", "IBAN", etc.), NO es un importe
+  if (/\b[A-Za-z]{2}\d{2}[A-Za-z0-9\s]{8,}\b/.test(str) || /\biban\b/i.test(str) || /\bcuenta\b/i.test(str) || /\bswift\b/i.test(str) || /\bbic\b/i.test(str)) {
+    return null;
+  }
+
+  // Si tiene palabras bancarias de más de 3 letras que no sean divisas (EUR, USD, CHF, GBP)
+  const nonCurrencyWords = str.match(/[a-df-rt-zA-DF-RT-Z]{4,}/g);
+  if (nonCurrencyWords && nonCurrencyWords.length > 0) {
+    return null;
+  }
 
   let isNegative = false;
 
@@ -255,6 +273,10 @@ export function parseAmountNumber(val: any): number | null {
 
   const num = parseFloat(str);
   if (isNaN(num)) return null;
+
+  // Rechazar cantidades absurdas que no corresponden a movimientos reales (ej. 137 mil millones por un IBAN o referencia)
+  if (Math.abs(num) > 10000000) return null;
+
   return isNegative ? -Math.abs(num) : num;
 }
 
@@ -283,14 +305,68 @@ export function extractRowsWithMapping(
     const hasAnyValue = rawRowArray.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== '');
     if (!hasAnyValue) continue;
 
+    // FILTRADO DE FILAS DE METADATOS / ENCABEZADOS / RESÚMENES:
+    // En conversiones de PDF a Excel (como Trade Republic), cada página suele repetir encabezados y pies.
+    const rowFullText = rawRowArray.map(c => String(c || '').toLowerCase()).join(' ');
+    const isMetaRow = [
+      'extracto', 'trade republic', 'titular', 'iban', 'periodo', 'período', 
+      'página', 'pagina', 'page ', 'saldo inicial', 'saldo al inicio', 'saldo final', 
+      'saldo al cierre', 'resumen de cuenta', 'total general', 'cuenta de efectivo'
+    ].some(kw => rowFullText.includes(kw));
+    if (isMetaRow) continue;
+
     // Extraer fecha
     const rawDateVal = dateIdx >= 0 ? rawRowArray[dateIdx] : null;
     const parsedDate = parseDateString(rawDateVal);
     if (!parsedDate) continue; // Si no hay fecha válida, probablemente sea un pie de página o saldo
 
-    // Extraer concepto
+    // Extraer concepto de forma inteligente
     let title = titleIdx >= 0 ? String(rawRowArray[titleIdx] || '').trim() : '';
-    if (!title) {
+    const isTitleDate = parseDateString(title) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title);
+
+    // Buscar componentes de tipo y descripción en las columnas de la fila
+    let foundType = '';
+    let foundDesc = '';
+
+    for (let c = 0; c < rawRowArray.length; c++) {
+      if (c === dateIdx || c === amountIdx || c === incomeIdx || c === expenseIdx || c === balanceIdx) continue;
+      const hNorm = headers[c] ? headers[c].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+      const cellVal = String(rawRowArray[c] || '').trim();
+      if (!cellVal) continue;
+      if (parseDateString(cellVal) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(cellVal) || parseAmountNumber(cellVal) !== null) {
+        continue;
+      }
+
+      if (hNorm.includes('tipo') || hNorm.includes('transacc') || hNorm.includes('operacion')) {
+        foundType = cellVal;
+      } else if (hNorm.includes('descrip') || hNorm.includes('concepto') || hNorm.includes('detalle')) {
+        foundDesc = cellVal;
+      } else if (!foundDesc && cellVal.length > 2) {
+        foundDesc = cellVal;
+      }
+    }
+
+    if (foundType && foundDesc && foundType.toLowerCase() !== foundDesc.toLowerCase()) {
+      title = `${foundType} - ${foundDesc}`;
+    } else if (foundDesc) {
+      title = foundDesc;
+    } else if (foundType) {
+      title = foundType;
+    } else if (isTitleDate || !title) {
+      // Buscar cualquier celda de texto que no sea fecha ni número
+      let fallbackText = '';
+      for (let c = 0; c < rawRowArray.length; c++) {
+        if (c === dateIdx) continue;
+        const cellVal = String(rawRowArray[c] || '').trim();
+        if (cellVal && parseDateString(cellVal) === null && parseAmountNumber(cellVal) === null && !/^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(cellVal)) {
+          fallbackText = cellVal;
+          break;
+        }
+      }
+      title = fallbackText || 'Movimiento bancario';
+    }
+
+    if (!title || parseDateString(title) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title)) {
       title = 'Movimiento bancario';
     }
 
@@ -324,7 +400,7 @@ export function extractRowsWithMapping(
       }
     }
 
-    if (signedAmount === null) continue;
+    if (signedAmount === null || Math.abs(signedAmount) > 10000000) continue;
 
     const type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
     const absAmount = Math.abs(signedAmount);
@@ -399,7 +475,7 @@ export function parseStatementFile(
 
   // Palabras clave bancarias
   const dateKeywords = ['fecha', 'f.oper', 'f. oper', 'f.valor', 'f. valor', 'date', 'operacion', 'valoracion'];
-  const titleKeywords = ['concepto', 'descripcion', 'detalle', 'beneficiario', 'observacion', 'datos'];
+  const titleKeywords = ['concepto', 'descripcion', 'detalle', 'tipo', 'transaccion', 'beneficiario', 'observacion', 'datos', 'asunto', 'movimiento', 'referencia'];
   const amountKeywords = ['importe', 'cargo', 'abono', 'monto', 'cantidad', 'saldo', 'haber', 'debe'];
   const metaExcludeKeywords = ['extracto', 'titular', 'periodo', 'iban', 'nº de cuenta', 'nro cuenta', 'cuenta:'];
 
@@ -504,10 +580,10 @@ export function parseStatementFile(
       const otherData = otherSheet.data;
       if (!otherData || otherData.length === 0) continue;
 
-      // Buscar si tiene fila de cabecera propia
+      // Buscar si tiene fila de cabecera propia (inspeccionar hasta 25 filas)
       let otherHeaderIdx = -1;
       let otherHeaders: string[] = [];
-      for (let r = 0; r < Math.min(otherData.length, 6); r++) {
+      for (let r = 0; r < Math.min(otherData.length, 25); r++) {
         const row = otherData[r];
         if (!row || row.length === 0) continue;
         const rowNorm = row.map(norm);
@@ -528,6 +604,23 @@ export function parseStatementFile(
         if (!row || row.length === 0) continue;
         const nonEmpties = row.filter(c => String(c || '').trim() !== '');
         if (nonEmpties.length < 2) continue;
+
+        // Omitir filas que sean metadatos de página, números de cuenta, o encabezados repetidos
+        const rowText = row.map(c => String(c || '').toLowerCase()).join(' ');
+        if (
+          rowText.includes('iban') || 
+          rowText.includes('titular') || 
+          rowText.includes('trade republic') || 
+          rowText.includes('página') || 
+          rowText.includes('pagina') || 
+          rowText.includes('page ') ||
+          rowText.includes('extracto') ||
+          rowText.includes('saldo inicial') || 
+          rowText.includes('saldo final') ||
+          rowText.includes('total general')
+        ) {
+          continue;
+        }
 
         if (otherHeaderIdx >= 0 && otherHeaders.length > 0) {
           // Alinear columnas según coincidencia de nombre con headers principales
@@ -567,6 +660,24 @@ export function parseStatementFile(
 
   const lowerHeaders = headers.map(h => norm(h));
 
+  // Función auxiliar para saber si una columna contiene principalmente fechas en lugar de conceptos
+  const isColumnMostlyDates = (colIdx: number): boolean => {
+    let dateHits = 0;
+    let validCells = 0;
+    for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 15); r++) {
+      if (!rawData[r] || rawData[r].length <= colIdx) continue;
+      const val = rawData[r][colIdx];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        validCells++;
+        const sVal = String(val).trim();
+        if (parseDateString(val) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(sVal)) {
+          dateHits++;
+        }
+      }
+    }
+    return validCells > 0 && (dateHits / validCells) >= 0.5;
+  };
+
   // 1. FECHA: Priorizar 'f. oper', 'f.oper', 'fecha operacion', 'fecha'
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
@@ -584,20 +695,71 @@ export function parseStatementFile(
     }
   }
 
-  // 2. CONCEPTO: Priorizar 'concepto', 'descripcion', 'detalle'
+  // 2. CONCEPTO:
+  // IMPORTANTE: Una columna que contenga fechas (como fecha valor, fecha contable) NUNCA debe ser elegida como concepto
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('concepto') || h.includes('descripcion') || h.includes('detalle')) {
+    if (headers[i] === dateCol) continue;
+    if (h.includes('fecha') || h.includes('date') || isColumnMostlyDates(i)) continue;
+
+    if (h.includes('descrip') || h.includes('concepto') || h.includes('detalle')) {
       titleCol = headers[i];
       break;
     }
   }
+
   if (!titleCol) {
     for (let i = 0; i < lowerHeaders.length; i++) {
-      if (titleKeywords.some(kw => lowerHeaders[i].includes(kw)) && headers[i] !== dateCol) {
+      const h = lowerHeaders[i];
+      if (headers[i] === dateCol) continue;
+      if (h.includes('fecha') || h.includes('date') || isColumnMostlyDates(i)) continue;
+
+      if (h.includes('tipo') || h.includes('transacc') || h.includes('operacion') || h.includes('asunto')) {
         titleCol = headers[i];
         break;
       }
+    }
+  }
+
+  if (!titleCol) {
+    for (let i = 0; i < lowerHeaders.length; i++) {
+      if (headers[i] === dateCol) continue;
+      if (lowerHeaders[i].includes('fecha') || lowerHeaders[i].includes('date') || isColumnMostlyDates(i)) continue;
+
+      if (titleKeywords.some(kw => lowerHeaders[i].includes(kw))) {
+        titleCol = headers[i];
+        break;
+      }
+    }
+  }
+
+  // Si aún no se encontró, buscar la columna con el texto más rico (no fecha ni número ni saldo)
+  if (!titleCol) {
+    let bestTextCol = '';
+    let maxAvgLength = 0;
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i] === dateCol) continue;
+      if (isColumnMostlyDates(i)) continue;
+      const h = lowerHeaders[i];
+      if (h.includes('saldo') || h.includes('importe') || h.includes('monto') || h.includes('cantidad') || h.includes('divisa')) continue;
+
+      let textLenSum = 0;
+      let textCount = 0;
+      for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 12); r++) {
+        if (!rawData[r] || rawData[r].length <= i) continue;
+        const s = String(rawData[r][i] || '').trim();
+        if (s && parseDateString(s) === null && parseAmountNumber(s) === null && !/^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(s)) {
+          textCount++;
+          textLenSum += s.length;
+        }
+      }
+      if (textCount > 0 && (textLenSum / textCount) > maxAvgLength) {
+        maxAvgLength = textLenSum / textCount;
+        bestTextCol = headers[i];
+      }
+    }
+    if (bestTextCol) {
+      titleCol = bestTextCol;
     }
   }
 
@@ -676,9 +838,12 @@ export function parseStatementFile(
     }
   }
 
-  // Fallbacks de columnas por índice si fuera necesario
+  // Fallbacks de columnas por índice si fuera necesario garantizando que titleCol no sea una fecha
   if (!dateCol && headers.length > 0) dateCol = headers[0];
-  if (!titleCol && headers.length > 1) titleCol = headers[1];
+  if (!titleCol) {
+    const nonDateCols = headers.filter((h, idx) => h !== dateCol && !isColumnMostlyDates(idx));
+    titleCol = nonDateCols.length > 0 ? nonDateCols[0] : (headers.length > 1 ? headers[1] : headers[0]);
+  }
   if (!amountCol && !incomeCol && headers.length > 2) {
     // Buscar la primera columna que no sea date ni title ni balance
     const available = headers.filter(h => h !== dateCol && h !== titleCol && h !== balanceCol);
