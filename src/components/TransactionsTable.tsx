@@ -71,64 +71,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     return map;
   }, [categories]);
 
-  // Detección proactiva de extractos asignados a la entidad errónea (ej. extracto Imagin asignado a Openbank)
-  const statementMismatches = useMemo(() => {
-    if (!onMoveTransactions || accounts.length < 2) return [];
-
-    const mismatches: Array<{
-      key: string;
-      txs: Transaction[];
-      detectedBankName: string;
-      currentAccount: BankAccount;
-      targetAccount: BankAccount;
-    }> = [];
-
-    // Buscar en notas que contengan "extracto <banco>"
-    const noteRegex = /extracto\s+([a-zA-Z0-9áéíóúüñ\-_.]+)/i;
-    const grouped = new Map<string, Transaction[]>();
-
-    for (const tx of transactions) {
-      if (!tx.note) continue;
-      const m = tx.note.match(noteRegex);
-      if (m && m[1]) {
-        const keyword = m[1].toLowerCase().replace(/\.(xls|xlsx|csv)$/i, '').trim();
-        if (keyword.length >= 3) {
-          const list = grouped.get(keyword) || [];
-          list.push(tx);
-          grouped.set(keyword, list);
-        }
-      }
-    }
-
-    grouped.forEach((txList, keyword) => {
-      // Buscar cuenta que coincida con la palabra clave del archivo
-      const targetAcc = accounts.find((acc) => {
-        const bName = acc.bankName.toLowerCase();
-        const bId = acc.bankId.toLowerCase();
-        return bName.includes(keyword) || keyword.includes(bName) || bId.includes(keyword);
-      });
-
-      if (targetAcc) {
-        // Movimientos cuya cuenta asignada NO sea la cuenta sugerida
-        const wrongTxs = txList.filter((tx) => tx.accountId !== targetAcc.id);
-        if (wrongTxs.length > 0) {
-          const currentAcc = accountMap.get(wrongTxs[0].accountId);
-          if (currentAcc && currentAcc.id !== targetAcc.id) {
-            mismatches.push({
-              key: `${keyword}-${targetAcc.id}-${currentAcc.id}`,
-              txs: wrongTxs,
-              detectedBankName: targetAcc.bankName,
-              currentAccount: currentAcc,
-              targetAccount: targetAcc
-            });
-          }
-        }
-      }
-    });
-
-    return mismatches;
-  }, [transactions, accounts, accountMap, onMoveTransactions]);
-
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -224,41 +166,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   return (
     <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 space-y-4">
       
-      {/* Banner de corrección automática para extractos asignados a la entidad errónea */}
-      {statementMismatches.map((mismatch) => (
-        <div 
-          key={mismatch.key}
-          className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs animate-in fade-in"
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-extrabold text-xs sm:text-sm text-amber-900">
-                Movimientos de extracto detectados en otra entidad
-              </h4>
-              <p className="text-xs text-amber-800 mt-0.5 leading-snug">
-                Se han detectado <strong>{mismatch.txs.length} movimientos</strong> del archivo de extracto vinculados por error a <strong>{mismatch.currentAccount.bankName}</strong> ({mismatch.currentAccount.accountName}). Corresponden a la entidad <strong>{mismatch.targetAccount.bankName}</strong> ({mismatch.targetAccount.accountName}).
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
-            <button
-              type="button"
-              onClick={() => {
-                if (onMoveTransactions) {
-                  onMoveTransactions(mismatch.txs.map((t) => t.id), mismatch.targetAccount.id, true);
-                }
-              }}
-              className="w-full md:w-auto px-4 py-2 bg-[#0E6A3B] hover:bg-[#094d2a] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>Mover a {mismatch.targetAccount.bankName} y actualizar saldos</span>
-            </button>
-          </div>
-        </div>
-      ))}
-
       {/* Title & Action Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90">
         <div>
