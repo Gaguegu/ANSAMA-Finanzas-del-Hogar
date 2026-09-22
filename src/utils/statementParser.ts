@@ -78,29 +78,55 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'sepe', 'seguridad social prestacion'
   ],
   'cat-rendimientos': [
-    'dividendo', 'intereses', 'liquidacion intereses', 'retribucion', 'cupon',
-    'rendimiento', 'deposito', 'broker', 'degiro', 'trade republic', 'myinvestor'
+    'dividendo', 'interes', 'intereses', 'liquidacion intereses', 'retribucion', 'cupon',
+    'rendimiento', 'deposito', 'broker', 'degiro', 'trade republic', 'myinvestor', 'saveback',
+    'efectivo al', 'inversion', 'plusvalia'
   ],
   'cat-otros-ingresos': [
     'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso'
+  ],
+  'cat-otros-gastos': [
+    'operar', 'compra acciones', 'compra etf', 'orden de compra', 'comision', 'custodia'
   ]
 };
 
 // Intenta adivinar la categoría a partir del texto
 export function guessCategory(text: string, amount: number, categories: TransactionCategory[]): string {
-  const lower = text.toLowerCase();
+  const normText = String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
   
-  // Si es ingreso
-  if (amount > 0) {
-    if (lower.includes('nomina') || lower.includes('sueldo') || lower.includes('haberes')) {
-      const nomCat = categories.find(c => c.name.toLowerCase().includes('nómina') || c.id === 'cat-nomina');
-      if (nomCat) return nomCat.id;
-    }
-    if (lower.includes('dividendo') || lower.includes('interes') || lower.includes('rendimiento') || lower.includes('cupon') || lower.includes('efectivo al')) {
-      const renCat = categories.find(c => c.name.toLowerCase().includes('rendimiento') || c.name.toLowerCase().includes('interes') || c.id === 'cat-rendimientos');
+  // 1. Reglas específicas para inversiones y broker (Trade Republic, DeGiro, MyInvestor, etc.)
+  if (
+    normText.includes('interes') ||
+    normText.includes('dividendo') ||
+    normText.includes('saveback') ||
+    normText.includes('cupon') ||
+    normText.includes('rendimiento')
+  ) {
+    const renCat = categories.find(c => c.id === 'cat-rendimientos' || c.name.toLowerCase().includes('interes') || c.name.toLowerCase().includes('rendimiento'));
+    if (renCat) return renCat.id;
+  }
+
+  if (normText.includes('operar') || normText.includes('acciones') || normText.includes('etf') || normText.includes('bolsa') || normText.includes('inversion')) {
+    if (amount < 0) {
+      const expCat = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense');
+      if (expCat) return expCat.id;
+    } else {
+      const renCat = categories.find(c => c.id === 'cat-rendimientos') || categories.find(c => c.type === 'income');
       if (renCat) return renCat.id;
     }
-    if (lower.includes('transferencia') || lower.includes('traspaso') || lower.includes('bizum') || lower.includes('deposito') || lower.includes('ingreso') || lower.includes('abono')) {
+  }
+
+  // 2. Si es ingreso
+  if (amount > 0) {
+    if (normText.includes('nomina') || normText.includes('sueldo') || normText.includes('haberes') || normText.includes('pension')) {
+      const nomCat = categories.find(c => c.name.toLowerCase().includes('nomina') || c.id === 'cat-nomina');
+      if (nomCat) return nomCat.id;
+    }
+    if (normText.includes('transferencia') || normText.includes('traspaso') || normText.includes('bizum') || normText.includes('deposito') || normText.includes('abono')) {
       const bizCat = categories.find(c => c.name.toLowerCase().includes('transferencia') || c.id === 'cat-bizum-ingreso' || c.name.toLowerCase().includes('bizum'));
       if (bizCat) return bizCat.id;
     }
@@ -108,9 +134,10 @@ export function guessCategory(text: string, amount: number, categories: Transact
 
   for (const [catId, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     for (const kw of keywords) {
-      if (lower.includes(kw)) {
+      const normKw = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (normText.includes(normKw)) {
         // Verificar que la categoría exista en la lista actual
-        const matched = categories.find(c => c.id === catId || c.name.toLowerCase().includes(kw));
+        const matched = categories.find(c => c.id === catId || c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(normKw));
         if (matched) return matched.id;
         const byId = categories.find(c => c.id === catId);
         if (byId) return byId.id;
@@ -124,7 +151,7 @@ export function guessCategory(text: string, amount: number, categories: Transact
     return defaultIncome ? defaultIncome.id : 'cat-otros-ingresos';
   } else {
     const defaultExpense = categories.find(c => c.type === 'expense');
-    return defaultExpense ? defaultExpense.id : 'cat-ocio';
+    return defaultExpense ? defaultExpense.id : 'cat-otros-gastos';
   }
 }
 
@@ -373,9 +400,9 @@ export function extractRowsWithMapping(
     // Extraer importe
     let signedAmount: number | null = null;
 
-    if (incomeIdx >= 0 && expenseIdx >= 0) {
-      const incVal = parseAmountNumber(rawRowArray[incomeIdx]);
-      const expVal = parseAmountNumber(rawRowArray[expenseIdx]);
+    if (incomeIdx >= 0 || expenseIdx >= 0) {
+      const incVal = incomeIdx >= 0 ? parseAmountNumber(rawRowArray[incomeIdx]) : null;
+      const expVal = expenseIdx >= 0 ? parseAmountNumber(rawRowArray[expenseIdx]) : null;
 
       if (incVal !== null && incVal !== 0) {
         signedAmount = Math.abs(incVal);
@@ -389,9 +416,21 @@ export function extractRowsWithMapping(
     }
 
     // Si la columna seleccionada no tenía número, buscar en columnas adyacentes que sí tengan importe
+    // CRÍTICO: NUNCA buscar en fecha, concepto ni en la columna de saldo/disponible
     if (signedAmount === null) {
       for (let c = 0; c < rawRowArray.length; c++) {
-        if (c === dateIdx || c === titleIdx) continue;
+        if (c === dateIdx || c === titleIdx || c === balanceIdx) continue;
+        const hName = headers[c] ? headers[c].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : '';
+        if (
+          hName.includes('saldo') ||
+          hName.includes('balance') ||
+          hName.includes('disponible') ||
+          hName.includes('fecha') ||
+          hName.includes('date')
+        ) {
+          continue;
+        }
+
         const testNum = parseAmountNumber(rawRowArray[c]);
         if (testNum !== null) {
           signedAmount = testNum;
@@ -763,55 +802,84 @@ export function parseStatementFile(
     }
   }
 
-  // 3. COLUMNAS SEPARADAS DE INGRESO / GASTO
+  // 3. COLUMNA DE SALDO O DISPONIBLE (muy común en BBVA 'Disponible', Santander 'Saldo', CaixaBank 'Saldo', Trade Republic 'Saldo')
+  // CRÍTICO: Detectar la columna de Saldo ANTES de las columnas de importes. 'Saldo' jamás debe ser seleccionado como importe.
+  let balanceCol: string | undefined;
+  const balanceKeywords = ['saldo', 'balance', 'disponible', 'kontostand', 'saldo final', 'saldo cierre', 'saldo resultante', 'saldo contable'];
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('abono') || h.includes('ingreso') || h.includes('haber')) {
+    if (headers[i] === dateCol || headers[i] === titleCol) continue;
+    if (balanceKeywords.some(kw => h.includes(kw))) {
+      balanceCol = headers[i];
+      break;
+    }
+  }
+
+  // 4. COLUMNAS SEPARADAS DE INGRESO / GASTO (Entradas / Salidas / Abonos / Cargos)
+  const incomeKeywords = [
+    'entrada', 'entradas', 'inflow', 'inflows', 'abono', 'abonos', 'ingreso', 'ingresos',
+    'haber', 'credit', 'credito', 'deposito', 'depositos', 'eingang', 'dinero entrada'
+  ];
+  const expenseKeywords = [
+    'salida', 'salidas', 'outflow', 'outflows', 'cargo', 'cargos', 'gasto', 'gastos',
+    'debe', 'debit', 'debito', 'retirada', 'retiradas', 'pago', 'pagos', 'ausgang', 'dinero salida'
+  ];
+
+  for (let i = 0; i < lowerHeaders.length; i++) {
+    const h = lowerHeaders[i];
+    if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
+    if (incomeKeywords.some(kw => h.includes(kw))) {
       incomeCol = headers[i];
     }
-    if (h.includes('cargo') || h.includes('gasto') || h.includes('debe')) {
+    if (expenseKeywords.some(kw => h.includes(kw))) {
       expenseCol = headers[i];
     }
   }
 
-  // 4. IMPORTE ÚNICO:
-  // IMPORTANTE: 'Importe' siempre tiene prioridad sobre 'Movimiento' (en BBVA 'Movimiento' es el tipo de operación en texto)
+  // 5. IMPORTE ÚNICO:
+  // Si no se encontraron ambas columnas de ingreso y gasto, buscar la columna de importe único
   if (!incomeCol || !expenseCol) {
-    // Primero buscar explícitamente 'importe', 'monto', 'cantidad'
+    const amountKeywords = ['importe', 'monto', 'cantidad', 'transaccion', 'valor', 'cuantia', 'amount'];
     for (let i = 0; i < lowerHeaders.length; i++) {
       const h = lowerHeaders[i];
-      if (h.includes('importe') || h.includes('monto') || h.includes('cantidad')) {
+      if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
+      if (amountKeywords.some(kw => h.includes(kw))) {
         amountCol = headers[i];
         break;
       }
     }
 
     // Si aún no se encontró, probar qué columna en las filas siguientes contiene números reales
+    // CRÍTICO: Excluir explícitamente cualquier columna que tenga que ver con saldo, balance o fecha
     if (!amountCol) {
       for (let i = 0; i < headers.length; i++) {
-        if (headers[i] === dateCol || headers[i] === titleCol) continue;
-        // Testear las primeras 5 filas con datos
+        if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
+        const h = lowerHeaders[i];
+        if (balanceKeywords.some(kw => h.includes(kw)) || h.includes('fecha') || h.includes('date') || isColumnMostlyDates(i)) continue;
+
         let numericCount = 0;
         let testRows = 0;
-        for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 6); r++) {
+        for (let r = headerRowIndex + 1; r < Math.min(rawData.length, headerRowIndex + 8); r++) {
           if (!rawData[r] || rawData[r].length <= i) continue;
           testRows++;
           if (parseAmountNumber(rawData[r][i]) !== null) {
             numericCount++;
           }
         }
-        if (testRows > 0 && numericCount / testRows >= 0.6) {
+        if (testRows > 0 && numericCount / testRows >= 0.25) {
           amountCol = headers[i];
           break;
         }
       }
     }
 
-    // Fallback final a palabras como movimiento o saldo
+    // Fallback secundario a palabras como 'movimiento' (pero NUNCA 'saldo')
     if (!amountCol) {
       for (let i = 0; i < lowerHeaders.length; i++) {
         const h = lowerHeaders[i];
-        if (h.includes('movimiento') || h.includes('saldo')) {
+        if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
+        if (balanceKeywords.some(kw => h.includes(kw))) continue;
+        if (h.includes('movimiento') || h.includes('total') || h.includes('precio')) {
           amountCol = headers[i];
           break;
         }
@@ -819,41 +887,23 @@ export function parseStatementFile(
     }
   }
 
-  // 5. COLUMNA DE SALDO O DISPONIBLE (muy común en BBVA 'Disponible', Santander 'Saldo', CaixaBank 'Saldo')
-  let balanceCol: string | undefined;
-  for (let i = 0; i < lowerHeaders.length; i++) {
-    const h = lowerHeaders[i];
-    if (h.includes('disponible') || h.includes('saldo') || h.includes('balance')) {
-      // Evitar colisión si esa columna ya se asignó a importe o fecha o concepto
-      if (
-        headers[i] !== amountCol &&
-        headers[i] !== incomeCol &&
-        headers[i] !== expenseCol &&
-        headers[i] !== dateCol &&
-        headers[i] !== titleCol
-      ) {
-        balanceCol = headers[i];
-        break;
-      }
-    }
-  }
-
-  // Fallbacks de columnas por índice si fuera necesario garantizando que titleCol no sea una fecha
+  // Fallbacks de columnas por índice si fuera necesario garantizando que titleCol no sea una fecha ni saldo
   if (!dateCol && headers.length > 0) dateCol = headers[0];
   if (!titleCol) {
-    const nonDateCols = headers.filter((h, idx) => h !== dateCol && !isColumnMostlyDates(idx));
+    const nonDateCols = headers.filter((h, idx) => h !== dateCol && h !== balanceCol && !isColumnMostlyDates(idx));
     titleCol = nonDateCols.length > 0 ? nonDateCols[0] : (headers.length > 1 ? headers[1] : headers[0]);
   }
-  if (!amountCol && !incomeCol && headers.length > 2) {
-    // Buscar la primera columna que no sea date ni title ni balance
+  if (!amountCol && (!incomeCol || !expenseCol) && headers.length > 2) {
     const available = headers.filter(h => h !== dateCol && h !== titleCol && h !== balanceCol);
-    amountCol = available.length > 0 ? available[0] : headers[Math.min(2, headers.length - 1)];
+    if (available.length > 0) {
+      amountCol = available[0];
+    }
   }
 
   const suggestedMapping: StatementColumnMapping = {
     dateCol: dateCol || headers[0] || 'Columna_1',
     titleCol: titleCol || headers[1] || 'Columna_2',
-    amountCol: amountCol || headers[Math.min(2, headers.length - 1)] || 'Columna_3',
+    amountCol: amountCol || (!incomeCol && !expenseCol ? headers[Math.min(2, headers.length - 1)] : ''),
     incomeCol: incomeCol || undefined,
     expenseCol: expenseCol || undefined,
     balanceCol: balanceCol || undefined
@@ -1014,6 +1064,35 @@ export function parseStatementFile(
         detectedStatementBalanceDate = r.date;
         break;
       }
+    }
+  }
+
+  // Si no se encontró en las filas de movimientos, buscar en metadatos o resumen del extracto (Saldo final / Saldo cierre)
+  if (detectedStatementBalance === undefined) {
+    for (let r = 0; r < Math.min(rawData.length, 30); r++) {
+      const row = rawData[r];
+      if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        const cellStr = norm(row[c]);
+        if (
+          cellStr.includes('saldo final') ||
+          cellStr.includes('saldo al cierre') ||
+          cellStr.includes('saldo de cierre') ||
+          cellStr.includes('saldo actual') ||
+          cellStr.includes('saldo en cuenta')
+        ) {
+          for (let c2 = c; c2 < row.length; c2++) {
+            const num = parseAmountNumber(row[c2]);
+            if (num !== null && Math.abs(num) < 10000000) {
+              detectedStatementBalance = num;
+              detectedStatementBalanceDate = latestTransactionDate;
+              break;
+            }
+          }
+          if (detectedStatementBalance !== undefined) break;
+        }
+      }
+      if (detectedStatementBalance !== undefined) break;
     }
   }
 

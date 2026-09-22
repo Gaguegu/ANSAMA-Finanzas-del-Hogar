@@ -56,6 +56,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [currentMapping, setCurrentMapping] = useState<StatementColumnMapping | null>(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [splitAmountCols, setSplitAmountCols] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(initialAccountId || '');
   const [balanceUpdateMode, setBalanceUpdateMode] = useState<'statement' | 'delta' | 'manual' | 'none'>('delta');
   const [manualBalanceInput, setManualBalanceInput] = useState<string>('');
@@ -95,6 +96,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       setParseResult(result);
       setCurrentMapping(result.suggestedMapping);
       setRows(result.rows);
+      setSplitAmountCols(Boolean(result.suggestedMapping.incomeCol && result.suggestedMapping.expenseCol));
 
       if (result.detectedStatementBalance !== undefined) {
         setBalanceUpdateMode('statement');
@@ -150,6 +152,11 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
         newDetBalance = r.balanceAfter;
         newDetBalanceDate = r.date;
       }
+    }
+
+    if (newDetBalance === undefined && parseResult.detectedStatementBalance !== undefined) {
+      newDetBalance = parseResult.detectedStatementBalance;
+      newDetBalanceDate = parseResult.detectedStatementBalanceDate;
     }
 
     setRows(newRows);
@@ -652,12 +659,57 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                       <SlidersHorizontal className="w-3.5 h-3.5 text-[#0E6A3B]" />
                       Configuración de columnas del extracto
                     </h5>
-                    <span className="text-[11px] text-zinc-500">
-                      Hoja: <strong>{parseResult.sheetName}</strong> (Fila cabecera #{parseResult.headerRowIndex + 1})
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 text-[11px] bg-white border border-zinc-200 rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplitAmountCols(false);
+                            handleUpdateMapping({
+                              ...currentMapping,
+                              incomeCol: undefined,
+                              expenseCol: undefined,
+                              amountCol: currentMapping.amountCol || parseResult.headers.find(h => !h.toLowerCase().includes('saldo') && !h.toLowerCase().includes('fecha')) || parseResult.headers[0]
+                            });
+                          }}
+                          className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                            !splitAmountCols ? 'bg-emerald-100 text-emerald-900 font-bold' : 'text-zinc-600 hover:text-zinc-900'
+                          }`}
+                        >
+                          Columna única
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplitAmountCols(true);
+                            const inCol = currentMapping.incomeCol || parseResult.headers.find(h => {
+                              const normH = h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                              return normH.includes('entrada') || normH.includes('inflow') || normH.includes('abono') || normH.includes('ingreso');
+                            }) || parseResult.headers[0];
+                            const outCol = currentMapping.expenseCol || parseResult.headers.find(h => {
+                              const normH = h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                              return normH.includes('salida') || normH.includes('outflow') || normH.includes('cargo') || normH.includes('gasto');
+                            }) || parseResult.headers[Math.min(1, parseResult.headers.length - 1)];
+                            handleUpdateMapping({
+                              ...currentMapping,
+                              incomeCol: inCol,
+                              expenseCol: outCol
+                            });
+                          }}
+                          className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                            splitAmountCols ? 'bg-emerald-100 text-emerald-900 font-bold' : 'text-zinc-600 hover:text-zinc-900'
+                          }`}
+                        >
+                          Entradas / Salidas
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-zinc-500">
+                        Hoja: <strong>{parseResult.sheetName}</strong>
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                     {/* Columna Fecha */}
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">
@@ -677,7 +729,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                     {/* Columna Concepto */}
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">
-                        Columna de Concepto / Título:
+                        Columna de Concepto:
                       </label>
                       <select
                         value={currentMapping.titleCol}
@@ -690,26 +742,59 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                       </select>
                     </div>
 
-                    {/* Columna Importe */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-zinc-700 mb-1">
-                        Columna de Importe:
-                      </label>
-                      <select
-                        value={currentMapping.amountCol}
-                        onChange={(e) => handleUpdateMapping({ ...currentMapping, amountCol: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
-                      >
-                        {parseResult.headers.map((h, i) => (
-                          <option key={i} value={h}>{h}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {/* Importes según el modo */}
+                    {!splitAmountCols ? (
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                          Columna de Importe (+ / -):
+                        </label>
+                        <select
+                          value={currentMapping.amountCol || ''}
+                          onChange={(e) => handleUpdateMapping({ ...currentMapping, amountCol: e.target.value })}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {parseResult.headers.map((h, i) => (
+                            <option key={i} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-[11px] font-bold text-emerald-800 mb-1">
+                            Columna Entradas / Abonos (+):
+                          </label>
+                          <select
+                            value={currentMapping.incomeCol || ''}
+                            onChange={(e) => handleUpdateMapping({ ...currentMapping, incomeCol: e.target.value })}
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                          >
+                            {parseResult.headers.map((h, i) => (
+                              <option key={i} value={h}>{h}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-rose-800 mb-1">
+                            Columna Salidas / Cargos (-):
+                          </label>
+                          <select
+                            value={currentMapping.expenseCol || ''}
+                            onChange={(e) => handleUpdateMapping({ ...currentMapping, expenseCol: e.target.value })}
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg font-medium text-zinc-800 focus:ring-1 focus:ring-emerald-500"
+                          >
+                            {parseResult.headers.map((h, i) => (
+                              <option key={i} value={h}>{h}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
 
                     {/* Columna Saldo / Disponible (opcional) */}
                     <div>
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">
-                        Columna Saldo / Disponible (opcional):
+                        Columna Saldo / Disponible:
                       </label>
                       <select
                         value={currentMapping.balanceCol || ''}
@@ -725,7 +810,7 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                   </div>
 
                   <p className="text-[11px] text-zinc-500">
-                    Cambiar las columnas recalculará los movimientos y el saldo detectado en tiempo real.
+                    Cambiar las columnas recalculará los importes y el saldo final del extracto en tiempo real.
                   </p>
                 </div>
               )}
