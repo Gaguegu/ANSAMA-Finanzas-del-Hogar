@@ -389,26 +389,8 @@ export function parseStatementFile(
     throw new Error('El archivo no contiene hojas de cálculo válidas.');
   }
 
-  // Encontrar la hoja con más datos
-  let selectedSheetName = workbook.SheetNames[0];
-  let rawData: any[][] = [];
-
-  for (const sName of workbook.SheetNames) {
-    const s = workbook.Sheets[sName];
-    if (!s) continue;
-    const data: any[][] = XLSX.utils.sheet_to_json(s, { header: 1, defval: '' });
-    if (data.length > rawData.length) {
-      rawData = data;
-      selectedSheetName = sName;
-    }
-  }
-
-  if (!rawData || rawData.length === 0) {
-    throw new Error('La hoja de cálculo está vacía o no tiene datos reconocibles.');
-  }
-
-  // Función auxiliar de normalización sin acentos
-  const norm = (s: any) => 
+  // Función de normalización sin acentos y en minúsculas
+  const norm = (s: any): string => 
     String(s || '')
       .toLowerCase()
       .normalize('NFD')
@@ -421,44 +403,77 @@ export function parseStatementFile(
   const amountKeywords = ['importe', 'cargo', 'abono', 'monto', 'cantidad', 'saldo', 'haber', 'debe'];
   const metaExcludeKeywords = ['extracto', 'titular', 'periodo', 'iban', 'nº de cuenta', 'nro cuenta', 'cuenta:'];
 
-  // Evaluar filas candidatas a cabecera
-  const candidateRows: Array<{ r: number; score: number; headers: string[] }> = [];
-
-  for (let r = 0; r < Math.min(rawData.length, 35); r++) {
-    const row = rawData[r];
-    if (!row || row.length === 0) continue;
-    
-    const nonEmpties = row.filter(c => String(c || '').trim() !== '');
-    if (nonEmpties.length < 2) continue;
-
-    const rowNormalized = row.map(norm);
-    let score = 0;
-
-    const hasDate = rowNormalized.some(c => dateKeywords.some(kw => c.includes(kw)));
-    const hasTitle = rowNormalized.some(c => titleKeywords.some(kw => c.includes(kw)));
-    const hasAmount = rowNormalized.some(c => amountKeywords.some(kw => c.includes(kw)));
-    const isMetadata = rowNormalized.some(c => metaExcludeKeywords.some(kw => c.includes(kw)));
-
-    if (hasDate) score += 3;
-    if (hasTitle) score += 3;
-    if (hasAmount) score += 3;
-    if (rowNormalized.some(c => c.includes('divisa') || c.includes('disponible') || c.includes('movimiento'))) score += 1;
-    if (isMetadata && nonEmpties.length < 4) score -= 4;
-
-    if (score >= 4 || (hasDate && (hasTitle || hasAmount))) {
-      const hdrs = row.map((cell, idx) => {
-        const cleaned = String(cell || '').trim();
-        return cleaned !== '' ? cleaned : `Columna_${idx + 1}`;
-      });
-      candidateRows.push({ r, score, headers: hdrs });
+  // 1. Cargar todas las hojas disponibles en el libro
+  const sheets: Array<{ name: string; data: any[][] }> = [];
+  for (const sName of workbook.SheetNames) {
+    const s = workbook.Sheets[sName];
+    if (!s) continue;
+    const data: any[][] = XLSX.utils.sheet_to_json(s, { header: 1, defval: '' });
+    if (data && data.length > 0) {
+      sheets.push({ name: sName, data });
     }
   }
 
-  // Ordenar candidatas por mayor puntuación
-  candidateRows.sort((a, b) => b.score - a.score);
+  if (sheets.length === 0) {
+    throw new Error('La hoja de cálculo está vacía o no tiene datos reconocibles.');
+  }
 
-  let headerRowIndex = candidateRows.length > 0 ? candidateRows[0].r : -1;
-  let headers: string[] = candidateRows.length > 0 ? candidateRows[0].headers : [];
+  // 2. Evaluar qué hoja contiene la mejor cabecera de extracto bancario
+  let bestSheetIdx = 0;
+  let bestCandidate: { r: number; score: number; headers: string[] } | null = null;
+  const candidateRows: Array<{ r: number; score: number; headers: string[] }> = [];
+
+  for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
+    const sheetData = sheets[sIdx].data;
+    for (let r = 0; r < Math.min(sheetData.length, 35); r++) {
+      const row = sheetData[r];
+      if (!row || row.length === 0) continue;
+      const nonEmpties = row.filter(c => String(c || '').trim() !== '');
+      if (nonEmpties.length < 2) continue;
+
+      const rowNormalized: string[] = row.map(norm);
+      let score = 0;
+      const hasDate = rowNormalized.some((c: string) => dateKeywords.some(kw => c.includes(kw)));
+      const hasTitle = rowNormalized.some((c: string) => titleKeywords.some(kw => c.includes(kw)));
+      const hasAmount = rowNormalized.some((c: string) => amountKeywords.some(kw => c.includes(kw)));
+      const isMetadata = rowNormalized.some((c: string) => metaExcludeKeywords.some(kw => c.includes(kw)));
+
+      if (hasDate) score += 3;
+      if (hasTitle) score += 3;
+      if (hasAmount) score += 3;
+      if (rowNormalized.some((c: string) => c.includes('divisa') || c.includes('disponible') || c.includes('movimiento'))) score += 1;
+      if (isMetadata && nonEmpties.length < 4) score -= 4;
+
+      if (score >= 4 || (hasDate && (hasTitle || hasAmount))) {
+        const hdrs = row.map((cell, idx) => {
+          const cleaned = String(cell || '').trim();
+          return cleaned !== '' ? cleaned : `Columna_${idx + 1}`;
+        });
+        const cand = { r, score, headers: hdrs };
+        candidateRows.push(cand);
+        if (!bestCandidate || score > bestCandidate.score) {
+          bestCandidate = cand;
+          bestSheetIdx = sIdx;
+        }
+      }
+    }
+  }
+
+  // Si no se encontró por palabras clave, elegir la hoja con mayor volumen de filas
+  if (!bestCandidate) {
+    let maxRows = 0;
+    for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
+      if (sheets[sIdx].data.length > maxRows) {
+        maxRows = sheets[sIdx].data.length;
+        bestSheetIdx = sIdx;
+      }
+    }
+  }
+
+  let selectedSheetName = sheets[bestSheetIdx].name;
+  let rawData: any[][] = [...sheets[bestSheetIdx].data];
+  let headerRowIndex = bestCandidate ? bestCandidate.r : -1;
+  let headers: string[] = bestCandidate ? bestCandidate.headers : [];
 
   // Si no se encontró por palabras clave, buscar la primera fila con 3 o más columnas con texto
   if (headerRowIndex === -1) {
@@ -475,6 +490,72 @@ export function parseStatementFile(
   if (headerRowIndex === -1) {
     headerRowIndex = 0;
     headers = (rawData[0] || []).map((c, idx) => String(c || '').trim() || `Columna_${idx + 1}`);
+  }
+
+  // 3. COMBINACIÓN AUTOMÁTICA DE MÚLTIPLES HOJAS (Especial para PDFs convertidos a Excel en varias páginas)
+  // Cuando una herramienta (como iLovePDF o Acrobat) convierte un extracto bancario PDF de varias páginas,
+  // suele generar una hoja por página. Si detectamos varias hojas con filas de datos, las unimos todas
+  // para que no se pierda ningún movimiento de las páginas siguientes.
+  let combinedSheetsCount = 1;
+  if (sheets.length > 1) {
+    for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
+      if (sIdx === bestSheetIdx) continue;
+      const otherSheet = sheets[sIdx];
+      const otherData = otherSheet.data;
+      if (!otherData || otherData.length === 0) continue;
+
+      // Buscar si tiene fila de cabecera propia
+      let otherHeaderIdx = -1;
+      let otherHeaders: string[] = [];
+      for (let r = 0; r < Math.min(otherData.length, 6); r++) {
+        const row = otherData[r];
+        if (!row || row.length === 0) continue;
+        const rowNorm = row.map(norm);
+        if (rowNorm.some(c => dateKeywords.some(kw => c.includes(kw))) && 
+            rowNorm.some(c => amountKeywords.some(kw => c.includes(kw)))) {
+          otherHeaderIdx = r;
+          otherHeaders = row.map(c => String(c || '').trim());
+          break;
+        }
+      }
+
+      // Si tiene cabecera propia y coincide con los nombres de la cabecera principal, alinear columnas
+      const startRow = otherHeaderIdx >= 0 ? otherHeaderIdx + 1 : 0;
+      let addedFromThisSheet = 0;
+
+      for (let r = startRow; r < otherData.length; r++) {
+        const row = otherData[r];
+        if (!row || row.length === 0) continue;
+        const nonEmpties = row.filter(c => String(c || '').trim() !== '');
+        if (nonEmpties.length < 2) continue;
+
+        if (otherHeaderIdx >= 0 && otherHeaders.length > 0) {
+          // Alinear columnas según coincidencia de nombre con headers principales
+          const alignedRow: any[] = new Array(headers.length).fill('');
+          headers.forEach((h, hIdx) => {
+            const matchIdx = otherHeaders.findIndex(oh => norm(oh) === norm(h));
+            if (matchIdx >= 0 && matchIdx < row.length) {
+              alignedRow[hIdx] = row[matchIdx];
+            } else if (hIdx < row.length) {
+              alignedRow[hIdx] = row[hIdx];
+            }
+          });
+          rawData.push(alignedRow);
+        } else {
+          // Usar la fila tal cual si tiene estructura uniforme
+          rawData.push(row);
+        }
+        addedFromThisSheet++;
+      }
+
+      if (addedFromThisSheet > 0) {
+        combinedSheetsCount++;
+      }
+    }
+
+    if (combinedSheetsCount > 1) {
+      selectedSheetName = `Todas las hojas (${combinedSheetsCount} páginas combinadas)`;
+    }
   }
 
   // Detectar columnas sugeridas
