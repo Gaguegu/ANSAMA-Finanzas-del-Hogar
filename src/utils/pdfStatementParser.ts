@@ -119,6 +119,59 @@ async function extractLinesFromPdf(fileData: ArrayBuffer): Promise<{
   return { linesByPage, allLines, fullDocText };
 }
 
+// Extrae con máxima precisión la fecha de una línea de PDF o combinada con la siguiente línea
+function extractDateFromPdfLine(
+  line: PdfLine,
+  nextLine?: PdfLine
+): { date: string; hasYearOnNextLine: boolean } | null {
+  // 1. Probar combinaciones de 1, 2 o 3 items al inicio de la línea
+  for (let j = 0; j < Math.min(line.items.length, 4); j++) {
+    const d1 = parseDateString(line.items[j].str);
+    if (d1) return { date: d1, hasYearOnNextLine: false };
+    if (j + 1 < line.items.length) {
+      const d2 = parseDateString(`${line.items[j].str} ${line.items[j + 1].str}`);
+      if (d2) return { date: d2, hasYearOnNextLine: false };
+    }
+    if (j + 2 < line.items.length) {
+      const d3 = parseDateString(`${line.items[j].str} ${line.items[j + 1].str} ${line.items[j + 2].str}`);
+      if (d3) return { date: d3, hasYearOnNextLine: false };
+    }
+  }
+
+  // 2. Probar sobre los primeros tokens del texto completo de la línea
+  const words = line.fullText.trim().split(/\s+/);
+  if (words.length >= 3) {
+    const d = parseDateString(`${words[0]} ${words[1]} ${words[2]}`);
+    if (d) return { date: d, hasYearOnNextLine: false };
+  }
+  if (words.length >= 2) {
+    const d = parseDateString(`${words[0]} ${words[1]}`);
+    if (d) return { date: d, hasYearOnNextLine: false };
+  }
+  if (words.length >= 1) {
+    const d = parseDateString(words[0]);
+    if (d) return { date: d, hasYearOnNextLine: false };
+  }
+
+  // 3. Probar si la fecha está dividida entre esta línea (día y mes) y la siguiente línea (año)
+  if (nextLine) {
+    const nextWords = nextLine.fullText.trim().split(/\s+/);
+    const nextFirst = nextWords[0] || '';
+    if (/^\d{4}$/.test(nextFirst)) {
+      if (words.length >= 2) {
+        const d = parseDateString(`${words[0]} ${words[1]} ${nextFirst}`);
+        if (d) return { date: d, hasYearOnNextLine: true };
+      }
+      if (words.length >= 1) {
+        const d = parseDateString(`${words[0]} ${nextFirst}`);
+        if (d) return { date: d, hasYearOnNextLine: true };
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * Parser especializado para PDFs de bancos (Trade Republic, BBVA, Santander, CaixaBank, ING, etc.)
  */
@@ -336,12 +389,20 @@ export async function parsePdfStatementFile(
 
     // Omitir líneas de metadatos o resúmenes de página y notas legales al pie
     if (
+      lineNorm.includes('trade republic bank') ||
+      lineNorm.includes('sucursal en espana') ||
+      lineNorm.includes('creado en ') ||
+      lineNorm.includes('pagina ') ||
+      lineNorm.includes('directores generales') ||
+      lineNorm.includes('domicilio social') ||
+      lineNorm.includes('nif-iva') ||
+      lineNorm.includes('nif:') ||
+      lineNorm.includes('registrada en') ||
       lineNorm.includes('saldo inicial') ||
       lineNorm.includes('saldo final') ||
       lineNorm.includes('total cargos') ||
       lineNorm.includes('total abonos') ||
       lineNorm.includes('iban:') ||
-      lineNorm.includes('pagina ') ||
       lineNorm.includes('resumen del balance') ||
       lineNorm.includes('notas sobre el extracto') ||
       lineNorm.includes('cuentas colectivas') ||
@@ -353,7 +414,8 @@ export async function parsePdfStatementFile(
       lineNorm.includes('deutsche bank') ||
       lineNorm.includes('j.p. morgan') ||
       lineNorm.includes('jp morgan') ||
-      lineNorm.includes('solaris')
+      lineNorm.includes('solaris') ||
+      (lineNorm.includes('fecha') && (lineNorm.includes('tipo') || lineNorm.includes('descripcion') || lineNorm.includes('balance')))
     ) {
       if (
         lineNorm.includes('notas sobre el extracto') ||
@@ -368,43 +430,14 @@ export async function parsePdfStatementFile(
     }
 
     // Comprobar si la línea i inicia una transacción con fecha
-    let parsedDate: string | null = null;
-    let hasYearOnNextLine = false;
-
-    // A) En la misma línea (ej: "28/03/2025", "28.03.2025", "28 mar 2025")
-    for (let j = 0; j < Math.min(line.items.length, 3); j++) {
-      const d = parseDateString(line.items[j].str);
-      if (d) {
-        parsedDate = d;
-        break;
-      }
-      if (j + 1 < line.items.length) {
-        const comb = `${line.items[j].str} ${line.items[j + 1].str}`;
-        const dComb = parseDateString(comb);
-        if (dComb) {
-          parsedDate = dComb;
-          break;
-        }
-      }
-    }
-
-    // B) Si la línea i tiene "DD mes" (ej: "28 mar") y la línea i+1 tiene el año "2025"
-    if (!parsedDate && i + 1 < allLines.length) {
-      for (let j = 0; j < Math.min(line.items.length, 2); j++) {
-        const nextFirst = allLines[i + 1].items[0]?.str || '';
-        const dNext = parseDateString(`${line.items[j].str} ${nextFirst}`);
-        if (dNext) {
-          parsedDate = dNext;
-          hasYearOnNextLine = true;
-          break;
-        }
-      }
-    }
-
-    if (!parsedDate) {
+    const dateInfo = extractDateFromPdfLine(line, i + 1 < allLines.length ? allLines[i + 1] : undefined);
+    if (!dateInfo) {
       i++;
       continue;
     }
+
+    const parsedDate = dateInfo.date;
+    const hasYearOnNextLine = dateInfo.hasYearOnNextLine;
 
     // Acumular todas las líneas que forman parte de esta misma transacción
     // (en extractos como Trade Republic, un movimiento puede ocupar 2 o 3 líneas físicas)
@@ -417,41 +450,28 @@ export async function parsePdfStatementFile(
 
       // Si encontramos separadores de sección o página, termina el bloque
       if (
+        candNorm.includes('trade republic bank') ||
+        candNorm.includes('sucursal en espana') ||
+        candNorm.includes('creado en ') ||
+        candNorm.includes('pagina ') ||
         candNorm.includes('saldo final') ||
         candNorm.includes('saldo inicial') ||
         candNorm.includes('resumen del balance') ||
-        candNorm.includes('pagina ') ||
         candNorm.includes('cuentas colectivas') ||
         candNorm.includes('cuenta fiduciaria') ||
         candNorm.includes('cuentas fiduciarias') ||
         candNorm.includes('notas sobre el extracto') ||
         candNorm.includes('fondo de garantia') ||
         candNorm.includes('garantia de depositos') ||
-        candNorm.includes('citibank')
+        candNorm.includes('citibank') ||
+        (candNorm.includes('fecha') && (candNorm.includes('tipo') || candNorm.includes('descripcion') || candNorm.includes('balance')))
       ) {
         break;
       }
 
       // Comprobar si candLine es el inicio de una NUEVA transacción
-      let isNewTx = false;
-      for (let j = 0; j < Math.min(candLine.items.length, 3); j++) {
-        if (parseDateString(candLine.items[j].str)) {
-          isNewTx = true;
-          break;
-        }
-        if (j + 1 < candLine.items.length && parseDateString(`${candLine.items[j].str} ${candLine.items[j + 1].str}`)) {
-          isNewTx = true;
-          break;
-        }
-      }
-      if (!isNewTx && nextIdx + 1 < allLines.length) {
-        const candFirst = candLine.items[0]?.str || '';
-        const nextNextFirst = allLines[nextIdx + 1].items[0]?.str || '';
-        if (parseDateString(`${candFirst} ${nextNextFirst}`)) {
-          isNewTx = true;
-        }
-      }
-
+      const nextCand = nextIdx + 1 < allLines.length ? allLines[nextIdx + 1] : undefined;
+      const isNewTx = extractDateFromPdfLine(candLine, nextCand) !== null;
       if (isNewTx) {
         break;
       }
@@ -583,6 +603,10 @@ export async function parsePdfStatementFile(
       titleNorm.includes('distribucion') ||
       titleNorm.includes('einlage') ||
       titleNorm.includes('gutschrift') ||
+      titleNorm.includes('pay-in') ||
+      titleNorm.includes('pay in') ||
+      (titleNorm.includes('transferencia') && !titleNorm.includes('transferencia enviada') && !titleNorm.includes('transferencia emitida') && !titleNorm.includes('saliente')) ||
+      (titleNorm.includes('transfer') && !titleNorm.includes('transfer out') && !titleNorm.includes('sent')) ||
       titleNorm.includes('transferencia recibida') ||
       titleNorm.includes('traspaso entrante') ||
       titleNorm.includes('traspaso desde');
@@ -764,14 +788,13 @@ export async function parsePdfStatementFile(
           ? Math.round((curr.balanceAfter - prev.balanceAfter) * 100) / 100
           : Math.round((prev.balanceAfter - curr.balanceAfter) * 100) / 100;
 
-        if (Math.abs(Math.abs(diff) - curr.amount) < 0.05) {
-          if (diff > 0 && curr.type !== 'income') {
-            curr.type = 'income';
-            curr.suggestedCategoryId = guessCategory(curr.title, curr.amount, categories);
-          } else if (diff < 0 && curr.type !== 'expense') {
-            curr.type = 'expense';
-            curr.suggestedCategoryId = guessCategory(curr.title, -curr.amount, categories);
-          }
+        // Si el saldo aumentó claramente, es un ingreso. Si disminuyó claramente, es un gasto.
+        if (diff > 0.01) {
+          curr.type = 'income';
+          curr.suggestedCategoryId = guessCategory(curr.title, curr.amount, categories);
+        } else if (diff < -0.01) {
+          curr.type = 'expense';
+          curr.suggestedCategoryId = guessCategory(curr.title, -curr.amount, categories);
         }
       }
     }

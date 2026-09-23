@@ -69,7 +69,13 @@ export function loadAppState(): AppState {
             titleLower.includes('rendimiento') ||
             titleLower.includes('deposito') ||
             titleLower.includes('deposit') ||
-            titleLower.includes('abono')
+            titleLower.includes('abono') ||
+            titleLower.includes('pay-in') ||
+            titleLower.includes('pay in') ||
+            titleLower.includes('ingreso') ||
+            titleLower.includes('einzahlung') ||
+            (titleLower.includes('transferencia') && !titleLower.includes('enviada') && !titleLower.includes('emitida') && !titleLower.includes('saliente')) ||
+            (titleLower.includes('traspaso') && !titleLower.includes('hacia') && !titleLower.includes('enviado'))
           ) {
             hasRepairedTransactions = true;
             return { ...tx, type: 'income' };
