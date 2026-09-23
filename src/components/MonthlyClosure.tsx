@@ -17,7 +17,11 @@ import {
   PieChart,
   Edit3,
   Check,
-  X
+  X,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  ListFilter
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
 import { formatCurrency, formatDate, parseCurrencyInput } from '../utils/storage';
@@ -37,6 +41,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
   const [notesText, setNotesText] = useState<string>('');
   
+  // Estado para alternar vista de tabla: 'detailed' (todas las cuentas desglosadas) o 'grouped' (por entidad)
+  const [closureTableView, setClosureTableView] = useState<'detailed' | 'grouped'>('detailed');
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(new Set());
+
   // Estado para ajustar saldos de cierre (especialmente cuenta de valores)
   const [isEditingBalances, setIsEditingBalances] = useState<boolean>(false);
   const [tempBalances, setTempBalances] = useState<Record<string, string>>({});
@@ -162,51 +170,144 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const monthNet = monthIncome - monthExpense;
   const savingsRate = monthIncome > 0 ? Math.round((monthNet / monthIncome) * 100) : 0;
 
-  // Breakdown by bank for this month
+  // Breakdown dinámico por entidad bancaria real para este mes
   const bankBreakdowns = useMemo(() => {
-    const banks = [
-      { id: 'bbva', name: 'BBVA' },
-      { id: 'santander', name: 'Banco Santander' },
-      { id: 'investment', name: 'Cuentas de Valores' },
-      { id: 'deposit', name: 'Depósitos a Plazo Fijo' },
-      { id: 'other', name: 'Otras Entidades' }
-    ];
+    // 1. Cuentas bancarias ordinarias (corrientes, ahorro, crédito) agrupadas por su banco real
+    const bankingAccounts = appState.accounts.filter(a => a.type !== 'investment' && a.type !== 'deposit');
+    const bankGroupsMap = new Map<string, {
+      id: string;
+      name: string;
+      color: string;
+      accounts: BankAccount[];
+    }>();
 
-    return banks.map((b) => {
-      let bankAccs: BankAccount[] = [];
-      if (b.id === 'investment') {
-        bankAccs = appState.accounts.filter((a) => a.type === 'investment');
-      } else if (b.id === 'deposit') {
-        bankAccs = appState.accounts.filter((a) => a.type === 'deposit');
-      } else if (b.id === 'bbva') {
-        bankAccs = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
-      } else if (b.id === 'santander') {
-        bankAccs = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
-      } else {
-        bankAccs = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
+    bankingAccounts.forEach(acc => {
+      const key = acc.bankId === 'other' ? (acc.bankName || 'other') : acc.bankId;
+      if (!bankGroupsMap.has(key)) {
+        bankGroupsMap.set(key, {
+          id: key,
+          name: acc.bankName || acc.bankId.toUpperCase(),
+          color: acc.color || '#0E6A3B',
+          accounts: []
+        });
       }
+      bankGroupsMap.get(key)!.accounts.push(acc);
+    });
 
-      const accIds = bankAccs.map((a) => a.id);
+    const groups: Array<{
+      id: string;
+      name: string;
+      color: string;
+      accounts: BankAccount[];
+    }> = Array.from(bankGroupsMap.values());
+
+    // 2. Cuentas de Valores / Inversión
+    const investmentAccs = appState.accounts.filter(a => a.type === 'investment');
+    if (investmentAccs.length > 0) {
+      groups.push({
+        id: 'investment',
+        name: 'Cuentas de Valores / Inversión',
+        color: '#0E6A3B',
+        accounts: investmentAccs
+      });
+    }
+
+    // 3. Depósitos a Plazo Fijo
+    const depositAccs = appState.accounts.filter(a => a.type === 'deposit');
+    if (depositAccs.length > 0) {
+      groups.push({
+        id: 'deposit',
+        name: 'Depósitos a Plazo Fijo',
+        color: '#0284c7',
+        accounts: depositAccs
+      });
+    }
+
+    return groups.map((g) => {
+      const accIds = g.accounts.map((a) => a.id);
       const txs = monthTransactions.filter((tx) => accIds.includes(tx.accountId));
       const income = txs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
       const expense = txs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
       const net = income - expense;
-      
-      // Saldo de las cuentas calculado al fin de ese mes específico
-      const currentBalance = bankAccs.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
+      const currentBalance = g.accounts.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
+
+      // Desglose individual de cada cuenta de este grupo
+      const accountsDetailed = g.accounts.map((a) => {
+        const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
+        const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+        const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
+        const aNet = aIncome - aExpense;
+        const aBalance = getAccountBalanceForMonth(a);
+        return {
+          account: a,
+          income: aIncome,
+          expense: aExpense,
+          net: aNet,
+          balance: aBalance
+        };
+      });
 
       return {
-        id: b.id,
-        name: b.name,
-        accountsCount: bankAccs.length,
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        accountsCount: g.accounts.length,
         income,
         expense,
         net,
         currentBalance,
-        accounts: bankAccs
+        accounts: g.accounts,
+        accountsDetailed
       };
     }).filter((b) => b.accountsCount > 0);
   }, [appState.accounts, monthTransactions, currentClosure, lastDayOfMonthStr, appState.transactions]);
+
+  // Lista plana de todas las cuentas con su desglose mensual para cotejar con extractos
+  const allAccountsDetailed = useMemo(() => {
+    return appState.accounts.map((a) => {
+      const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
+      const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+      const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
+      const aNet = aIncome - aExpense;
+      const aBalance = getAccountBalanceForMonth(a);
+      return {
+        account: a,
+        income: aIncome,
+        expense: aExpense,
+        net: aNet,
+        balance: aBalance
+      };
+    }).sort((a, b) => {
+      const typePriority: Record<string, number> = {
+        checking: 1,
+        savings: 2,
+        credit: 3,
+        investment: 4,
+        deposit: 5
+      };
+      const pA = typePriority[a.account.type] || 6;
+      const pB = typePriority[b.account.type] || 6;
+      if (pA !== pB) return pA - pB;
+      return (a.account.bankName || '').localeCompare(b.account.bankName || '');
+    });
+  }, [appState.accounts, monthTransactions, currentClosure, lastDayOfMonthStr, appState.transactions]);
+
+  const toggleEntityExpand = (id: string) => {
+    setExpandedEntities((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const expandAllEntities = () => {
+    setExpandedEntities(new Set(bankBreakdowns.map((b) => b.id)));
+  };
+
+  const collapseAllEntities = () => {
+    setExpandedEntities(new Set());
+  };
 
   // Total patrimonio a fin de ese mes
   const totalBalanceMonth = useMemo(() => {
@@ -454,85 +555,316 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
         </div>
       </div>
 
-      {/* Saldos y Conciliación por Banco en este Mes */}
+      {/* Saldos y Conciliación por Banco y Cuenta en este Mes */}
       <div className="bg-white border-2 border-emerald-600/40 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-emerald-50/40 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-emerald-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-[#0E6A3B]" />
-            <h3 className="text-base font-black text-zinc-950">
-              Conciliación y Saldos por Entidad en {capitalizedMonth}
-            </h3>
+            <div>
+              <h3 className="text-base font-black text-zinc-950">
+                Conciliación y Saldos de Cuentas en {capitalizedMonth}
+              </h3>
+              <p className="text-xs text-zinc-500">
+                {closureTableView === 'detailed' 
+                  ? `Desglose individual de cada una de tus ${allAccountsDetailed.length} cuentas y depósitos para cotejar con tus extractos`
+                  : 'Resumen contable agrupado por entidad con opción de desplegar cada subcuenta'}
+              </p>
+            </div>
           </div>
-          <span className="text-xs text-zinc-500">
-            Resumen contable del mes
-          </span>
+          
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {closureTableView === 'grouped' && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (expandedEntities.size === bankBreakdowns.length) {
+                    collapseAllEntities();
+                  } else {
+                    expandAllEntities();
+                  }
+                }}
+                className="px-2.5 py-1 text-[11px] font-bold text-zinc-700 bg-white hover:bg-zinc-100 border border-zinc-300 rounded-lg cursor-pointer transition-colors"
+              >
+                {expandedEntities.size === bankBreakdowns.length ? 'Plegar todas' : 'Desplegar todas'}
+              </button>
+            )}
+
+            <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-lg border border-zinc-300 text-xs">
+              <button
+                type="button"
+                onClick={() => setClosureTableView('detailed')}
+                className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  closureTableView === 'detailed'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <ListFilter className="w-3.5 h-3.5" />
+                <span>Detalle por Cuenta</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setClosureTableView('grouped')}
+                className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  closureTableView === 'grouped'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Por Entidad</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
-              <tr>
-                <th className="px-5 py-3">Entidad Bancaria</th>
-                <th className="px-5 py-3">Cuentas</th>
-                <th className="px-5 py-3 text-right">Ingresos Mes</th>
-                <th className="px-5 py-3 text-right">Gastos Mes</th>
-                <th className="px-5 py-3 text-right">Balance Neto Mes</th>
-                <th className="px-5 py-3 text-right">
-                  {currentClosure.isClosed ? 'Saldo al Cierre' : 'Saldo Actual'}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {bankBreakdowns.map((b) => (
-                <tr key={b.id} className="hover:bg-zinc-50/80 transition-colors">
-                  <td className="px-5 py-3.5 font-black text-zinc-900 flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${
-                      b.id === 'bbva' ? 'bg-[#004481]' : b.id === 'santander' ? 'bg-[#EC0000]' : 'bg-[#0E6A3B]'
-                    }`} />
-                    {b.name}
+          {closureTableView === 'detailed' ? (
+            /* TABLA 1: VISTA DETALLADA CUENTA POR CUENTA (TODAS LAS CUENTAS) */
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
+                <tr>
+                  <th className="px-4 py-3">Entidad Bancaria</th>
+                  <th className="px-4 py-3">Nombre Cuenta / IBAN</th>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3 text-right">Ingresos Mes</th>
+                  <th className="px-4 py-3 text-right">Gastos Mes</th>
+                  <th className="px-4 py-3 text-right">Balance Neto Mes</th>
+                  <th className="px-4 py-3 text-right">
+                    {currentClosure.isClosed ? 'Saldo al Cierre' : 'Saldo Actual'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {allAccountsDetailed.map(({ account: a, income, expense, net, balance }) => (
+                  <tr key={a.id} className="hover:bg-zinc-50/90 transition-colors">
+                    <td className="px-4 py-3 font-bold text-zinc-900 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full shrink-0" 
+                          style={{ backgroundColor: a.color || (a.bankId === 'bbva' ? '#004481' : a.bankId === 'santander' ? '#EC0000' : '#0E6A3B') }} 
+                        />
+                        <span>{a.bankName || a.bankId.toUpperCase()}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-zinc-900">
+                      <div className="truncate max-w-[200px]" title={a.accountName}>
+                        {a.accountName}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 font-mono">
+                        {a.accountNumberMasked || '••••'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {a.type === 'investment' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300">
+                          Valores / Inversión
+                        </span>
+                      )}
+                      {a.type === 'deposit' && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                          balance === 0
+                            ? 'bg-zinc-100 text-zinc-600 border-zinc-300'
+                            : 'bg-sky-100 text-sky-900 border-sky-300'
+                        }`}>
+                          {balance === 0 ? 'Depósito Vencido (0 €)' : 'Depósito Plazo Fijo'}
+                        </span>
+                      )}
+                      {a.type === 'checking' && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 border border-zinc-200">
+                          Corriente
+                        </span>
+                      )}
+                      {a.type === 'savings' && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                          Ahorro
+                        </span>
+                      )}
+                      {a.type === 'credit' && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200">
+                          Crédito
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-800 font-feature-settings-tnum whitespace-nowrap">
+                      {income > 0 ? `+${formatCurrency(income)}` : '0,00 €'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-rose-600 font-feature-settings-tnum whitespace-nowrap">
+                      {expense > 0 ? `-${formatCurrency(expense)}` : '0,00 €'}
+                    </td>
+                    <td className={`px-4 py-3 text-right font-bold font-feature-settings-tnum whitespace-nowrap ${
+                      net > 0 ? 'text-[#0E6A3B]' : net < 0 ? 'text-rose-600' : 'text-zinc-400'
+                    }`}>
+                      {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-black text-zinc-950 font-feature-settings-tnum whitespace-nowrap text-sm bg-zinc-50/50">
+                      {formatCurrency(balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-emerald-50/70 font-black border-t-2 border-emerald-300">
+                <tr>
+                  <td colSpan={3} className="px-4 py-3.5 text-zinc-900 uppercase text-[11px] font-black">
+                    Total Consolidado Mes ({allAccountsDetailed.length} cuentas)
                   </td>
-                  <td className="px-5 py-3.5 text-zinc-600 font-medium">
-                    {b.accountsCount} {b.accountsCount === 1 ? 'cuenta' : 'cuentas'}
+                  <td className="px-4 py-3.5 text-right text-emerald-900 font-feature-settings-tnum">
+                    +{formatCurrency(monthIncome)}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-bold text-emerald-800 font-feature-settings-tnum">
-                    +{formatCurrency(b.income)}
+                  <td className="px-4 py-3.5 text-right text-rose-700 font-feature-settings-tnum">
+                    -{formatCurrency(monthExpense)}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-bold text-rose-600 font-feature-settings-tnum">
-                    -{formatCurrency(b.expense)}
-                  </td>
-                  <td className={`px-5 py-3.5 text-right font-extrabold font-feature-settings-tnum ${
-                    b.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                  <td className={`px-4 py-3.5 text-right font-feature-settings-tnum ${
+                    monthNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'
                   }`}>
-                    {b.net >= 0 ? `+${formatCurrency(b.net)}` : formatCurrency(b.net)}
+                    {monthNet >= 0 ? `+${formatCurrency(monthNet)}` : formatCurrency(monthNet)}
                   </td>
-                  <td className="px-5 py-3.5 text-right font-black text-zinc-950 font-feature-settings-tnum">
-                    {formatCurrency(b.currentBalance)}
+                  <td className="px-4 py-3.5 text-right text-[#092B19] text-base font-feature-settings-tnum bg-emerald-100/60">
+                    {formatCurrency(totalBalanceMonth)}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-emerald-50/60 font-black border-t-2 border-emerald-200">
-              <tr>
-                <td colSpan={2} className="px-5 py-3 text-zinc-900 uppercase text-[11px]">
-                  Total Consolidado Mes
-                </td>
-                <td className="px-5 py-3 text-right text-emerald-900 font-feature-settings-tnum">
-                  +{formatCurrency(monthIncome)}
-                </td>
-                <td className="px-5 py-3 text-right text-rose-700 font-feature-settings-tnum">
-                  -{formatCurrency(monthExpense)}
-                </td>
-                <td className={`px-5 py-3 text-right font-feature-settings-tnum ${
-                  monthNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'
-                }`}>
-                  {monthNet >= 0 ? `+${formatCurrency(monthNet)}` : formatCurrency(monthNet)}
-                </td>
-                <td className="px-5 py-3 text-right text-[#092B19] text-sm font-feature-settings-tnum">
-                  {formatCurrency(totalBalanceMonth)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+              </tfoot>
+            </table>
+          ) : (
+            /* TABLA 2: VISTA AGRUPADA POR ENTIDAD (CON DESPLEGABLES) */
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
+                <tr>
+                  <th className="px-5 py-3">Entidad Bancaria</th>
+                  <th className="px-5 py-3">Cuentas</th>
+                  <th className="px-5 py-3 text-right">Ingresos Mes</th>
+                  <th className="px-5 py-3 text-right">Gastos Mes</th>
+                  <th className="px-5 py-3 text-right">Balance Neto Mes</th>
+                  <th className="px-5 py-3 text-right">
+                    {currentClosure.isClosed ? 'Saldo al Cierre' : 'Saldo Actual'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {bankBreakdowns.map((b) => {
+                  const isExpanded = expandedEntities.has(b.id);
+                  return (
+                    <React.Fragment key={b.id}>
+                      <tr 
+                        onClick={() => toggleEntityExpand(b.id)}
+                        className="hover:bg-zinc-50/80 transition-colors cursor-pointer select-none"
+                      >
+                        <td className="px-5 py-3.5 font-black text-zinc-900 flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
+                            aria-label={isExpanded ? 'Plegar subcuentas' : 'Desplegar subcuentas'}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-[#0E6A3B]" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full shrink-0" 
+                            style={{ backgroundColor: b.color || (b.id === 'bbva' ? '#004481' : b.id === 'santander' ? '#EC0000' : '#0E6A3B') }} 
+                          />
+                          <span>{b.name}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-zinc-600 font-medium">
+                          <span className="inline-flex items-center gap-1 text-zinc-700 hover:underline">
+                            {b.accountsCount} {b.accountsCount === 1 ? 'cuenta' : 'cuentas'}
+                            <span className="text-[10px] text-zinc-400 font-normal">
+                              ({isExpanded ? 'ocultar' : 'ver cuentas'})
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-right font-bold text-emerald-800 font-feature-settings-tnum">
+                          +{formatCurrency(b.income)}
+                        </td>
+                        <td className="px-5 py-3.5 text-right font-bold text-rose-600 font-feature-settings-tnum">
+                          -{formatCurrency(b.expense)}
+                        </td>
+                        <td className={`px-5 py-3.5 text-right font-extrabold font-feature-settings-tnum ${
+                          b.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                        }`}>
+                          {b.net >= 0 ? `+${formatCurrency(b.net)}` : formatCurrency(b.net)}
+                        </td>
+                        <td className="px-5 py-3.5 text-right font-black text-zinc-950 font-feature-settings-tnum">
+                          {formatCurrency(b.currentBalance)}
+                        </td>
+                      </tr>
+
+                      {/* Subfilas cuando la entidad está desplegada */}
+                      {isExpanded && b.accountsDetailed.map(({ account: a, income, expense, net, balance }) => (
+                        <tr key={a.id} className="bg-emerald-50/20 hover:bg-emerald-50/40 border-b border-zinc-100 transition-colors">
+                          <td className="pl-12 pr-5 py-2.5 font-medium text-zinc-800">
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
+                              <span className="font-semibold text-zinc-900 truncate max-w-[220px]" title={a.accountName}>
+                                {a.accountName}
+                              </span>
+                              {a.type === 'investment' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  Valores
+                                </span>
+                              )}
+                              {a.type === 'deposit' && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                  balance === 0
+                                    ? 'bg-zinc-100 text-zinc-600 border-zinc-300'
+                                    : 'bg-sky-100 text-sky-800 border-sky-300'
+                                }`}>
+                                  {balance === 0 ? 'Vencido (0 €)' : 'Plazo Fijo'}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-mono ml-3.5">
+                              {a.accountNumberMasked || '••••'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-2.5 text-[11px] text-zinc-500">
+                            Subcuenta
+                          </td>
+                          <td className="px-5 py-2.5 text-right text-emerald-800 font-semibold font-feature-settings-tnum">
+                            {income > 0 ? `+${formatCurrency(income)}` : '0,00 €'}
+                          </td>
+                          <td className="px-5 py-2.5 text-right text-rose-600 font-semibold font-feature-settings-tnum">
+                            {expense > 0 ? `-${formatCurrency(expense)}` : '0,00 €'}
+                          </td>
+                          <td className={`px-5 py-2.5 text-right font-bold font-feature-settings-tnum ${
+                            net > 0 ? 'text-[#0E6A3B]' : net < 0 ? 'text-rose-600' : 'text-zinc-400'
+                          }`}>
+                            {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
+                          </td>
+                          <td className="px-5 py-2.5 text-right font-black text-zinc-900 font-feature-settings-tnum bg-emerald-50/40">
+                            {formatCurrency(balance)}
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-emerald-50/60 font-black border-t-2 border-emerald-200">
+                <tr>
+                  <td colSpan={2} className="px-5 py-3 text-zinc-900 uppercase text-[11px]">
+                    Total Consolidado Mes
+                  </td>
+                  <td className="px-5 py-3 text-right text-emerald-900 font-feature-settings-tnum">
+                    +{formatCurrency(monthIncome)}
+                  </td>
+                  <td className="px-5 py-3 text-right text-rose-700 font-feature-settings-tnum">
+                    -{formatCurrency(monthExpense)}
+                  </td>
+                  <td className={`px-5 py-3 text-right font-feature-settings-tnum ${
+                    monthNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'
+                  }`}>
+                    {monthNet >= 0 ? `+${formatCurrency(monthNet)}` : formatCurrency(monthNet)}
+                  </td>
+                  <td className="px-5 py-3 text-right text-[#092B19] text-sm font-feature-settings-tnum">
+                    {formatCurrency(totalBalanceMonth)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
         </div>
       </div>
 
