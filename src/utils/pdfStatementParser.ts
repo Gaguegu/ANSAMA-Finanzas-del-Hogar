@@ -324,54 +324,17 @@ export async function parsePdfStatementFile(
         balanceCol: 'Saldo'
       };
 
-  // 4. Extraer filas de transacciones
+  // 4. Extraer filas de transacciones agrupando bloques multilínea
   const rows: ParsedStatementRow[] = [];
   const rawPreviewRows: any[][] = [];
   const startLine = headerLineIndex >= 0 ? headerLineIndex + 1 : 0;
 
-  for (let i = startLine; i < allLines.length; i++) {
+  let i = startLine;
+  while (i < allLines.length) {
     const line = allLines[i];
-    const items = line.items;
-    if (items.length < 2) continue;
-
-    // Comprobar si la línea comienza con una fecha válida (DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD, o '10 sept' + '2026')
-    let parsedDate: string | null = null;
-    let dateItemIdx = -1;
-
-    for (let j = 0; j < Math.min(items.length, 3); j++) {
-      const d = parseDateString(items[j].str);
-      if (d) {
-        parsedDate = d;
-        dateItemIdx = j;
-        break;
-      }
-      // Probar uniendo dos items de la misma línea (ej: items[0]='10 sept', items[1]='2026')
-      if (j + 1 < items.length) {
-        const combined = `${items[j].str} ${items[j + 1].str}`;
-        const dComb = parseDateString(combined);
-        if (dComb) {
-          parsedDate = dComb;
-          dateItemIdx = j + 1;
-          break;
-        }
-      }
-      // Probar uniendo con el primer item de la siguiente línea (Trade Republic suele poner el año abajo: '10 sept' \n '2026')
-      if (i + 1 < allLines.length) {
-        const nextFirst = allLines[i + 1].items[0]?.str || '';
-        const combinedNext = `${items[j].str} ${nextFirst}`;
-        const dNext = parseDateString(combinedNext);
-        if (dNext) {
-          parsedDate = dNext;
-          dateItemIdx = j;
-          break;
-        }
-      }
-    }
-
-    if (!parsedDate) continue;
-
-    // Omitir líneas de metadatos o resúmenes
     const lineNorm = norm(line.fullText);
+
+    // Omitir líneas de metadatos o resúmenes de página
     if (
       lineNorm.includes('saldo inicial') ||
       lineNorm.includes('saldo final') ||
@@ -381,16 +344,142 @@ export async function parsePdfStatementFile(
       lineNorm.includes('pagina ') ||
       lineNorm.includes('resumen del balance')
     ) {
+      i++;
       continue;
     }
 
-    // Extraer números e importes en la línea
-    // En extractos con Saldo: los últimos números son generalmente [Entrada/Salida, Saldo] o [Importe, Saldo]
-    const numericItems: Array<{ idx: number; val: number; str: string; x: number }> = [];
-    for (let j = dateItemIdx + 1; j < items.length; j++) {
-      const num = parseAmountNumber(items[j].str);
+    // Comprobar si la línea i inicia una transacción con fecha
+    let parsedDate: string | null = null;
+    let hasYearOnNextLine = false;
+
+    // A) En la misma línea (ej: "28/03/2025", "28.03.2025", "28 mar 2025")
+    for (let j = 0; j < Math.min(line.items.length, 3); j++) {
+      const d = parseDateString(line.items[j].str);
+      if (d) {
+        parsedDate = d;
+        break;
+      }
+      if (j + 1 < line.items.length) {
+        const comb = `${line.items[j].str} ${line.items[j + 1].str}`;
+        const dComb = parseDateString(comb);
+        if (dComb) {
+          parsedDate = dComb;
+          break;
+        }
+      }
+    }
+
+    // B) Si la línea i tiene "DD mes" (ej: "28 mar") y la línea i+1 tiene el año "2025"
+    if (!parsedDate && i + 1 < allLines.length) {
+      for (let j = 0; j < Math.min(line.items.length, 2); j++) {
+        const nextFirst = allLines[i + 1].items[0]?.str || '';
+        const dNext = parseDateString(`${line.items[j].str} ${nextFirst}`);
+        if (dNext) {
+          parsedDate = dNext;
+          hasYearOnNextLine = true;
+          break;
+        }
+      }
+    }
+
+    if (!parsedDate) {
+      i++;
+      continue;
+    }
+
+    // Acumular todas las líneas que forman parte de esta misma transacción
+    // (en extractos como Trade Republic, un movimiento puede ocupar 2 o 3 líneas físicas)
+    const blockLines: PdfLine[] = [line];
+    let nextIdx = i + 1;
+
+    while (nextIdx < allLines.length) {
+      const candLine = allLines[nextIdx];
+      const candNorm = norm(candLine.fullText);
+
+      // Si encontramos separadores de sección o página, termina el bloque
+      if (
+        candNorm.includes('saldo final') ||
+        candNorm.includes('saldo inicial') ||
+        candNorm.includes('resumen del balance') ||
+        candNorm.includes('pagina ')
+      ) {
+        break;
+      }
+
+      // Comprobar si candLine es el inicio de una NUEVA transacción
+      let isNewTx = false;
+      for (let j = 0; j < Math.min(candLine.items.length, 3); j++) {
+        if (parseDateString(candLine.items[j].str)) {
+          isNewTx = true;
+          break;
+        }
+        if (j + 1 < candLine.items.length && parseDateString(`${candLine.items[j].str} ${candLine.items[j + 1].str}`)) {
+          isNewTx = true;
+          break;
+        }
+      }
+      if (!isNewTx && nextIdx + 1 < allLines.length) {
+        const candFirst = candLine.items[0]?.str || '';
+        const nextNextFirst = allLines[nextIdx + 1].items[0]?.str || '';
+        if (parseDateString(`${candFirst} ${nextNextFirst}`)) {
+          isNewTx = true;
+        }
+      }
+
+      if (isNewTx) {
+        break;
+      }
+
+      blockLines.push(candLine);
+      nextIdx++;
+
+      // Máximo 4 líneas por movimiento para evitar desbordes accidentales
+      if (blockLines.length >= 4) break;
+    }
+
+    const currentBlockIndex = i;
+    i = nextIdx;
+
+    // Recopilar todos los ítems de texto de las líneas del bloque
+    const allBlockItems: PdfTextItem[] = [];
+    for (const bLine of blockLines) {
+      allBlockItems.push(...bLine.items);
+    }
+
+    const dateYear = parsedDate.slice(0, 4);
+
+    // Identificar cantidades o números que pertenecen a la descripción (ej: "quantity: 1000", "ISIN ...")
+    // y extraer los candidatos numéricos de importe y saldo
+    const numericItems: Array<{ val: number; str: string; x: number; originalItem: PdfTextItem }> = [];
+
+    for (let k = 0; k < allBlockItems.length; k++) {
+      const it = allBlockItems[k];
+      const sTrim = it.str.trim();
+
+      // Excluir año de la fecha
+      if (sTrim === dateYear) continue;
+
+      // Excluir si es parte de la fecha inicial (ej: "28", "mar")
+      if (k === 0 && parseDateString(sTrim) !== null) continue;
+
+      // Excluir cantidades asociadas a "quantity:", "cantidad:", etc.
+      if (k > 0) {
+        const prevStr = norm(allBlockItems[k - 1].str);
+        if (prevStr.includes('quantity') || prevStr.includes('cantidad') || prevStr.includes('stk') || prevStr.includes('titulos')) {
+          continue;
+        }
+      }
+
+      const num = parseAmountNumber(sTrim);
       if (num !== null) {
-        numericItems.push({ idx: j, val: num, str: items[j].str, x: items[j].x });
+        // En extractos con divisas (Trade Republic, bancos españoles), los importes suelen llevar '€'
+        // o situarse a la derecha (x > 300) o tener decimales (con coma o punto)
+        const hasCurrencyOrDecimals = sTrim.includes('€') || sTrim.includes('EUR') || sTrim.includes(',') || sTrim.includes('.');
+        const isRightColumn = it.x > 300;
+
+        if (hasCurrencyOrDecimals || isRightColumn) {
+          numericItems.push({ val: num, str: sTrim, x: it.x, originalItem: it });
+        }
       }
     }
 
@@ -400,15 +489,19 @@ export async function parsePdfStatementFile(
     let transactionType: 'income' | 'expense' = 'expense';
     let balanceAfter: number | undefined;
 
-    // Detectar texto de descripción y tipo entre la fecha y los importes
-    const firstNumIdx = numericItems[0].idx;
+    // Detectar texto de descripción: todos los ítems que no son la fecha ni los números de importe/saldo
+    const numericItemSet = new Set(numericItems.map(n => n.originalItem));
     const textTokens: string[] = [];
-    for (let j = dateItemIdx + 1; j < firstNumIdx; j++) {
-      const s = items[j].str.trim();
-      if (s && parseDateString(s) === null) {
-        textTokens.push(s);
-      }
+
+    for (const it of allBlockItems) {
+      const s = it.str.trim();
+      if (!s) continue;
+      if (s === dateYear) continue;
+      if (parseDateString(s) !== null) continue;
+      if (numericItemSet.has(it)) continue;
+      textTokens.push(s);
     }
+
     const titleText = textTokens.join(' ').trim() || 'Movimiento bancario';
 
     // Reglas semánticas por Tipo de operación bancaria (Trade Republic / Bancos habituales)
@@ -547,18 +640,33 @@ export async function parsePdfStatementFile(
     );
 
     const isDuplicate = existingTransactions.some(tx => {
-      return (
-        tx.date === parsedDate &&
-        Math.abs(tx.amount - transactionAmount) < 0.01 &&
-        tx.type === transactionType &&
-        tx.title.toLowerCase().trim() === titleText.toLowerCase().trim()
-      );
+      const sameDate = tx.date === parsedDate;
+      const sameAmount = Math.abs(tx.amount - transactionAmount) < 0.01;
+      const sameType = tx.type === transactionType;
+      if (!sameDate || !sameAmount || !sameType) return false;
+
+      const t1 = tx.title.toLowerCase().trim();
+      const t2 = titleText.toLowerCase().trim();
+
+      // Coincidencia exacta o parcial del concepto
+      if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) return true;
+
+      // O si comparten palabras clave identificativas (ej: ISIN, ticker, nombre de empresa)
+      const words1 = t1.split(/\s+/).filter(w => w.length > 3);
+      const words2 = t2.split(/\s+/).filter(w => w.length > 3);
+      const sharedWords = words1.filter(w => words2.includes(w));
+      if (sharedWords.length > 0) return true;
+
+      // Si coincide la misma cuenta bancaria con la misma fecha, importe y tipo
+      if (suggestedAccountId && tx.accountId === suggestedAccountId) return true;
+
+      return false;
     });
 
-    const rowId = `pdf-row-${i}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const rowId = `pdf-row-${currentBlockIndex}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const newRow: ParsedStatementRow = {
       id: rowId,
-      originalIndex: i,
+      originalIndex: currentBlockIndex,
       date: parsedDate,
       title: titleText,
       amount: transactionAmount,

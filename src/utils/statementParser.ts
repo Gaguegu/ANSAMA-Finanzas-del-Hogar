@@ -489,14 +489,21 @@ export function extractRowsWithMapping(
       }
     }
 
-    // Detección de duplicado
+    // Detección inteligente de duplicado
     const isDuplicate = existingTransactions.some((tx) => {
-      return (
-        tx.date === parsedDate &&
-        Math.abs(tx.amount - absAmount) < 0.01 &&
-        tx.type === type &&
-        tx.title.toLowerCase().trim() === title.toLowerCase().trim()
-      );
+      const sameDate = tx.date === parsedDate;
+      const sameAmount = Math.abs(tx.amount - absAmount) < 0.01;
+      const sameType = tx.type === type;
+      if (!sameDate || !sameAmount || !sameType) return false;
+
+      const t1 = tx.title.toLowerCase().trim();
+      const t2 = title.toLowerCase().trim();
+      if (t1 === t2 || t1.includes(t2) || t2.includes(t1)) return true;
+
+      const words1 = t1.split(/\s+/).filter(w => w.length > 3);
+      const words2 = t2.split(/\s+/).filter(w => w.length > 3);
+      const sharedWords = words1.filter(w => words2.includes(w));
+      return sharedWords.length > 0;
     });
 
     const rawRow: Record<string, any> = {};
