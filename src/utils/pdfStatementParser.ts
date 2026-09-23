@@ -420,7 +420,14 @@ export async function parsePdfStatementFile(
         candNorm.includes('saldo final') ||
         candNorm.includes('saldo inicial') ||
         candNorm.includes('resumen del balance') ||
-        candNorm.includes('pagina ')
+        candNorm.includes('pagina ') ||
+        candNorm.includes('cuentas colectivas') ||
+        candNorm.includes('cuenta fiduciaria') ||
+        candNorm.includes('cuentas fiduciarias') ||
+        candNorm.includes('notas sobre el extracto') ||
+        candNorm.includes('fondo de garantia') ||
+        candNorm.includes('garantia de depositos') ||
+        candNorm.includes('citibank')
       ) {
         break;
       }
@@ -535,6 +542,25 @@ export async function parsePdfStatementFile(
 
     // Reglas semánticas por Tipo de operación bancaria (Trade Republic / Bancos habituales)
     const titleNorm = norm(titleText);
+
+    // Omitir absolutamente si es una nota legal, fiduciaria o de cuentas colectivas
+    if (
+      titleNorm.includes('cuentas colectivas') ||
+      titleNorm.includes('cuenta fiduciaria') ||
+      titleNorm.includes('cuentas fiduciarias') ||
+      titleNorm.includes('notas sobre el extracto') ||
+      titleNorm.includes('fondo de garantia') ||
+      titleNorm.includes('garantia de depositos') ||
+      titleNorm.includes('citibank') ||
+      titleNorm.includes('deutsche bank') ||
+      titleNorm.includes('j.p. morgan') ||
+      titleNorm.includes('jp morgan') ||
+      titleNorm.includes('solaris') ||
+      titleNorm.includes('resumen del balance')
+    ) {
+      continue;
+    }
+
     const isExplicitIncome =
       titleNorm.includes('venta') || // Venta de acciones / ETF siempre es un ingreso de efectivo
       titleNorm.includes('sell') ||
@@ -752,14 +778,32 @@ export async function parsePdfStatementFile(
   }
 
   // Si no se encontró el saldo en cabecera ni en RESUMEN DEL BALANCE,
-  // el movimiento con la fecha más reciente contiene el saldo final real del extracto
-  if (detectedStatementBalance === undefined && rows.length > 0) {
-    const sortedByDateDesc = [...rows].sort((a, b) => b.date.localeCompare(a.date));
-    const latestWithBal = sortedByDateDesc.find(r => r.balanceAfter !== undefined);
-    if (latestWithBal && latestWithBal.balanceAfter !== undefined) {
-      detectedStatementBalance = latestWithBal.balanceAfter;
-      detectedStatementBalanceDate = latestWithBal.date;
+  // o si el movimiento con fecha más reciente tiene un saldo explícito, usarlo
+  const sortedByDateDesc = [...rows].sort((a, b) => b.date.localeCompare(a.date));
+  const latestRowWithBal = sortedByDateDesc.find(r => r.balanceAfter !== undefined);
+
+  if (latestRowWithBal && latestRowWithBal.balanceAfter !== undefined) {
+    // Si la fecha detectada previamente era de emisión (año distinto o mucho más tardía que los movimientos)
+    if (
+      detectedStatementBalanceDate &&
+      sortedByDateDesc.length > 0 &&
+      detectedStatementBalanceDate > sortedByDateDesc[0].date
+    ) {
+      detectedStatementBalance = latestRowWithBal.balanceAfter;
+      detectedStatementBalanceDate = latestRowWithBal.date;
+    } else if (detectedStatementBalance === undefined) {
+      detectedStatementBalance = latestRowWithBal.balanceAfter;
+      detectedStatementBalanceDate = latestRowWithBal.date;
     }
+  }
+
+  // Si aún así la fecha del saldo excede la fecha máxima de las transacciones del periodo, acotarla
+  if (
+    detectedStatementBalanceDate &&
+    sortedByDateDesc.length > 0 &&
+    detectedStatementBalanceDate > sortedByDateDesc[0].date
+  ) {
+    detectedStatementBalanceDate = sortedByDateDesc[0].date;
   }
 
   // Ordenar cronológicamente descendente para mostrar al usuario (más recientes primero)

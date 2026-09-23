@@ -131,8 +131,12 @@ export default function App() {
     const txToDelete = appState.transactions.find((t) => t.id === id);
     if (!txToDelete) return;
 
+    const isDisclaimer =
+      (txToDelete.title || '').toLowerCase().includes('cuentas colectivas') ||
+      (txToDelete.title || '').toLowerCase().includes('notas sobre el extracto');
+
     const updatedAccounts = appState.accounts.map((acc) => {
-      if (acc.id === txToDelete.accountId) {
+      if (acc.id === txToDelete.accountId && !isDisclaimer) {
         let restoredBalance = acc.balance;
         // Reverse operation
         if (txToDelete.type === 'expense') {
@@ -156,7 +160,11 @@ export default function App() {
 
     setAppState(newState);
     saveAppState(newState);
-    triggerNotification('Movimiento eliminado y saldo restaurado.');
+    triggerNotification(
+      isDisclaimer
+        ? 'Anotación eliminada correctamente.'
+        : 'Movimiento eliminado y saldo restaurado.'
+    );
   };
 
   // Move transactions between accounts and synchronize balances
@@ -247,6 +255,10 @@ export default function App() {
     if (revertBalances) {
       const deltasByAccount: Record<string, number> = {};
       for (const tx of txsToDelete) {
+        const isDisclaimer =
+          (tx.title || '').toLowerCase().includes('cuentas colectivas') ||
+          (tx.title || '').toLowerCase().includes('notas sobre el extracto');
+        if (isDisclaimer) continue;
         const delta = tx.type === 'income' ? tx.amount : -tx.amount;
         deltasByAccount[tx.accountId] = (deltasByAccount[tx.accountId] || 0) + delta;
       }

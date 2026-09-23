@@ -77,6 +77,46 @@ export function loadAppState(): AppState {
         }
         return tx;
       });
+
+      // 3. Purgar automáticamente transacciones espurias generadas por notas legales/fiduciarias de extractos
+      const prevCount = parsed.transactions.length;
+      parsed.transactions = parsed.transactions.filter((tx: Transaction) => {
+        const titleLower = (tx.title || '').toLowerCase();
+        const isLegalDisclaimer =
+          titleLower.includes('cuentas colectivas') ||
+          titleLower.includes('cuenta fiduciaria') ||
+          titleLower.includes('cuentas fiduciarias') ||
+          titleLower.includes('notas sobre el extracto') ||
+          titleLower.includes('fondo de garantia') ||
+          (titleLower.includes('citibank') && (titleLower.includes('saldo') || titleLower.includes('extracto')));
+        return !isLegalDisclaimer;
+      });
+      if (parsed.transactions.length !== prevCount) {
+        hasRepairedTransactions = true;
+      }
+    }
+
+    // 4. Si la cuenta Trade Republic tiene balanceDate de emisión (ej: 2026) mientras sus movimientos son de 2025
+    if (Array.isArray(parsed.accounts)) {
+      parsed.accounts = parsed.accounts.map((acc: BankAccount) => {
+        if (
+          acc.bankName.toLowerCase().includes('trade') &&
+          acc.balanceDate &&
+          acc.balanceDate.startsWith('2026')
+        ) {
+          const accTxs = (parsed.transactions || [])
+            .filter((t: Transaction) => t.accountId === acc.id)
+            .sort((a: Transaction, b: Transaction) => b.date.localeCompare(a.date));
+          if (accTxs.length > 0 && accTxs[0].date.startsWith('2025')) {
+            hasRepairedAccount = true;
+            return {
+              ...acc,
+              balanceDate: accTxs[0].date
+            };
+          }
+        }
+        return acc;
+      });
     }
 
     if (hasRepairedAccount || hasRepairedTransactions) {
