@@ -334,7 +334,7 @@ export async function parsePdfStatementFile(
     const line = allLines[i];
     const lineNorm = norm(line.fullText);
 
-    // Omitir líneas de metadatos o resúmenes de página
+    // Omitir líneas de metadatos o resúmenes de página y notas legales al pie
     if (
       lineNorm.includes('saldo inicial') ||
       lineNorm.includes('saldo final') ||
@@ -342,8 +342,27 @@ export async function parsePdfStatementFile(
       lineNorm.includes('total abonos') ||
       lineNorm.includes('iban:') ||
       lineNorm.includes('pagina ') ||
-      lineNorm.includes('resumen del balance')
+      lineNorm.includes('resumen del balance') ||
+      lineNorm.includes('notas sobre el extracto') ||
+      lineNorm.includes('cuentas colectivas') ||
+      lineNorm.includes('cuenta fiduciaria') ||
+      lineNorm.includes('cuentas fiduciarias') ||
+      lineNorm.includes('fondo de garantia') ||
+      lineNorm.includes('garantia de depositos') ||
+      lineNorm.includes('citibank') ||
+      lineNorm.includes('deutsche bank') ||
+      lineNorm.includes('j.p. morgan') ||
+      lineNorm.includes('jp morgan') ||
+      lineNorm.includes('solaris')
     ) {
+      if (
+        lineNorm.includes('notas sobre el extracto') ||
+        lineNorm.includes('cuentas colectivas') ||
+        lineNorm.includes('fondo de garantia')
+      ) {
+        // Las notas explicativas de Trade Republic marcan el final de la tabla de movimientos
+        break;
+      }
       i++;
       continue;
     }
@@ -463,10 +482,20 @@ export async function parsePdfStatementFile(
       if (k === 0 && parseDateString(sTrim) !== null) continue;
 
       // Excluir cantidades asociadas a "quantity:", "cantidad:", etc.
-      if (k > 0) {
-        const prevStr = norm(allBlockItems[k - 1].str);
-        if (prevStr.includes('quantity') || prevStr.includes('cantidad') || prevStr.includes('stk') || prevStr.includes('titulos')) {
+      // IMPORTANTE: Un importe con símbolo de divisa (€, EUR, $) NUNCA es una cantidad de títulos
+      const hasCurrency = sTrim.includes('€') || sTrim.includes('EUR') || sTrim.includes('eur') || sTrim.includes('$');
+      if (!hasCurrency) {
+        if (norm(sTrim).startsWith('quantity') || norm(sTrim).startsWith('cantidad') || norm(sTrim).startsWith('stk')) {
           continue;
+        }
+        if (k > 0) {
+          const prevStr = norm(allBlockItems[k - 1].str);
+          if (
+            (prevStr.includes('quantity') || prevStr.includes('cantidad') || prevStr.includes('stk') || prevStr.includes('titulos')) &&
+            !hasCurrency
+          ) {
+            continue;
+          }
         }
       }
 
@@ -567,34 +596,31 @@ export async function parsePdfStatementFile(
       transactionAmount = Math.abs(amountCandidate.val);
       balanceAfter = balanceCandidate.val;
 
-      // 1. Probar por posición de columna X (si detectamos Entrada / Salida en cabecera)
-      let resolvedByColumn = false;
-      if (inflowColX !== null && outflowColX !== null) {
-        const distIn = Math.abs(amountCandidate.x - inflowColX);
-        const distOut = Math.abs(amountCandidate.x - outflowColX);
-        if (distIn < distOut && distIn < 80) {
-          transactionType = 'income';
-          resolvedByColumn = true;
-        } else if (distOut < distIn && distOut < 80) {
-          transactionType = 'expense';
-          resolvedByColumn = true;
+      // 1. Prioridad semántica inequívoca (las ventas de acciones, dividendos, intereses son siempre ingresos; compras y cargos siempre gastos)
+      if (isExplicitIncome && !isExplicitExpense) {
+        transactionType = 'income';
+      } else if (isExplicitExpense && !isExplicitIncome) {
+        transactionType = 'expense';
+      } else if (amountCandidate.str.includes('+')) {
+        transactionType = 'income';
+      } else if (amountCandidate.str.includes('-')) {
+        transactionType = 'expense';
+      } else {
+        // 2. Probar por posición de columna X (si detectamos Entrada / Salida en cabecera)
+        let resolvedByColumn = false;
+        if (inflowColX !== null && outflowColX !== null) {
+          const distIn = Math.abs(amountCandidate.x - inflowColX);
+          const distOut = Math.abs(amountCandidate.x - outflowColX);
+          if (distIn < distOut && distIn < 80) {
+            transactionType = 'income';
+            resolvedByColumn = true;
+          } else if (distOut < distIn && distOut < 80) {
+            transactionType = 'expense';
+            resolvedByColumn = true;
+          }
         }
-      }
 
-      if (!resolvedByColumn) {
-        if (amountCandidate.str.includes('-')) {
-          transactionType = 'expense';
-        } else if (amountCandidate.str.includes('+')) {
-          transactionType = 'income';
-        } else if (titleNorm.includes('operar') && titleNorm.includes('venta')) {
-          transactionType = 'income';
-        } else if (titleNorm.includes('operar') && titleNorm.includes('compra')) {
-          transactionType = 'expense';
-        } else if (isExplicitIncome) {
-          transactionType = 'income';
-        } else if (isExplicitExpense) {
-          transactionType = 'expense';
-        } else {
+        if (!resolvedByColumn) {
           transactionType = 'expense';
         }
       }
@@ -603,31 +629,29 @@ export async function parsePdfStatementFile(
       const singleNum = numericItems[0];
       transactionAmount = Math.abs(singleNum.val);
 
-      let resolvedByColumn = false;
-      if (inflowColX !== null && outflowColX !== null) {
-        const distIn = Math.abs(singleNum.x - inflowColX);
-        const distOut = Math.abs(singleNum.x - outflowColX);
-        if (distIn < distOut && distIn < 80) {
-          transactionType = 'income';
-          resolvedByColumn = true;
-        } else if (distOut < distIn && distOut < 80) {
-          transactionType = 'expense';
-          resolvedByColumn = true;
+      if (isExplicitIncome && !isExplicitExpense) {
+        transactionType = 'income';
+      } else if (isExplicitExpense && !isExplicitIncome) {
+        transactionType = 'expense';
+      } else if (singleNum.val < 0 || singleNum.str.includes('-')) {
+        transactionType = 'expense';
+      } else if (singleNum.str.includes('+')) {
+        transactionType = 'income';
+      } else {
+        let resolvedByColumn = false;
+        if (inflowColX !== null && outflowColX !== null) {
+          const distIn = Math.abs(singleNum.x - inflowColX);
+          const distOut = Math.abs(singleNum.x - outflowColX);
+          if (distIn < distOut && distIn < 80) {
+            transactionType = 'income';
+            resolvedByColumn = true;
+          } else if (distOut < distIn && distOut < 80) {
+            transactionType = 'expense';
+            resolvedByColumn = true;
+          }
         }
-      }
 
-      if (!resolvedByColumn) {
-        if (singleNum.val < 0 || singleNum.str.includes('-')) {
-          transactionType = 'expense';
-        } else if (titleNorm.includes('operar') && titleNorm.includes('venta')) {
-          transactionType = 'income';
-        } else if (titleNorm.includes('operar') && titleNorm.includes('compra')) {
-          transactionType = 'expense';
-        } else if (isExplicitIncome) {
-          transactionType = 'income';
-        } else if (isExplicitExpense) {
-          transactionType = 'expense';
-        } else {
+        if (!resolvedByColumn) {
           transactionType = singleNum.val >= 0 ? 'income' : 'expense';
         }
       }
