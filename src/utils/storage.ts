@@ -49,7 +49,32 @@ export function loadAppState(): AppState {
       });
     }
 
-    if (hasRepairedAccount) {
+    // Auto-reparar transacciones de broker/banco mal clasificadas como gasto (ventas, intereses, saveback, dividendos)
+    let hasRepairedTransactions = false;
+    if (Array.isArray(parsed.transactions)) {
+      parsed.transactions = parsed.transactions.map((tx: Transaction) => {
+        const titleLower = (tx.title || '').toLowerCase();
+        if (tx.type === 'expense') {
+          if (
+            titleLower.includes('venta') ||
+            titleLower.includes('saveback') ||
+            titleLower.includes('dividendo') ||
+            titleLower.includes('dividend') ||
+            titleLower.includes('interes') ||
+            titleLower.includes('interest') ||
+            titleLower.includes('rentabilidad') ||
+            titleLower.includes('rendimiento') ||
+            titleLower.includes('abono')
+          ) {
+            hasRepairedTransactions = true;
+            return { ...tx, type: 'income' };
+          }
+        }
+        return tx;
+      });
+    }
+
+    if (hasRepairedAccount || hasRepairedTransactions) {
       saveAppState(parsed);
     }
 

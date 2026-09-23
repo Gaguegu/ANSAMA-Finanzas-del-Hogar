@@ -79,13 +79,34 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   }, [currentClosure]);
 
   // Reconstrucción del saldo histórico de cada cuenta al final de ese mes
-  const getAccountBalanceForMonth = (acc: BankAccount): number => {
+  const getAccountBalanceInfo = (acc: BankAccount): { balance: number; source: 'audited' | 'statement' | 'calculated' | 'account' } => {
     // 1. Si ya existe un saldo auditado/congelado para este mes específico, usarlo
     if (currentClosure.auditedBalances?.[acc.id] !== undefined) {
-      return Math.round(currentClosure.auditedBalances[acc.id] * 100) / 100;
+      return { balance: Math.round(currentClosure.auditedBalances[acc.id] * 100) / 100, source: 'audited' };
     }
 
-    // 2. Si este mes NO está auditado todavía, buscar el cierre auditado PREVIO más reciente
+    // 2. Si existen transacciones para esta cuenta dentro de este mes con saldo de extracto registrado (balanceAfter),
+    // el saldo final del mes es el saldo posterior del último movimiento realizado en este mes:
+    const monthTxsWithBal = appState.transactions
+      .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(selectedMonth) && tx.balanceAfter !== undefined)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (monthTxsWithBal.length > 0) {
+      const lastTx = monthTxsWithBal[monthTxsWithBal.length - 1];
+      return { balance: Math.round(lastTx.balanceAfter! * 100) / 100, source: 'statement' };
+    }
+
+    // 3. Si la fecha del saldo de la cuenta está dentro de este mes y no hay movimientos posteriores a esa fecha en el mes:
+    if (acc.balanceDate && acc.balanceDate.startsWith(selectedMonth)) {
+      const txsAfterBal = appState.transactions.filter(
+        (tx) => tx.accountId === acc.id && tx.date > acc.balanceDate! && tx.date <= lastDayOfMonthStr
+      );
+      if (txsAfterBal.length === 0) {
+        return { balance: Math.round(acc.balance * 100) / 100, source: 'statement' };
+      }
+    }
+
+    // 4. Si este mes NO está auditado todavía, buscar el cierre auditado PREVIO más reciente
     const priorClosures = (appState.monthlyClosures || [])
       .filter((c) => c.month < selectedMonth && c.auditedBalances && c.auditedBalances[acc.id] !== undefined)
       .sort((a, b) => b.month.localeCompare(a.month)); // Meses descendentes (el más reciente primero)
@@ -99,12 +120,12 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       // Para depósitos a plazo fijo: si en un mes anterior se liquidó (saldo 0) o se fijó saldo,
       // se arrastra ese saldo automáticamente a los meses siguientes (NO resucita a su saldo original)
       if (acc.type === 'deposit') {
-        return Math.round(priorBalance * 100) / 100;
+        return { balance: Math.round(priorBalance * 100) / 100, source: 'audited' };
       }
 
       // Para cuentas de inversión / valores: hereda el último saldo auditado como base sugerida
       if (acc.type === 'investment') {
-        return Math.round(priorBalance * 100) / 100;
+        return { balance: Math.round(priorBalance * 100) / 100, source: 'audited' };
       }
 
       // Para cuentas bancarias: saldo del mes anterior + ingresos desde entonces - gastos desde entonces
@@ -117,12 +138,12 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       );
       const inc = intervalTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
       const exp = intervalTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-      return Math.round((priorBalance + inc - exp) * 100) / 100;
+      return { balance: Math.round((priorBalance + inc - exp) * 100) / 100, source: 'calculated' };
     }
 
-    // 3. Si no hay cierres previos para esta cuenta:
+    // 5. Si no hay cierres previos para esta cuenta:
     if (acc.type === 'investment' || acc.type === 'deposit') {
-      return Math.round(acc.balance * 100) / 100;
+      return { balance: Math.round(acc.balance * 100) / 100, source: 'account' };
     }
 
     // Para cuentas bancarias sin historial previo:
@@ -131,7 +152,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     const futureIncome = futureTxs.filter(tx => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
     const futureExpense = futureTxs.filter(tx => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
     const calculated = acc.balance - futureIncome + futureExpense;
-    return Math.round(calculated * 100) / 100;
+    return { balance: Math.round(calculated * 100) / 100, source: 'calculated' };
+  };
+
+  const getAccountBalanceForMonth = (acc: BankAccount): number => {
+    return getAccountBalanceInfo(acc).balance;
   };
 
   // Navigate months
@@ -237,13 +262,14 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
         const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
         const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
         const aNet = aIncome - aExpense;
-        const aBalance = getAccountBalanceForMonth(a);
+        const info = getAccountBalanceInfo(a);
         return {
           account: a,
           income: aIncome,
           expense: aExpense,
           net: aNet,
-          balance: aBalance
+          balance: info.balance,
+          balanceSource: info.source
         };
       });
 
@@ -269,13 +295,14 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
       const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
       const aNet = aIncome - aExpense;
-      const aBalance = getAccountBalanceForMonth(a);
+      const info = getAccountBalanceInfo(a);
       return {
         account: a,
         income: aIncome,
         expense: aExpense,
         net: aNet,
-        balance: aBalance
+        balance: info.balance,
+        balanceSource: info.source
       };
     }).sort((a, b) => {
       const typePriority: Record<string, number> = {
@@ -636,7 +663,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {allAccountsDetailed.map(({ account: a, income, expense, net, balance }) => (
+                {allAccountsDetailed.map(({ account: a, income, expense, net, balance, balanceSource }) => (
                   <tr key={a.id} className="hover:bg-zinc-50/90 transition-colors">
                     <td className="px-4 py-3 font-bold text-zinc-900 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -697,8 +724,20 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                     }`}>
                       {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
                     </td>
-                    <td className="px-4 py-3 text-right font-black text-zinc-950 font-feature-settings-tnum whitespace-nowrap text-sm bg-zinc-50/50">
-                      {formatCurrency(balance)}
+                    <td className="px-4 py-3 text-right font-feature-settings-tnum whitespace-nowrap bg-zinc-50/50">
+                      <div className="font-black text-zinc-950 text-sm">
+                        {formatCurrency(balance)}
+                      </div>
+                      {balanceSource === 'statement' && (
+                        <span className="inline-block text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300 mt-0.5" title="Saldo extraído directamente del extracto bancario oficial">
+                          Extracto oficial
+                        </span>
+                      )}
+                      {balanceSource === 'audited' && (
+                        <span className="inline-block text-[9px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.2 rounded border border-blue-300 mt-0.5" title="Saldo auditado manualmente en cierre">
+                          Auditado
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -792,7 +831,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                       </tr>
 
                       {/* Subfilas cuando la entidad está desplegada */}
-                      {isExpanded && b.accountsDetailed.map(({ account: a, income, expense, net, balance }) => (
+                      {isExpanded && b.accountsDetailed.map(({ account: a, income, expense, net, balance, balanceSource }) => (
                         <tr key={a.id} className="bg-emerald-50/20 hover:bg-emerald-50/40 border-b border-zinc-100 transition-colors">
                           <td className="pl-12 pr-5 py-2.5 font-medium text-zinc-800">
                             <div className="flex items-center gap-2">
@@ -833,8 +872,20 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                           }`}>
                             {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
                           </td>
-                          <td className="px-5 py-2.5 text-right font-black text-zinc-900 font-feature-settings-tnum bg-emerald-50/40">
-                            {formatCurrency(balance)}
+                          <td className="px-5 py-2.5 text-right font-feature-settings-tnum bg-emerald-50/40">
+                            <div className="font-black text-zinc-900">
+                              {formatCurrency(balance)}
+                            </div>
+                            {balanceSource === 'statement' && (
+                              <span className="inline-block text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300" title="Saldo extraído directamente del extracto bancario oficial">
+                                Extracto
+                              </span>
+                            )}
+                            {balanceSource === 'audited' && (
+                              <span className="inline-block text-[9px] font-bold text-blue-800 bg-blue-100 px-1 py-0.2 rounded border border-blue-300" title="Saldo auditado manualmente en cierre">
+                                Auditado
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}

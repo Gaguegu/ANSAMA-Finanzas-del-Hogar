@@ -292,7 +292,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       type: r.type,
       categoryId: r.suggestedCategoryId,
       note: `Importado desde extracto ${file?.name || 'bancario'}`,
-      isSimulated: false
+      isSimulated: false,
+      balanceAfter: r.balanceAfter
     }));
 
     onImport(

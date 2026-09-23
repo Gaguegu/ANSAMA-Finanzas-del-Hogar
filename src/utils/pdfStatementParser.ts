@@ -178,24 +178,26 @@ export async function parsePdfStatementFile(
       lineNorm.includes('balance summary') ||
       lineNorm.includes('saldenubersicht') ||
       lineNorm.includes('cuentas colectivas') ||
+      lineNorm.includes('cuentas fiduciarias') ||
       lineNorm.includes('omnibus trust')
     ) {
-      // Buscar en las siguientes líneas la fecha ("a 21 sept 2026") y el saldo del banco custodio (Citibank, Deutsche Bank, etc.)
+      // Buscar en las siguientes líneas la fecha ("a 31 mar 2025") y el saldo del banco custodio (Citibank, Deutsche Bank, Efectivo, etc.)
       for (let k = i; k < Math.min(allLines.length, i + 15); k++) {
         const subLine = allLines[k];
         const subLineNorm = norm(subLine.fullText);
 
-        // Fecha del balance (ej: "a 21 sept 2026")
+        // Fecha del balance (ej: "a 31 mar 2025", "31/03/2025", "31.03.2025")
         if (!detectedStatementBalanceDate) {
-          const dMatch = subLine.fullText.match(/\b(\d{1,2}\s+[a-z]{3,4}\s+\d{4})\b/i);
+          const dMatch = subLine.fullText.match(/\b(\d{1,2}\s+(?:de\s+)?[a-z]{3,10}(?:\s+de)?\s+\d{4})\b/i) ||
+                         subLine.fullText.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/);
           if (dMatch) {
             const parsedD = parseDateString(dMatch[1]);
             if (parsedD) detectedStatementBalanceDate = parsedD;
           }
         }
 
-        // Importe del saldo de la cuenta de efectivo (ej: "Citibank 87.544,92 €")
-        // IMPORTANTE: Solo extraer si es una línea de entidad bancaria custodia o cuentas colectivas, NUNCA de la línea con la fecha
+        // Importe del saldo de la cuenta de efectivo (ej: "Citibank 15.420,50 €", "Efectivo 15.420,50 €")
+        // Extraer si es una línea de entidad bancaria custodia, fiduciaria, o saldo total de efectivo
         const isCustodianLine =
           subLineNorm.includes('citibank') ||
           subLineNorm.includes('deutsche') ||
@@ -203,8 +205,11 @@ export async function parsePdfStatementFile(
           subLineNorm.includes('jp morgan') ||
           subLineNorm.includes('solaris') ||
           subLineNorm.includes('cuentas colectivas') ||
+          subLineNorm.includes('cuentas fiduciarias') ||
           subLineNorm.includes('omnibus') ||
-          subLineNorm.includes('efectivo');
+          subLineNorm.includes('efectivo') ||
+          subLineNorm.includes('saldo total') ||
+          subLineNorm.includes('total efectivo');
 
         if (isCustodianLine) {
           for (let j = subLine.items.length - 1; j >= 0; j--) {
@@ -263,15 +268,31 @@ export async function parsePdfStatementFile(
   let headerLineIndex = -1;
   let isTradeRepublic = norm(fullDocText).includes('trade republic');
   let hasSeparateInOut = false;
+  let inflowColX: number | null = null;
+  let outflowColX: number | null = null;
+  let saldoColX: number | null = null;
 
   for (let i = 0; i < allLines.length; i++) {
     const textNorm = norm(allLines[i].fullText);
-    const hasDateKw = textNorm.includes('fecha') || textNorm.includes('date');
+    const hasDateKw = textNorm.includes('fecha') || textNorm.includes('date') || textNorm.includes('datum');
     const hasTypeOrDesc = textNorm.includes('tipo') || textNorm.includes('concepto') || textNorm.includes('descripcion') || textNorm.includes('description');
     const hasAmountKw = textNorm.includes('importe') || textNorm.includes('entrada') || textNorm.includes('salida') || textNorm.includes('cargo') || textNorm.includes('abono') || textNorm.includes('saldo');
 
     if (hasDateKw && (hasTypeOrDesc || hasAmountKw)) {
       headerLineIndex = i;
+      const headerLine = allLines[i];
+      for (const item of headerLine.items) {
+        const itemNorm = norm(item.str);
+        if (itemNorm.includes('entrada') || itemNorm.includes('abono') || itemNorm.includes('inflow') || itemNorm.includes('eingang')) {
+          inflowColX = item.x;
+          hasSeparateInOut = true;
+        } else if (itemNorm.includes('salida') || itemNorm.includes('cargo') || itemNorm.includes('outflow') || itemNorm.includes('ausgang')) {
+          outflowColX = item.x;
+          hasSeparateInOut = true;
+        } else if (itemNorm.includes('saldo') || itemNorm.includes('balance') || itemNorm.includes('kontostand')) {
+          saldoColX = item.x;
+        }
+      }
       if (
         (textNorm.includes('entrada') && textNorm.includes('salida')) ||
         (textNorm.includes('cargo') && textNorm.includes('abono')) ||
@@ -393,6 +414,7 @@ export async function parsePdfStatementFile(
     // Reglas semánticas por Tipo de operación bancaria (Trade Republic / Bancos habituales)
     const titleNorm = norm(titleText);
     const isExplicitIncome =
+      titleNorm.includes('venta') || // Venta de acciones / ETF siempre es un ingreso de efectivo
       titleNorm.includes('rentabilidad') ||
       titleNorm.includes('dividend') ||
       titleNorm.includes('dividendo') ||
@@ -410,15 +432,16 @@ export async function parsePdfStatementFile(
       titleNorm.includes('premio') ||
       titleNorm.includes('distribucion') ||
       titleNorm.includes('einlage') ||
-      titleNorm.includes('gutschrift');
+      titleNorm.includes('gutschrift') ||
+      titleNorm.includes('transferencia recibida') ||
+      titleNorm.includes('traspaso entrante') ||
+      titleNorm.includes('traspaso desde');
 
     const isExplicitExpense =
-      titleNorm.includes('operar') ||
-      titleNorm.includes('compra') ||
+      titleNorm.includes('compra') || // Compra de acciones / ETF saca efectivo
       titleNorm.includes('buy') ||
       titleNorm.includes('kauf') ||
-      titleNorm.includes('orden') ||
-      titleNorm.includes('order') ||
+      titleNorm.includes('orden de compra') ||
       titleNorm.includes('cargo') ||
       titleNorm.includes('retirada') ||
       titleNorm.includes('withdrawal') ||
@@ -437,7 +460,9 @@ export async function parsePdfStatementFile(
       titleNorm.includes('impuesto') ||
       titleNorm.includes('tax') ||
       titleNorm.includes('retencion') ||
-      titleNorm.includes('steuer');
+      titleNorm.includes('steuer') ||
+      titleNorm.includes('transferencia enviada') ||
+      titleNorm.includes('traspaso hacia');
 
     if (numericItems.length >= 2) {
       // Habitualmente: Penúltimo = Importe de operación, Último = Saldo posterior
@@ -447,30 +472,69 @@ export async function parsePdfStatementFile(
       transactionAmount = Math.abs(amountCandidate.val);
       balanceAfter = balanceCandidate.val;
 
-      if (amountCandidate.str.includes('-')) {
-        transactionType = 'expense';
-      } else if (amountCandidate.str.includes('+')) {
-        transactionType = 'income';
-      } else if (isExplicitIncome) {
-        transactionType = 'income';
-      } else if (isExplicitExpense) {
-        transactionType = 'expense';
-      } else {
-        transactionType = 'expense';
+      // 1. Probar por posición de columna X (si detectamos Entrada / Salida en cabecera)
+      let resolvedByColumn = false;
+      if (inflowColX !== null && outflowColX !== null) {
+        const distIn = Math.abs(amountCandidate.x - inflowColX);
+        const distOut = Math.abs(amountCandidate.x - outflowColX);
+        if (distIn < distOut && distIn < 80) {
+          transactionType = 'income';
+          resolvedByColumn = true;
+        } else if (distOut < distIn && distOut < 80) {
+          transactionType = 'expense';
+          resolvedByColumn = true;
+        }
+      }
+
+      if (!resolvedByColumn) {
+        if (amountCandidate.str.includes('-')) {
+          transactionType = 'expense';
+        } else if (amountCandidate.str.includes('+')) {
+          transactionType = 'income';
+        } else if (titleNorm.includes('operar') && titleNorm.includes('venta')) {
+          transactionType = 'income';
+        } else if (titleNorm.includes('operar') && titleNorm.includes('compra')) {
+          transactionType = 'expense';
+        } else if (isExplicitIncome) {
+          transactionType = 'income';
+        } else if (isExplicitExpense) {
+          transactionType = 'expense';
+        } else {
+          transactionType = 'expense';
+        }
       }
     } else {
       // Solo 1 número en la línea: es el importe
       const singleNum = numericItems[0];
       transactionAmount = Math.abs(singleNum.val);
 
-      if (singleNum.val < 0 || singleNum.str.includes('-')) {
-        transactionType = 'expense';
-      } else if (isExplicitIncome) {
-        transactionType = 'income';
-      } else if (isExplicitExpense) {
-        transactionType = 'expense';
-      } else {
-        transactionType = singleNum.val >= 0 ? 'income' : 'expense';
+      let resolvedByColumn = false;
+      if (inflowColX !== null && outflowColX !== null) {
+        const distIn = Math.abs(singleNum.x - inflowColX);
+        const distOut = Math.abs(singleNum.x - outflowColX);
+        if (distIn < distOut && distIn < 80) {
+          transactionType = 'income';
+          resolvedByColumn = true;
+        } else if (distOut < distIn && distOut < 80) {
+          transactionType = 'expense';
+          resolvedByColumn = true;
+        }
+      }
+
+      if (!resolvedByColumn) {
+        if (singleNum.val < 0 || singleNum.str.includes('-')) {
+          transactionType = 'expense';
+        } else if (titleNorm.includes('operar') && titleNorm.includes('venta')) {
+          transactionType = 'income';
+        } else if (titleNorm.includes('operar') && titleNorm.includes('compra')) {
+          transactionType = 'expense';
+        } else if (isExplicitIncome) {
+          transactionType = 'income';
+        } else if (isExplicitExpense) {
+          transactionType = 'expense';
+        } else {
+          transactionType = singleNum.val >= 0 ? 'income' : 'expense';
+        }
       }
     }
 
@@ -524,32 +588,43 @@ export async function parsePdfStatementFile(
   }
 
   // Verificación matemática de signo basada en el saldo continuo (balanceAfter)
-  // En extractos bancarios cronológicos (antiguo -> nuevo), la diferencia entre saldos consecutivos
-  // confirma con 100% de precisión si el movimiento fue ingreso o gasto:
-  for (let k = 1; k < rows.length; k++) {
-    const prev = rows[k - 1];
-    const curr = rows[k];
-    if (prev.balanceAfter !== undefined && curr.balanceAfter !== undefined) {
-      const diff = Math.round((curr.balanceAfter - prev.balanceAfter) * 100) / 100;
-      if (Math.abs(Math.abs(diff) - curr.amount) < 0.05) {
-        if (diff > 0 && curr.type !== 'income') {
-          curr.type = 'income';
-          curr.suggestedCategoryId = guessCategory(curr.title, curr.amount, categories);
-        } else if (diff < 0 && curr.type !== 'expense') {
-          curr.type = 'expense';
-          curr.suggestedCategoryId = guessCategory(curr.title, -curr.amount, categories);
+  // Comprobar la dirección temporal del extracto (cronológico antiguo->nuevo vs nuevo->antiguo)
+  if (rows.length >= 2) {
+    const isOldestFirst = rows[0].date <= rows[rows.length - 1].date;
+
+    for (let k = 1; k < rows.length; k++) {
+      const prev = rows[k - 1];
+      const curr = rows[k];
+      if (prev.balanceAfter !== undefined && curr.balanceAfter !== undefined) {
+        // Si el extracto avanza en el tiempo (prev es anterior, curr es posterior):
+        // aumento de saldo = curr - prev > 0
+        // Si el extracto va hacia atrás (prev es posterior, curr es anterior):
+        // aumento de saldo del movimiento curr = prev - curr > 0
+        const diff = isOldestFirst
+          ? Math.round((curr.balanceAfter - prev.balanceAfter) * 100) / 100
+          : Math.round((prev.balanceAfter - curr.balanceAfter) * 100) / 100;
+
+        if (Math.abs(Math.abs(diff) - curr.amount) < 0.05) {
+          if (diff > 0 && curr.type !== 'income') {
+            curr.type = 'income';
+            curr.suggestedCategoryId = guessCategory(curr.title, curr.amount, categories);
+          } else if (diff < 0 && curr.type !== 'expense') {
+            curr.type = 'expense';
+            curr.suggestedCategoryId = guessCategory(curr.title, -curr.amount, categories);
+          }
         }
       }
     }
   }
 
   // Si no se encontró el saldo en cabecera ni en RESUMEN DEL BALANCE,
-  // el último movimiento del extracto (o el primero si fuera descendente) contiene el saldo final real
+  // el movimiento con la fecha más reciente contiene el saldo final real del extracto
   if (detectedStatementBalance === undefined && rows.length > 0) {
-    const withBal = [...rows].reverse().find(r => r.balanceAfter !== undefined);
-    if (withBal && withBal.balanceAfter !== undefined) {
-      detectedStatementBalance = withBal.balanceAfter;
-      detectedStatementBalanceDate = withBal.date;
+    const sortedByDateDesc = [...rows].sort((a, b) => b.date.localeCompare(a.date));
+    const latestWithBal = sortedByDateDesc.find(r => r.balanceAfter !== undefined);
+    if (latestWithBal && latestWithBal.balanceAfter !== undefined) {
+      detectedStatementBalance = latestWithBal.balanceAfter;
+      detectedStatementBalanceDate = latestWithBal.date;
     }
   }
 

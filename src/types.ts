@@ -54,6 +54,7 @@ export interface Transaction {
   categoryId: string;
   note?: string;
   isSimulated?: boolean;
+  balanceAfter?: number; // Saldo de la cuenta tras el movimiento según extracto bancario
 }
 
 export type YieldType = 'interest' | 'dividend';
