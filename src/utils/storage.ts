@@ -57,13 +57,18 @@ export function loadAppState(): AppState {
         if (tx.type === 'expense') {
           if (
             titleLower.includes('venta') ||
+            titleLower.includes('sell') ||
+            titleLower.includes('verkauf') ||
             titleLower.includes('saveback') ||
             titleLower.includes('dividendo') ||
             titleLower.includes('dividend') ||
             titleLower.includes('interes') ||
             titleLower.includes('interest') ||
+            titleLower.includes('zinsen') ||
             titleLower.includes('rentabilidad') ||
             titleLower.includes('rendimiento') ||
+            titleLower.includes('deposito') ||
+            titleLower.includes('deposit') ||
             titleLower.includes('abono')
           ) {
             hasRepairedTransactions = true;

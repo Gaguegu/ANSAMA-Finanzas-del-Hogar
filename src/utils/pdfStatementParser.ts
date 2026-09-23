@@ -508,6 +508,8 @@ export async function parsePdfStatementFile(
     const titleNorm = norm(titleText);
     const isExplicitIncome =
       titleNorm.includes('venta') || // Venta de acciones / ETF siempre es un ingreso de efectivo
+      titleNorm.includes('sell') ||
+      titleNorm.includes('verkauf') ||
       titleNorm.includes('rentabilidad') ||
       titleNorm.includes('dividend') ||
       titleNorm.includes('dividendo') ||

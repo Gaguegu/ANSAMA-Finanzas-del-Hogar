@@ -1071,7 +1071,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                     <div className="w-36 shrink-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <label className="block text-[10px] font-semibold text-zinc-500">
-                          Saldo a 31/{String(month).padStart(2, '0')} (€)
+                          Saldo a {new Date(year, month, 0).getDate()}/{String(month).padStart(2, '0')} (€)
                         </label>
                         {acc.type === 'deposit' && (tempBalances[acc.id] !== '0.00' && tempBalances[acc.id] !== '0') && (
                           <button
