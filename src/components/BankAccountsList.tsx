@@ -265,8 +265,16 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
             <span className="text-[10px] text-zinc-400 block">
               Actualizado {formatRelativeTime(account.lastSynced)}
             </span>
-            <span className="text-[11px] font-bold text-zinc-700">
-              {isInvestment ? 'Cartera activa' : isDeposit ? 'Depósito vigente' : isCredit ? 'Disposición autorizada' : 'Fondos disponibles'}
+            <span className={`text-[11px] font-bold ${
+              isDeposit && account.balance <= 0 ? 'text-zinc-500' : 'text-zinc-700'
+            }`}>
+              {isInvestment 
+                ? 'Cartera activa' 
+                : isDeposit 
+                  ? (account.balance > 0 ? 'Depósito vigente' : 'Depósito vencido / Liquidado') 
+                  : isCredit 
+                    ? 'Disposición autorizada' 
+                    : 'Fondos disponibles'}
             </span>
           </div>
         </div>

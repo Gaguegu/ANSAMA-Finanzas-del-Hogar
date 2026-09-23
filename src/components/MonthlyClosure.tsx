@@ -72,20 +72,58 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
 
   // Reconstrucción del saldo histórico de cada cuenta al final de ese mes
   const getAccountBalanceForMonth = (acc: BankAccount): number => {
-    // Si ya existe un saldo auditado/congelado para este mes, usarlo
+    // 1. Si ya existe un saldo auditado/congelado para este mes específico, usarlo
     if (currentClosure.auditedBalances?.[acc.id] !== undefined) {
-      return currentClosure.auditedBalances[acc.id];
+      return Math.round(currentClosure.auditedBalances[acc.id] * 100) / 100;
     }
-    // Si es cuenta de inversión (valores) o depósito a plazo fijo, si no se auditó, toma su saldo base
+
+    // 2. Si este mes NO está auditado todavía, buscar el cierre auditado PREVIO más reciente
+    const priorClosures = (appState.monthlyClosures || [])
+      .filter((c) => c.month < selectedMonth && c.auditedBalances && c.auditedBalances[acc.id] !== undefined)
+      .sort((a, b) => b.month.localeCompare(a.month)); // Meses descendentes (el más reciente primero)
+
+    const latestPrior = priorClosures[0];
+
+    // Si encontramos una auditoría previa para esta cuenta (ej. en enero se puso el depósito a 0 o valores a X)
+    if (latestPrior && latestPrior.auditedBalances) {
+      const priorBalance = latestPrior.auditedBalances[acc.id];
+
+      // Para depósitos a plazo fijo: si en un mes anterior se liquidó (saldo 0) o se fijó saldo,
+      // se arrastra ese saldo automáticamente a los meses siguientes (NO resucita a su saldo original)
+      if (acc.type === 'deposit') {
+        return Math.round(priorBalance * 100) / 100;
+      }
+
+      // Para cuentas de inversión / valores: hereda el último saldo auditado como base sugerida
+      if (acc.type === 'investment') {
+        return Math.round(priorBalance * 100) / 100;
+      }
+
+      // Para cuentas bancarias: saldo del mes anterior + ingresos desde entonces - gastos desde entonces
+      const [pYear, pMonth] = latestPrior.month.split('-');
+      const pLastDay = new Date(parseInt(pYear, 10), parseInt(pMonth, 10), 0).getDate();
+      const pEndStr = `${latestPrior.month}-${String(pLastDay).padStart(2, '0')}`;
+
+      const intervalTxs = appState.transactions.filter(
+        (tx) => tx.accountId === acc.id && tx.date > pEndStr && tx.date <= lastDayOfMonthStr
+      );
+      const inc = intervalTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const exp = intervalTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      return Math.round((priorBalance + inc - exp) * 100) / 100;
+    }
+
+    // 3. Si no hay cierres previos para esta cuenta:
     if (acc.type === 'investment' || acc.type === 'deposit') {
-      return acc.balance;
+      return Math.round(acc.balance * 100) / 100;
     }
-    // Para cuentas bancarias:
+
+    // Para cuentas bancarias sin historial previo:
     // Saldo al fin de ese mes = Saldo Actual - (Ingresos posteriores) + (Gastos posteriores)
     const futureTxs = appState.transactions.filter(tx => tx.accountId === acc.id && tx.date > lastDayOfMonthStr);
     const futureIncome = futureTxs.filter(tx => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
     const futureExpense = futureTxs.filter(tx => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
-    return acc.balance - futureIncome + futureExpense;
+    const calculated = acc.balance - futureIncome + futureExpense;
+    return Math.round(calculated * 100) / 100;
   };
 
   // Navigate months
@@ -130,6 +168,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       { id: 'bbva', name: 'BBVA' },
       { id: 'santander', name: 'Banco Santander' },
       { id: 'investment', name: 'Cuentas de Valores' },
+      { id: 'deposit', name: 'Depósitos a Plazo Fijo' },
       { id: 'other', name: 'Otras Entidades' }
     ];
 
@@ -137,12 +176,14 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       let bankAccs: BankAccount[] = [];
       if (b.id === 'investment') {
         bankAccs = appState.accounts.filter((a) => a.type === 'investment');
+      } else if (b.id === 'deposit') {
+        bankAccs = appState.accounts.filter((a) => a.type === 'deposit');
       } else if (b.id === 'bbva') {
-        bankAccs = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment');
+        bankAccs = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
       } else if (b.id === 'santander') {
-        bankAccs = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment');
+        bankAccs = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
       } else {
-        bankAccs = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment');
+        bankAccs = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
       }
 
       const accIds = bankAccs.map((a) => a.id);
@@ -193,7 +234,8 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const handleOpenEditBalances = () => {
     const initialValues: Record<string, string> = {};
     appState.accounts.forEach((a) => {
-      initialValues[a.id] = getAccountBalanceForMonth(a).toString();
+      const bal = getAccountBalanceForMonth(a);
+      initialValues[a.id] = (Math.round(bal * 100) / 100).toFixed(2);
     });
     setTempBalances(initialValues);
     setIsEditingBalances(true);
@@ -622,8 +664,14 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                           </span>
                         )}
                         {acc.type === 'deposit' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 text-sky-900 border border-sky-300">
-                            Depósito Plazo Fijo
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                            (tempBalances[acc.id] === '0' || tempBalances[acc.id] === '0.00' || tempBalances[acc.id] === '0,00' || parseFloat(tempBalances[acc.id] || '0') === 0)
+                              ? 'bg-zinc-100 text-zinc-600 border-zinc-300'
+                              : 'bg-sky-100 text-sky-900 border-sky-300'
+                          }`}>
+                            {(tempBalances[acc.id] === '0' || tempBalances[acc.id] === '0.00' || tempBalances[acc.id] === '0,00' || parseFloat(tempBalances[acc.id] || '0') === 0)
+                              ? 'Vencido / Saldo 0 €'
+                              : 'Depósito Plazo Fijo'}
                           </span>
                         )}
                       </div>
@@ -638,9 +686,26 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                     </div>
 
                     <div className="w-36 shrink-0">
-                      <label className="block text-[10px] font-semibold text-zinc-500 mb-0.5">
-                        Saldo a 31/{String(month).padStart(2, '0')} (€)
-                      </label>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="block text-[10px] font-semibold text-zinc-500">
+                          Saldo a 31/{String(month).padStart(2, '0')} (€)
+                        </label>
+                        {acc.type === 'deposit' && (tempBalances[acc.id] !== '0.00' && tempBalances[acc.id] !== '0') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTempBalances((prev) => ({
+                                ...prev,
+                                [acc.id]: '0.00'
+                              }));
+                            }}
+                            className="text-[10px] text-rose-600 hover:underline font-bold cursor-pointer"
+                            title="Fijar en 0 € por vencimiento en este mes"
+                          >
+                            Poner a 0 €
+                          </button>
+                        )}
+                      </div>
                       <div className="relative">
                         <input
                           type="text"
@@ -652,7 +717,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                               [acc.id]: e.target.value
                             }));
                           }}
-                          className="w-full px-2.5 py-1.5 text-xs font-bold text-right rounded-lg bg-white border border-zinc-300 focus:border-[#0E6A3B] focus:ring-1 focus:ring-[#0E6A3B] text-zinc-900 font-feature-settings-tnum"
+                          className={`w-full px-2.5 py-1.5 text-xs font-bold text-right rounded-lg bg-white border focus:border-[#0E6A3B] focus:ring-1 focus:ring-[#0E6A3B] font-feature-settings-tnum ${
+                            acc.type === 'deposit' && (tempBalances[acc.id] === '0.00' || tempBalances[acc.id] === '0')
+                              ? 'border-zinc-300 text-zinc-400 bg-zinc-50'
+                              : 'border-zinc-300 text-zinc-900'
+                          }`}
                           placeholder="0.00"
                         />
                       </div>
