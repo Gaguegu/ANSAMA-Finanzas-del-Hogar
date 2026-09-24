@@ -850,10 +850,20 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                       {isExpanded && b.accountsDetailed.map(({ account: a, income, expense, net, balance, balanceSource }) => (
                         <tr key={a.id} className="bg-emerald-50/20 hover:bg-emerald-50/40 border-b border-zinc-100 transition-colors">
                           <td className="pl-12 pr-5 py-2.5 font-medium text-zinc-800">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
                               <span className="font-semibold text-zinc-900 truncate max-w-[220px]" title={a.accountName}>
                                 {a.accountName}
+                              </span>
+                              <span 
+                                className="text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase"
+                                style={{ 
+                                  backgroundColor: `${a.color || '#0E6A3B'}15`, 
+                                  color: a.color || '#0E6A3B',
+                                  border: `1px solid ${a.color || '#0E6A3B'}40`
+                                }}
+                              >
+                                {a.bankName || a.bankId.toUpperCase()}
                               </span>
                               {a.type === 'investment' && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -869,8 +879,23 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                                   {balance === 0 ? 'Vencido (0 €)' : 'Plazo Fijo'}
                                 </span>
                               )}
+                              {a.type === 'checking' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
+                                  Corriente
+                                </span>
+                              )}
+                              {a.type === 'savings' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                                  Ahorro
+                                </span>
+                              )}
+                              {a.type === 'credit' && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                                  Tarjeta
+                                </span>
+                              )}
                             </div>
-                            <span className="text-[10px] text-zinc-400 font-mono ml-3.5">
+                            <span className="text-[10px] text-zinc-400 font-mono ml-3.5 block mt-0.5">
                               {a.accountNumberMasked || '••••'}
                             </span>
                           </td>

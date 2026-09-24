@@ -3,6 +3,7 @@ import {
   BarChart3, 
   ChevronLeft, 
   ChevronRight, 
+  ChevronDown,
   TrendingUp, 
   TrendingDown, 
   Building2, 
@@ -12,7 +13,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Percent,
-  Info
+  Info,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
 import { formatCurrency, isInternalTransfer } from '../utils/storage';
@@ -30,6 +33,15 @@ const MONTH_NAMES_FULL = [
 export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
+  const [viewGrouping, setViewGrouping] = useState<'by-bank' | 'by-category'>('by-bank');
+
+  const toggleExpand = (id: string) => {
+    setExpandedEntities(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
 
   const handlePrevYear = () => setSelectedYear((y) => y - 1);
   const handleNextYear = () => setSelectedYear((y) => y + 1);
@@ -62,97 +74,229 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const totalYearNet = totalYearIncome - totalYearExpense;
   const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
-  // Compute monthly balances for each bank entity
-  // Entities: BBVA, Santander, Cuentas de Valores, Depósitos a Plazo Fijo, Otras Entidades
+  // Helper function to compute monthly balances for any list of accounts
+  const computeMonthlyStats = (accounts: BankAccount[]) => {
+    const accIds = accounts.map((a) => a.id);
+    const currentBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+    const monthlyBalances: number[] = [];
+
+    for (let m = 0; m < 12; m++) {
+      const monthNum = String(m + 1).padStart(2, '0');
+      const monthKey = `${selectedYear}-${monthNum}`;
+      const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
+
+      // Si el mes está cerrado y tiene saldos auditados para estas cuentas, usamos esos saldos exactos
+      if (closure?.isClosed && closure.auditedBalances) {
+        const auditedSum = accounts.reduce((sum, a) => {
+          return sum + (closure.auditedBalances?.[a.id] ?? a.balance);
+        }, 0);
+        monthlyBalances.push(Math.round(auditedSum * 100) / 100);
+        continue;
+      }
+
+      // Si no está auditado, calculamos retrocediendo los movimientos posteriores al fin de mes
+      const lastDayOfMonth = new Date(selectedYear, m + 1, 0).getDate();
+      const endOfMonthDateStr = `${selectedYear}-${monthNum}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      
+      const subsequentTxs = appState.transactions.filter((tx) => {
+        return accIds.includes(tx.accountId) && tx.date > endOfMonthDateStr;
+      });
+
+      let rolledBalance = currentBalance;
+      for (const tx of subsequentTxs) {
+        if (tx.type === 'income') {
+          rolledBalance -= tx.amount;
+        } else {
+          rolledBalance += tx.amount;
+        }
+      }
+
+      monthlyBalances.push(Math.round(rolledBalance * 100) / 100);
+    }
+
+    const startBalance = monthlyBalances[0] || 0;
+    const endBalance = monthlyBalances[11] || 0;
+    const yearlyDiff = endBalance - startBalance;
+    const yearlyDiffPercent = startBalance !== 0 
+      ? Math.round((yearlyDiff / Math.abs(startBalance)) * 100) 
+      : 0;
+    const averageBalance = Math.round(
+      (monthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
+    ) / 100;
+
+    return {
+      monthlyBalances,
+      startBalance,
+      endBalance,
+      averageBalance,
+      yearlyDiff,
+      yearlyDiffPercent
+    };
+  };
+
+  // Compute monthly balances for each bank entity dynamically
+  // Supports grouping by Entity/Bank (shows all banks with all their products)
+  // or grouping by Financial Category (Commercial Banks, Investment, Deposits)
   const bankEntities = useMemo(() => {
-    const list = [
-      { id: 'bbva', name: 'BBVA', color: '#004481' },
-      { id: 'santander', name: 'Banco Santander', color: '#EC0000' },
-      { id: 'investment', name: 'Cuentas de Valores', color: '#0E6A3B' },
-      { id: 'deposit', name: 'Depósitos a Plazo Fijo', color: '#0284c7' },
-      { id: 'other', name: 'Otras Entidades', color: '#64748b' }
-    ];
+    const BANK_BRAND_NAMES: Record<string, string> = {
+      bbva: 'BBVA',
+      santander: 'Banco Santander',
+      caixabank: 'CaixaBank',
+      ing: 'ING',
+      sabadell: 'Banco Sabadell',
+      bankinter: 'Bankinter',
+      unicaja: 'Unicaja Banco',
+      abanca: 'Abanca',
+      openbank: 'Openbank'
+    };
 
-    return list.map((entity) => {
-      let matchingAccounts: BankAccount[] = [];
-      if (entity.id === 'investment') {
-        matchingAccounts = appState.accounts.filter((a) => a.type === 'investment');
-      } else if (entity.id === 'deposit') {
-        matchingAccounts = appState.accounts.filter((a) => a.type === 'deposit');
-      } else if (entity.id === 'bbva') {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'bbva' && a.type !== 'investment' && a.type !== 'deposit');
-      } else if (entity.id === 'santander') {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId === 'santander' && a.type !== 'investment' && a.type !== 'deposit');
-      } else {
-        matchingAccounts = appState.accounts.filter((a) => a.bankId !== 'bbva' && a.bankId !== 'santander' && a.type !== 'investment' && a.type !== 'deposit');
-      }
+    const BANK_BRAND_COLORS: Record<string, string> = {
+      bbva: '#004481',
+      santander: '#EC0000',
+      caixabank: '#007eae',
+      ing: '#FF6200',
+      sabadell: '#002D62',
+      bankinter: '#FF6600',
+      unicaja: '#008559',
+      abanca: '#005596',
+      openbank: '#DE0029'
+    };
 
-      const accIds = matchingAccounts.map((a) => a.id);
-      const currentBalance = matchingAccounts.reduce((sum, a) => sum + a.balance, 0);
+    let groups: Array<{
+      id: string;
+      name: string;
+      color: string;
+      badgeText?: string;
+      accounts: BankAccount[];
+    }> = [];
 
-      // Calculate balance at end of each month (0 to 11)
-      const monthlyBalances: number[] = [];
+    if (viewGrouping === 'by-bank') {
+      // 1. Agrupar TODAS las cuentas de la aplicación por su banco o entidad real
+      // (sin excluir ningún producto: corrientes, ahorro, tarjetas, depósitos y valores)
+      const bankGroupsMap = new Map<string, {
+        id: string;
+        name: string;
+        color: string;
+        badgeText?: string;
+        accounts: BankAccount[];
+      }>();
 
-      for (let m = 0; m < 12; m++) {
-        const monthNum = String(m + 1).padStart(2, '0');
-        const monthKey = `${selectedYear}-${monthNum}`;
-        const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
-
-        // Si el mes está cerrado y tiene saldos auditados para estas cuentas, usamos esos saldos exactos
-        if (closure?.isClosed && closure.auditedBalances) {
-          const auditedSum = matchingAccounts.reduce((sum, a) => {
-            return sum + (closure.auditedBalances?.[a.id] ?? a.balance);
-          }, 0);
-          monthlyBalances.push(Math.round(auditedSum * 100) / 100);
-          continue;
+      appState.accounts.forEach((acc) => {
+        const key = acc.bankId === 'other' ? (acc.bankName || 'other') : acc.bankId;
+        if (!bankGroupsMap.has(key)) {
+          const displayName = BANK_BRAND_NAMES[acc.bankId] || acc.bankName || acc.bankId.toUpperCase();
+          const brandColor = BANK_BRAND_COLORS[acc.bankId] || acc.color || '#004481';
+          bankGroupsMap.set(key, {
+            id: key,
+            name: displayName,
+            color: brandColor,
+            accounts: []
+          });
         }
+        bankGroupsMap.get(key)!.accounts.push(acc);
+      });
 
-        // Si no está auditado, calculamos retrocediendo los movimientos posteriores al fin de mes
-        const lastDayOfMonth = new Date(selectedYear, m + 1, 0).getDate();
-        const endOfMonthDateStr = `${selectedYear}-${monthNum}-${String(lastDayOfMonth).padStart(2, '0')}`;
-        
-        // Check all transactions for these accounts strictly AFTER this month-end
-        const subsequentTxs = appState.transactions.filter((tx) => {
-          return accIds.includes(tx.accountId) && tx.date > endOfMonthDateStr;
+      groups = Array.from(bankGroupsMap.values());
+    } else {
+      // 2. Agrupar por categoría de producto:
+      // A) Cuentas bancarias ordinarias (corrientes, ahorro, crédito) agrupadas por banco
+      const bankingAccounts = appState.accounts.filter(
+        (a) => a.type !== 'investment' && a.type !== 'deposit'
+      );
+      const bankGroupsMap = new Map<string, {
+        id: string;
+        name: string;
+        color: string;
+        badgeText?: string;
+        accounts: BankAccount[];
+      }>();
+
+      bankingAccounts.forEach((acc) => {
+        const key = acc.bankId === 'other' ? (acc.bankName || 'other') : acc.bankId;
+        if (!bankGroupsMap.has(key)) {
+          const displayName = BANK_BRAND_NAMES[acc.bankId] || acc.bankName || acc.bankId.toUpperCase();
+          const brandColor = BANK_BRAND_COLORS[acc.bankId] || acc.color || '#004481';
+          bankGroupsMap.set(key, {
+            id: key,
+            name: displayName,
+            color: brandColor,
+            accounts: []
+          });
+        }
+        bankGroupsMap.get(key)!.accounts.push(acc);
+      });
+
+      groups = Array.from(bankGroupsMap.values());
+
+      // B) Cuentas de Valores / Inversión (Fondos, acciones, brokers)
+      const investmentAccounts = appState.accounts.filter((a) => a.type === 'investment');
+      if (investmentAccounts.length > 0) {
+        groups.push({
+          id: 'investment',
+          name: 'Cuentas de Valores / Inversión',
+          color: '#0E6A3B',
+          badgeText: 'Valores',
+          accounts: investmentAccounts
         });
-
-        let rolledBalance = currentBalance;
-        for (const tx of subsequentTxs) {
-          if (tx.type === 'income') {
-            rolledBalance -= tx.amount;
-          } else {
-            rolledBalance += tx.amount;
-          }
-        }
-
-        monthlyBalances.push(Math.round(rolledBalance * 100) / 100);
       }
 
-      const startBalance = monthlyBalances[0] || 0;
-      const endBalance = monthlyBalances[11] || 0;
-      const yearlyDiff = endBalance - startBalance;
-      const yearlyDiffPercent = startBalance !== 0 
-        ? Math.round((yearlyDiff / Math.abs(startBalance)) * 100) 
-        : 0;
-      const averageBalance = Math.round(
-        (monthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
-      ) / 100;
+      // C) Depósitos a Plazo Fijo
+      const depositAccounts = appState.accounts.filter((a) => a.type === 'deposit');
+      if (depositAccounts.length > 0) {
+        groups.push({
+          id: 'deposit',
+          name: 'Depósitos a Plazo Fijo',
+          color: '#0284c7',
+          badgeText: 'Plazo Fijo',
+          accounts: depositAccounts
+        });
+      }
+    }
+
+    return groups.map((g) => {
+      const entityStats = computeMonthlyStats(g.accounts);
+      const detailedAccounts = g.accounts.map((acc) => {
+        const accStats = computeMonthlyStats([acc]);
+        const bankName = BANK_BRAND_NAMES[acc.bankId] || acc.bankName || acc.bankId.toUpperCase();
+        const bankColor = BANK_BRAND_COLORS[acc.bankId] || acc.color || '#004481';
+        return {
+          id: acc.id,
+          name: acc.accountName,
+          bankName,
+          bankColor,
+          mask: acc.accountNumberMasked,
+          type: acc.type,
+          currentBalance: acc.balance,
+          ...accStats
+        };
+      });
 
       return {
-        id: entity.id,
-        name: entity.name,
-        color: entity.color,
-        accountCount: matchingAccounts.length,
-        currentBalance,
-        monthlyBalances,
-        startBalance,
-        endBalance,
-        averageBalance,
-        yearlyDiff,
-        yearlyDiffPercent
+        id: g.id,
+        name: g.name,
+        color: g.color,
+        badgeText: g.badgeText,
+        accountCount: g.accounts.length,
+        currentBalance: g.accounts.reduce((sum, a) => sum + a.balance, 0),
+        accounts: detailedAccounts,
+        ...entityStats
       };
-    }).filter((e) => e.accountCount > 0);
-  }, [appState.accounts, appState.transactions, appState.monthlyClosures, selectedYear]);
+    });
+  }, [appState.accounts, appState.transactions, appState.monthlyClosures, selectedYear, viewGrouping]);
+
+  // Toggle all entities expanded
+  const areAllExpanded = useMemo(() => {
+    return bankEntities.length > 0 && bankEntities.every(e => expandedEntities[e.id]);
+  }, [bankEntities, expandedEntities]);
+
+  const toggleAllExpanded = () => {
+    const nextState: Record<string, boolean> = {};
+    const target = !areAllExpanded;
+    bankEntities.forEach(e => {
+      nextState[e.id] = target;
+    });
+    setExpandedEntities(nextState);
+  };
 
   // Total Consolidated balance row across all banks per month
   const consolidatedMonthlyBalances = useMemo(() => {
@@ -346,22 +490,91 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
       {/* MATRIZ MAESTRA: TABLA DE SALDOS TOTALES DE CADA BANCO POR MESES */}
       <div className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-[#092B19] text-emerald-400 flex items-center justify-center shadow-xs">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-black text-zinc-950">
-                Saldos Totales de cada Banco por Meses ({selectedYear})
+              <h3 className="text-base font-black text-zinc-950 flex items-center gap-2">
+                <span>Saldos por Entidad y Cuentas — {selectedYear}</span>
               </h3>
               <p className="text-xs text-zinc-500">
-                Evolución del saldo disponible y carteras al cierre de cada uno de los 12 meses
+                Evolución mensual auditada de cada banco, depósito y cuenta de valores
               </p>
             </div>
           </div>
-          <span className="text-xs font-extrabold text-[#0E6A3B] bg-emerald-100/80 px-3 py-1 rounded-full border border-emerald-300">
-            Saldos en Euros (€)
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Selector de modo de agrupación */}
+            <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300 text-xs">
+              <button
+                type="button"
+                onClick={() => setViewGrouping('by-bank')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewGrouping === 'by-bank'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Mostrar cada banco o entidad financiera por separado (BBVA, Santander, etc.) sumando todas sus cuentas"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Por Banco / Entidad</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewGrouping('by-category')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewGrouping === 'by-category'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Mostrar agrupados por tipo: Bancos ordinarios, Cuentas de Valores y Depósitos"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Por Categoría</span>
+              </button>
+            </div>
+
+            <button
+              onClick={toggleAllExpanded}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="Expandir o contraer el desglose de cuentas individuales"
+            >
+              <Layers className="w-3.5 h-3.5 text-[#0E6A3B]" />
+              <span>{areAllExpanded ? 'Contraer cuentas' : 'Desglosar todas las cuentas'}</span>
+            </button>
+            <span className="text-xs font-extrabold text-[#0E6A3B] bg-emerald-100/80 px-3 py-1 rounded-full border border-emerald-300">
+              Saldos en Euros (€)
+            </span>
+          </div>
+        </div>
+
+        {/* Banner explicativo del modo de vista */}
+        <div className={`px-4 py-2 text-xs flex items-center justify-between border-b ${
+          viewGrouping === 'by-bank' 
+            ? 'bg-emerald-50/80 text-emerald-950 border-emerald-100' 
+            : 'bg-blue-50/80 text-blue-950 border-blue-100'
+        }`}>
+          <div className="flex items-center gap-2">
+            {viewGrouping === 'by-bank' ? (
+              <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+            ) : (
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+            )}
+            <span>
+              {viewGrouping === 'by-bank' ? (
+                <>
+                  <strong>Vista por Banco / Entidad:</strong> Cada fila representa uno de tus bancos o gestoras (con todas sus cuentas corrientes, de ahorro, depósitos y valores unificadas).
+                </>
+              ) : (
+                <>
+                  <strong>Vista por Categoría:</strong> Las cuentas bancarias ordinarias, las carteras de valores y los depósitos a plazo fijo se muestran en bloques separados.
+                </>
+              )}
+            </span>
+          </div>
+          <span className="text-[11px] font-semibold text-zinc-500 hidden sm:inline">
+            {bankEntities.length} {bankEntities.length === 1 ? 'entidad' : 'entidades'}
           </span>
         </div>
 
@@ -370,7 +583,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
             <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
               <tr>
                 <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
-                  Entidad Bancaria
+                  Entidad / Producto
                 </th>
                 {MONTH_NAMES_SHORT.map((m, idx) => (
                   <th 
@@ -406,54 +619,163 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {bankEntities.map((entity) => (
-                <tr key={entity.id} className="hover:bg-zinc-50/80 transition-colors">
-                  {/* Sticky Bank Name Column */}
-                  <td className="px-4 py-3.5 font-bold text-zinc-900 sticky left-0 bg-white z-10 shadow-xs flex items-center gap-2">
-                    <span 
-                      className="w-2.5 h-2.5 rounded-full shrink-0" 
-                      style={{ backgroundColor: entity.color }}
-                    />
-                    <div>
-                      <span className="font-extrabold block text-zinc-900">{entity.name}</span>
-                      <span className="text-[10px] text-zinc-400 font-normal">
-                        {entity.accountCount} {entity.accountCount === 1 ? 'cuenta' : 'cuentas'}
-                      </span>
-                    </div>
-                  </td>
+              {bankEntities.map((entity) => {
+                const isExpanded = !!expandedEntities[entity.id];
+                const hasMultipleAccounts = entity.accounts.length > 0;
 
-                  {/* 12 Monthly Balances */}
-                  {entity.monthlyBalances.map((val, idx) => (
-                    <td 
-                      key={idx} 
-                      className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
-                        idx === 11
-                          ? 'font-black text-emerald-950 bg-emerald-50/40 border-l-2 border-emerald-600/30'
-                          : 'font-medium text-zinc-700'
-                      }`}
+                return (
+                  <React.Fragment key={entity.id}>
+                    {/* Entity Row */}
+                    <tr 
+                      onClick={() => hasMultipleAccounts && toggleExpand(entity.id)}
+                      className={`hover:bg-zinc-50/90 transition-colors ${hasMultipleAccounts ? 'cursor-pointer' : ''}`}
                     >
-                      {formatCurrency(val)}
-                    </td>
-                  ))}
+                      {/* Sticky Bank Name Column */}
+                      <td className="px-4 py-3.5 font-bold text-zinc-900 sticky left-0 bg-white z-10 shadow-xs flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full shrink-0" 
+                            style={{ backgroundColor: entity.color }}
+                          />
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-zinc-900">{entity.name}</span>
+                              {entity.badgeText && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
+                                  entity.id === 'investment' 
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                    : 'bg-sky-100 text-sky-800 border border-sky-300'
+                                }`}>
+                                  {entity.badgeText}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-normal">
+                              {entity.accountCount} {entity.accountCount === 1 ? 'cuenta' : 'cuentas'}
+                            </span>
+                          </div>
+                        </div>
 
-                  {/* Saldo Medio Anual */}
-                  <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
-                    {formatCurrency(entity.averageBalance)}
-                  </td>
+                        {hasMultipleAccounts && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(entity.id);
+                            }}
+                            className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
+                            title={isExpanded ? 'Ocultar cuentas' : 'Ver cuentas'}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-zinc-600" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-zinc-400" />
+                            )}
+                          </button>
+                        )}
+                      </td>
 
-                  {/* Yearly Difference */}
-                  <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
-                    entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
-                  }`}>
-                    <div className="flex flex-col items-end">
-                      <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
-                      <span className="text-[10px] font-semibold text-zinc-400">
-                        {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      {/* 12 Monthly Balances */}
+                      {entity.monthlyBalances.map((val, idx) => (
+                        <td 
+                          key={idx} 
+                          className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
+                            idx === 11
+                              ? 'font-black text-emerald-950 bg-emerald-50/40 border-l-2 border-emerald-600/30'
+                              : 'font-medium text-zinc-700'
+                          }`}
+                        >
+                          {formatCurrency(val)}
+                        </td>
+                      ))}
+
+                      {/* Saldo Medio Anual */}
+                      <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
+                        {formatCurrency(entity.averageBalance)}
+                      </td>
+
+                      {/* Yearly Difference */}
+                      <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
+                        entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                      }`}>
+                        <div className="flex flex-col items-end">
+                          <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
+                          <span className="text-[10px] font-semibold text-zinc-400">
+                            {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Sub-rows: Individual Accounts if Expanded */}
+                    {isExpanded && entity.accounts.map((acc) => (
+                      <tr key={acc.id} className="bg-zinc-50/60 hover:bg-zinc-100/60 transition-colors text-[11px]">
+                        <td className="px-4 py-2.5 pl-8 sticky left-0 bg-zinc-50/90 z-10 shadow-xs border-l-2 border-emerald-500/40">
+                          <div className="flex items-center gap-2 text-zinc-700">
+                            <span className="text-zinc-400 font-mono">↳</span>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-zinc-900">{acc.name}</span>
+                                <span 
+                                  className="text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase"
+                                  style={{ 
+                                    backgroundColor: `${acc.bankColor}15`, 
+                                    color: acc.bankColor,
+                                    border: `1px solid ${acc.bankColor}40`
+                                  }}
+                                >
+                                  {acc.bankName}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                  acc.type === 'investment'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : acc.type === 'deposit'
+                                      ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                                      : acc.type === 'credit'
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
+                                }`}>
+                                  {acc.type === 'investment' 
+                                    ? 'Valores' 
+                                    : acc.type === 'deposit' 
+                                      ? 'Plazo Fijo' 
+                                      : acc.type === 'credit' 
+                                        ? 'Tarjeta' 
+                                        : acc.type === 'savings' 
+                                          ? 'Ahorro' 
+                                          : 'Corriente'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-zinc-400 font-mono block">{acc.mask}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {acc.monthlyBalances.map((val, idx) => (
+                          <td 
+                            key={idx} 
+                            className={`px-3 py-2.5 text-right font-feature-settings-tnum text-zinc-600 ${
+                              idx === 11 ? 'font-bold text-emerald-900 bg-emerald-50/20 border-l-2 border-emerald-600/20' : ''
+                            }`}
+                          >
+                            {formatCurrency(val)}
+                          </td>
+                        ))}
+
+                        <td className="px-3.5 py-2.5 text-right font-semibold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
+                          {formatCurrency(acc.averageBalance)}
+                        </td>
+
+                        <td className={`px-4 py-2.5 text-right font-bold font-feature-settings-tnum ${
+                          acc.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                        }`}>
+                          {acc.yearlyDiff >= 0 ? `+${formatCurrency(acc.yearlyDiff)}` : formatCurrency(acc.yearlyDiff)}
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
 
             {/* Total Row (Patrimonio Consolidado Mensual) */}
@@ -490,6 +812,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* Nota informativa de Cuentas de Valores y Depósitos */}
+        <div className="px-5 py-3.5 bg-zinc-50 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-zinc-600">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+            <span>
+              <strong>¿Cuentas de Valores o Brókers?</strong> En ANSAMA, las carteras de inversión (fondos, acciones, Trade Republic, MyInvestor, DeGiro) se distinguen de las cuentas corrientes bancarias. Si alguna de tus cuentas debe computar como inversión, puedes cambiar su tipo a <em>Cuenta de Valores</em> en la pestaña <strong>Cuentas & Bancos</strong>.
+            </span>
+          </div>
         </div>
       </div>
 

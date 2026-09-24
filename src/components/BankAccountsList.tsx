@@ -242,8 +242,8 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               </span>
               <button
                 onClick={() => onEditAccount(account)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-zinc-400 hover:text-zinc-700 rounded-md hover:bg-zinc-100 cursor-pointer"
-                title="Editar cuenta"
+                className="p-1 text-zinc-500 hover:text-zinc-900 rounded-md hover:bg-zinc-100 transition-colors cursor-pointer"
+                title="Editar cuenta (nombre, tipo de producto, banco)"
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
@@ -254,7 +254,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                       onDeleteAccount(account.id, account.accountName);
                     }
                   }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 cursor-pointer"
+                  className="p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
                   title="Eliminar cuenta"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
