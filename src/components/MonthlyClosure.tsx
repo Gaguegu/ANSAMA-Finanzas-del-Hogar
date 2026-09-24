@@ -441,27 +441,27 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           </div>
 
           {/* Month selector controls */}
-          <div className="flex items-center gap-2 self-start lg:self-auto">
+          <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 select-none">
             <button
               onClick={handlePrevMonth}
-              className="p-2 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
               title="Mes anterior"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-center min-w-[170px]">
-              <span className="text-xs font-semibold text-emerald-800 uppercase block tracking-wider">
+            <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-center w-40 sm:w-48 shrink-0">
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase block tracking-wider truncate">
                 Periodo Mensual
               </span>
-              <span className="text-sm font-black text-emerald-950">
+              <span className="text-sm font-black text-emerald-950 truncate block">
                 {capitalizedMonth} {year}
               </span>
             </div>
 
             <button
               onClick={handleNextMonth}
-              className="p-2 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
               title="Mes siguiente"
             >
               <ChevronRight className="w-4 h-4" />
@@ -471,7 +471,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             <button
               onClick={handleOpenEditBalances}
               title="Ajustar o revisar los saldos exactos de tus cuentas de valores o bancos al cierre de este mes"
-              className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 cursor-pointer"
+              className="px-3.5 py-2 h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 cursor-pointer shrink-0"
             >
               <Edit3 className="w-3.5 h-3.5 text-[#0E6A3B]" />
               <span className="hidden sm:inline">Ajustar Saldos Cierre</span>
@@ -481,7 +481,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             {/* Close/Open Month Button */}
             <button
               onClick={handleToggleClose}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+              className={`px-4 py-2 h-10 min-w-[125px] sm:min-w-[140px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0 ${
                 currentClosure.isClosed
                   ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-300'
                   : 'bg-[#0E6A3B] text-white hover:bg-[#0a522d]'
@@ -490,12 +490,12 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               {currentClosure.isClosed ? (
                 <>
                   <Unlock className="w-3.5 h-3.5" />
-                  Reabrir Mes
+                  <span>Reabrir Mes</span>
                 </>
               ) : (
                 <>
                   <Lock className="w-3.5 h-3.5" />
-                  Cerrar Mes {capitalizedMonth}
+                  <span>Cerrar Mes</span>
                 </>
               )}
             </button>
@@ -503,7 +503,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             {/* Print Button */}
             <button
               onClick={handlePrint}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+              className="px-3.5 py-2 h-10 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs transition-colors shrink-0"
               title="Imprimir informe mensual o guardar como PDF"
             >
               <Printer className="w-3.5 h-3.5" />
