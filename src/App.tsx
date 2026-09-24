@@ -741,18 +741,6 @@ export default function App() {
                 />
               </div>
             </div>
-
-            {/* Recent Transactions List */}
-            <TransactionsTable
-              transactions={appState.transactions}
-              accounts={appState.accounts}
-              categories={appState.categories}
-              onDeleteTransaction={handleDeleteTransaction}
-              onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
-              onOpenImportModal={() => setIsImportModalOpen(true)}
-              onMoveTransactions={handleMoveTransactions}
-              onBatchDeleteTransactions={handleBatchDeleteTransactions}
-            />
           </div>
         )}
 
