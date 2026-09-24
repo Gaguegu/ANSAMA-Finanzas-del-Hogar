@@ -24,7 +24,7 @@ import {
   ListFilter
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput, isInternalTransfer } from '../utils/storage';
 
 interface MonthlyClosureProps {
   appState: AppState;
@@ -179,16 +179,22 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return appState.transactions.filter((tx) => tx.date.startsWith(selectedMonth));
   }, [appState.transactions, selectedMonth]);
 
-  // Compute income and expenses for the month
+  // Compute real income and expenses for the month (excluding internal transfers between own accounts)
   const monthIncome = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'income')
+      .filter((tx) => tx.type === 'income' && !isInternalTransfer(tx))
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [monthTransactions]);
 
   const monthExpense = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'expense')
+      .filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx))
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [monthTransactions]);
+
+  const monthTransfers = useMemo(() => {
+    return monthTransactions
+      .filter((tx) => isInternalTransfer(tx))
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [monthTransactions]);
 

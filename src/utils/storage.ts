@@ -49,38 +49,74 @@ export function loadAppState(): AppState {
       });
     }
 
-    // Auto-reparar transacciones de broker/banco mal clasificadas como gasto (ventas, intereses, saveback, dividendos)
+    // 2. Auto-reparar transacciones genuinamente de abono/broker mal clasificadas como gasto (dividendos, intereses, saveback),
+    // Y REPARAR transacciones de salida (imposiciones a plazo fijo, transferencias emitidas, cargos) que fueron erróneamente marcadas como ingreso
     let hasRepairedTransactions = false;
     if (Array.isArray(parsed.transactions)) {
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
         const titleLower = (tx.title || '').toLowerCase();
+
+        // Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
         if (tx.type === 'expense') {
           if (
-            titleLower.includes('venta') ||
-            titleLower.includes('sell') ||
-            titleLower.includes('verkauf') ||
-            titleLower.includes('saveback') ||
             titleLower.includes('dividendo') ||
             titleLower.includes('dividend') ||
+            titleLower.includes('saveback') ||
             titleLower.includes('interes') ||
             titleLower.includes('interest') ||
             titleLower.includes('zinsen') ||
             titleLower.includes('rentabilidad') ||
             titleLower.includes('rendimiento') ||
-            titleLower.includes('deposito') ||
-            titleLower.includes('deposit') ||
-            titleLower.includes('abono') ||
             titleLower.includes('pay-in') ||
             titleLower.includes('pay in') ||
-            titleLower.includes('ingreso') ||
-            titleLower.includes('einzahlung') ||
-            (titleLower.includes('transferencia') && !titleLower.includes('enviada') && !titleLower.includes('emitida') && !titleLower.includes('saliente')) ||
-            (titleLower.includes('traspaso') && !titleLower.includes('hacia') && !titleLower.includes('enviado'))
+            titleLower.includes('einzahlung')
           ) {
             hasRepairedTransactions = true;
             return { ...tx, type: 'income' };
           }
         }
+
+        // Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo):
+        if (tx.type === 'income') {
+          const isActuallyExpense =
+            titleLower.includes('imposicion') ||
+            titleLower.includes('imposición') ||
+            titleLower.includes('constitucion') ||
+            titleLower.includes('constitución') ||
+            titleLower.includes('deposito a plazo') ||
+            titleLower.includes('depósito a plazo') ||
+            titleLower.includes('plazo fijo') ||
+            titleLower.includes('traspaso a ') ||
+            titleLower.includes('traspaso hacia') ||
+            titleLower.includes('transferencia a ') ||
+            titleLower.includes('transferencia emitida') ||
+            titleLower.includes('transferencia enviada') ||
+            titleLower.includes('cargo') ||
+            titleLower.includes('adeudo') ||
+            titleLower.includes('recibo') ||
+            titleLower.includes('compra') ||
+            titleLower.includes('tarjeta') ||
+            titleLower.includes('pago') ||
+            titleLower.includes('comision') ||
+            titleLower.includes('comisión') ||
+            titleLower.includes('retencion') ||
+            titleLower.includes('retención') ||
+            titleLower.includes('reintegro') ||
+            titleLower.includes('extraccion') ||
+            titleLower.includes('extracción');
+
+          if (
+            isActuallyExpense &&
+            !titleLower.includes('anulacion') &&
+            !titleLower.includes('anulación') &&
+            !titleLower.includes('devolucion') &&
+            !titleLower.includes('devolución')
+          ) {
+            hasRepairedTransactions = true;
+            return { ...tx, type: 'expense' };
+          }
+        }
+
         return tx;
       });
 
@@ -994,6 +1030,42 @@ export function formatMonthName(monthStr: string): string {
   } catch {
     return monthStr;
   }
+}
+
+/**
+ * Determina si una transacción es un traspaso interno o movimiento entre cuentas propias
+ * (imposiciones/cancelaciones a plazo fijo, transferencias entre cuentas bancarias, traspasos a valores).
+ * Estos movimientos no constituyen ingresos de nómina ni gastos reales del hogar, sino reubicación de capital.
+ */
+export function isInternalTransfer(tx: Transaction): boolean {
+  const t = (tx.title || '').toLowerCase();
+  const note = (tx.note || '').toLowerCase();
+  const combined = `${t} ${note}`;
+  
+  return (
+    combined.includes('traspaso') ||
+    combined.includes('imposicion') ||
+    combined.includes('imposición') ||
+    combined.includes('constitucion') ||
+    combined.includes('constitución') ||
+    combined.includes('vencimiento deposito') ||
+    combined.includes('vencimiento depósito') ||
+    combined.includes('cancelacion deposito') ||
+    combined.includes('cancelación depósito') ||
+    combined.includes('deposito a plazo') ||
+    combined.includes('depósito a plazo') ||
+    combined.includes('plazo fijo') ||
+    combined.includes('entre mis cuentas') ||
+    combined.includes('entre cuentas') ||
+    combined.includes('transferencia propia') ||
+    combined.includes('transferencia interna') ||
+    combined.includes('aportacion cartera') ||
+    combined.includes('aportación cartera') ||
+    combined.includes('retirada broker') ||
+    combined.includes('suscripcion fondo') ||
+    combined.includes('suscripción fondo') ||
+    combined.includes('reembolso fondo')
+  );
 }
 
 

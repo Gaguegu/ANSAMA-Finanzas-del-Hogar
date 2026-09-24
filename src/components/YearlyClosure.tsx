@@ -11,10 +11,11 @@ import {
   CalendarRange,
   ArrowUpRight,
   ArrowDownRight,
-  Percent
+  Percent,
+  Info
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
-import { formatCurrency } from '../utils/storage';
+import { formatCurrency, isInternalTransfer } from '../utils/storage';
 
 interface YearlyClosureProps {
   appState: AppState;
@@ -39,16 +40,22 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return appState.transactions.filter((tx) => tx.date.startsWith(yearPrefix));
   }, [appState.transactions, selectedYear]);
 
-  // Total income and expenses for the year
+  // Total real income and expenses for the year (excluding internal transfers between own accounts)
   const totalYearIncome = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'income')
+      .filter((t) => t.type === 'income' && !isInternalTransfer(t))
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
 
   const totalYearExpense = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === 'expense' && !isInternalTransfer(t))
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [yearTransactions]);
+
+  const totalYearTransfers = useMemo(() => {
+    return yearTransactions
+      .filter((t) => isInternalTransfer(t))
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
 
@@ -84,7 +91,6 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const currentBalance = matchingAccounts.reduce((sum, a) => sum + a.balance, 0);
 
       // Calculate balance at end of each month (0 to 11)
-      // We calculate month-end balance by rolling backwards from current balance for transactions after that month
       const monthlyBalances: number[] = [];
 
       for (let m = 0; m < 12; m++) {
@@ -125,6 +131,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const startBalance = monthlyBalances[0] || 0;
       const endBalance = monthlyBalances[11] || 0;
       const yearlyDiff = endBalance - startBalance;
+      const yearlyDiffPercent = startBalance !== 0 
+        ? Math.round((yearlyDiff / Math.abs(startBalance)) * 100) 
+        : 0;
+      const averageBalance = Math.round(
+        (monthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
+      ) / 100;
 
       return {
         id: entity.id,
@@ -135,10 +147,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         monthlyBalances,
         startBalance,
         endBalance,
-        yearlyDiff
+        averageBalance,
+        yearlyDiff,
+        yearlyDiffPercent
       };
     }).filter((e) => e.accountCount > 0);
-  }, [appState.accounts, appState.transactions, selectedYear]);
+  }, [appState.accounts, appState.transactions, appState.monthlyClosures, selectedYear]);
 
   // Total Consolidated balance row across all banks per month
   const consolidatedMonthlyBalances = useMemo(() => {
@@ -148,7 +162,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         totals[idx] += val;
       });
     });
-    return totals;
+    return totals.map(v => Math.round(v * 100) / 100);
   }, [bankEntities]);
 
   const totalStartYear = consolidatedMonthlyBalances[0] || 0;
@@ -157,15 +171,18 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const totalGrowthPercent = totalStartYear !== 0 
     ? Math.round((totalYearGrowth / Math.abs(totalStartYear)) * 100) 
     : 0;
+  const totalAverageBalance = Math.round(
+    (consolidatedMonthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
+  ) / 100;
 
-  // Monthly cashflow: Income vs Expense per month for the year
+  // Monthly cashflow: Real Income vs Real Expense per month for the year
   const monthlyCashflow = useMemo(() => {
     return MONTH_NAMES_SHORT.map((name, idx) => {
       const monthNum = String(idx + 1).padStart(2, '0');
       const prefix = `${selectedYear}-${monthNum}`;
       const txs = yearTransactions.filter((t) => t.date.startsWith(prefix));
-      const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
+      const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
       const net = income - expense;
       return {
         month: name,
@@ -247,72 +264,82 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       </div>
 
       {/* KPI Summary Cards for the entire Year */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Year Income */}
-        <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ingresos Anuales</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Total Year Income */}
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ingresos Anuales</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center">
+                <TrendingUp className="w-4 h-4" />
+              </div>
             </div>
+            <div className="mt-2 text-2xl font-black text-emerald-800 font-feature-settings-tnum">
+              +{formatCurrency(totalYearIncome)}
+            </div>
+            <span className="text-[11px] text-zinc-400 block mt-1">
+              Ingresos reales acumulados en {selectedYear}
+            </span>
           </div>
-          <div className="mt-2 text-2xl font-black text-emerald-800 font-feature-settings-tnum">
-            +{formatCurrency(totalYearIncome)}
+
+          {/* Total Year Expense */}
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Gastos Anuales</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                <TrendingDown className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-rose-600 font-feature-settings-tnum">
+              -{formatCurrency(totalYearExpense)}
+            </div>
+            <span className="text-[11px] text-zinc-400 block mt-1">
+              Gastos de consumo desembolsados en {selectedYear}
+            </span>
           </div>
-          <span className="text-[11px] text-zinc-400 block mt-1">
-            Total acumulado en {selectedYear}
-          </span>
+
+          {/* Total Year Net Savings */}
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ahorro Anual Neto</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0E6A3B] border border-emerald-200 flex items-center justify-center">
+                <ArrowUpRight className="w-4 h-4" />
+              </div>
+            </div>
+            <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
+              totalYearNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+            }`}>
+              {totalYearNet >= 0 ? `+${formatCurrency(totalYearNet)}` : formatCurrency(totalYearNet)}
+            </div>
+            <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
+              {totalYearNet >= 0 ? `Tasa de ahorro: ${yearSavingsRate}% de los ingresos` : 'Déficit acumulado'}
+            </span>
+          </div>
+
+          {/* Year Growth */}
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Variación Patrimonial</span>
+              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                <Percent className="w-4 h-4" />
+              </div>
+            </div>
+            <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
+              totalYearGrowth >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+            }`}>
+              {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
+            </div>
+            <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
+              {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)} (Cierre Dic vs Inicio Ene)
+            </span>
+          </div>
         </div>
 
-        {/* Total Year Expense */}
-        <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Gastos Anuales</span>
-            <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
-              <TrendingDown className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2 text-2xl font-black text-rose-600 font-feature-settings-tnum">
-            -{formatCurrency(totalYearExpense)}
-          </div>
-          <span className="text-[11px] text-zinc-400 block mt-1">
-            Total desembolsado en {selectedYear}
-          </span>
-        </div>
-
-        {/* Total Year Net Savings */}
-        <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ahorro Anual Neto</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0E6A3B] border border-emerald-200 flex items-center justify-center">
-              <ArrowUpRight className="w-4 h-4" />
-            </div>
-          </div>
-          <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
-            totalYearNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
-          }`}>
-            {totalYearNet >= 0 ? `+${formatCurrency(totalYearNet)}` : formatCurrency(totalYearNet)}
-          </div>
-          <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
-            {totalYearNet >= 0 ? 'Capacidad de ahorro anual' : 'Déficit acumulado'}
-          </span>
-        </div>
-
-        {/* Year Growth */}
-        <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Variación Patrimonial</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
-              <Percent className="w-4 h-4" />
-            </div>
-          </div>
-          <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
-            totalYearGrowth >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
-          }`}>
-            {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
-          </div>
-          <span className="text-[11px] text-zinc-500 block mt-1">
-            {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}
+        {/* Nota aclaratoria sobre exclusión de traspasos internos */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 font-medium">
+          <Info className="w-4 h-4 text-emerald-700 shrink-0" />
+          <span>
+            Los ingresos y gastos anuales excluyen automáticamente los traspasos internos y depósitos a plazo fijo movilizados entre tus cuentas ({formatCurrency(totalYearTransfers)}) para reflejar el flujo de ahorro familiar real sin distorsiones ni duplicidades.
           </span>
         </div>
       </div>
@@ -345,15 +372,35 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
                   Entidad Bancaria
                 </th>
-                {MONTH_NAMES_SHORT.map((m) => (
-                  <th key={m} className="px-3 py-3 text-right">
-                    {m}
+                {MONTH_NAMES_SHORT.map((m, idx) => (
+                  <th 
+                    key={m} 
+                    className={`px-3 py-3 text-right ${
+                      idx === 11 
+                        ? 'bg-emerald-100/70 text-emerald-950 font-black border-l-2 border-emerald-600/50' 
+                        : ''
+                    }`}
+                    title={idx === 11 ? `Saldo a 31 de Diciembre (Cierre de Ejercicio ${selectedYear})` : undefined}
+                  >
+                    {idx === 11 ? (
+                      <span className="inline-flex items-center gap-1 font-black">
+                        Dic <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-800 text-white font-extrabold uppercase">Cierre</span>
+                      </span>
+                    ) : (
+                      m
+                    )}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-right bg-emerald-50/60 text-emerald-950 font-black border-l border-emerald-200">
-                  Cierre {selectedYear}
+                <th 
+                  className="px-3.5 py-3 text-right bg-emerald-50 text-emerald-950 font-black border-l border-emerald-200"
+                  title="Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)"
+                >
+                  Saldo Medio
                 </th>
-                <th className="px-4 py-3 text-right bg-emerald-50/60 text-emerald-950 font-black">
+                <th 
+                  className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black"
+                  title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
+                >
                   Var. Anual
                 </th>
               </tr>
@@ -379,22 +426,31 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                   {entity.monthlyBalances.map((val, idx) => (
                     <td 
                       key={idx} 
-                      className="px-3 py-3.5 text-right font-medium text-zinc-700 font-feature-settings-tnum"
+                      className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
+                        idx === 11
+                          ? 'font-black text-emerald-950 bg-emerald-50/40 border-l-2 border-emerald-600/30'
+                          : 'font-medium text-zinc-700'
+                      }`}
                     >
                       {formatCurrency(val)}
                     </td>
                   ))}
 
-                  {/* Year-End Balance */}
-                  <td className="px-4 py-3.5 text-right font-black text-zinc-950 bg-emerald-50/30 border-l border-emerald-100 font-feature-settings-tnum">
-                    {formatCurrency(entity.endBalance)}
+                  {/* Saldo Medio Anual */}
+                  <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
+                    {formatCurrency(entity.averageBalance)}
                   </td>
 
                   {/* Yearly Difference */}
                   <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
                     entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
                   }`}>
-                    {entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}
+                    <div className="flex flex-col items-end">
+                      <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
+                      <span className="text-[10px] font-semibold text-zinc-400">
+                        {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -407,17 +463,29 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                   TOTAL CONSOLIDADO (€)
                 </td>
                 {consolidatedMonthlyBalances.map((val, idx) => (
-                  <td key={idx} className="px-3 py-3.5 text-right text-white font-black font-feature-settings-tnum">
+                  <td 
+                    key={idx} 
+                    className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
+                      idx === 11
+                        ? 'text-emerald-300 font-black border-l-2 border-emerald-500 bg-emerald-950/70'
+                        : 'text-white font-black'
+                    }`}
+                  >
                     {formatCurrency(val)}
                   </td>
                 ))}
-                <td className="px-4 py-3.5 text-right text-emerald-300 text-sm font-black border-l border-emerald-700 font-feature-settings-tnum">
-                  {formatCurrency(totalEndYear)}
+                <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-700 font-feature-settings-tnum">
+                  {formatCurrency(totalAverageBalance)}
                 </td>
                 <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum ${
                   totalYearGrowth >= 0 ? 'text-emerald-300' : 'text-rose-400'
                 }`}>
-                  {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}
+                  <div className="flex flex-col items-end">
+                    <span>{totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}</span>
+                    <span className="text-[10px] font-semibold text-emerald-300/80">
+                      {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
+                    </span>
+                  </div>
                 </td>
               </tr>
             </tfoot>
