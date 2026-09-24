@@ -78,15 +78,23 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'sepe', 'seguridad social prestacion'
   ],
   'cat-rendimientos': [
-    'dividendo', 'interes', 'intereses', 'liquidacion intereses', 'retribucion', 'cupon',
-    'rendimiento', 'deposito', 'broker', 'degiro', 'trade republic', 'myinvestor', 'saveback',
-    'efectivo al', 'inversion', 'plusvalia'
+    'liquidacion cuenta', 'liquidacion de cuenta', 'liquidacion intereses', 'liquidacion contrato',
+    'liquidacion ahorro', 'liquidacion', 'abono intereses', 'abono de intereses', 'intereses acreedores',
+    'interes cuenta', 'intereses cuenta', 'rendimiento cuenta', 'retribucion cuenta', 'retribucion mensual',
+    'dividendo', 'interes', 'intereses', 'retribucion', 'cupon', 'rendimiento', 'deposito',
+    'broker', 'degiro', 'trade republic', 'myinvestor', 'saveback', 'efectivo al', 'inversion', 'plusvalia'
+  ],
+  'cat-transferencias-gasto': [
+    'traspaso', 'traspaso interno', 'traspaso entre', 'traspaso a favor', 'transferencia a favor',
+    'transferencia propia', 'transferencia interna', 'entre mis cuentas', 'imposicion plazo',
+    'constitucion deposito', 'cancelacion deposito', 'vencimiento deposito'
   ],
   'cat-otros-ingresos': [
     'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso'
   ],
   'cat-otros-gastos': [
-    'operar', 'compra acciones', 'compra etf', 'orden de compra', 'comision', 'custodia'
+    'operar', 'compra acciones', 'compra etf', 'orden de compra', 'comision', 'custodia',
+    'mantenimiento cuenta', 'comision mantenimiento', 'comision administracion', 'cuota tarjeta'
   ]
 };
 
@@ -98,18 +106,48 @@ export function guessCategory(text: string, amount: number, categories: Transact
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
   
-  // 1. Reglas específicas para inversiones y broker (Trade Republic, DeGiro, MyInvestor, etc.)
+  // 1. Rendimientos bancarios e intereses (Liquidación de cuentas, intereses de ahorro, dividendos, etc.)
   if (
+    normText.includes('liquidacion') ||
     normText.includes('interes') ||
     normText.includes('dividendo') ||
     normText.includes('saveback') ||
     normText.includes('cupon') ||
-    normText.includes('rendimiento')
+    normText.includes('rendimiento') ||
+    normText.includes('retribucion') ||
+    normText.includes('abono intereses') ||
+    normText.includes('intereses acreedores')
   ) {
     const renCat = categories.find(c => c.id === 'cat-rendimientos' || c.name.toLowerCase().includes('interes') || c.name.toLowerCase().includes('rendimiento'));
     if (renCat) return renCat.id;
   }
 
+  // 2. Traspasos entre cuentas propias y transferencias (NO son nóminas ni hipotecas)
+  if (
+    normText.includes('traspaso') ||
+    normText.includes('transferencia propia') ||
+    normText.includes('transferencia interna') ||
+    normText.includes('entre mis cuentas') ||
+    normText.includes('imposicion') ||
+    normText.includes('constitucion') ||
+    (normText.includes('transferencia') && !normText.includes('nomina') && !normText.includes('sueldo'))
+  ) {
+    if (amount >= 0) {
+      // Ingreso: Bizum & Transferencias
+      const inCat = categories.find(c => c.id === 'cat-bizum-ingreso' || (c.type === 'income' && c.name.toLowerCase().includes('transferencia')));
+      if (inCat) return inCat.id;
+      const otherIn = categories.find(c => c.id === 'cat-otros-ingresos');
+      if (otherIn) return otherIn.id;
+    } else {
+      // Salida: Transferencias & Traspasos (NUNCA VIVIENDA / HIPOTECA)
+      const outCat = categories.find(c => c.id === 'cat-transferencias-gasto' || (c.type === 'expense' && c.name.toLowerCase().includes('transferencia')));
+      if (outCat) return outCat.id;
+      const otherExp = categories.find(c => c.id === 'cat-otros-gastos');
+      if (otherExp) return otherExp.id;
+    }
+  }
+
+  // 3. Operaciones de broker / inversión
   if (normText.includes('operar') || normText.includes('acciones') || normText.includes('etf') || normText.includes('bolsa') || normText.includes('inversion')) {
     if (amount < 0) {
       const expCat = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense');
@@ -120,23 +158,40 @@ export function guessCategory(text: string, amount: number, categories: Transact
     }
   }
 
-  // 2. Si es ingreso
+  // 4. Nóminas y sueldos REALES (únicamente si contiene nómina/sueldo/pensión explícita)
   if (amount > 0) {
-    if (normText.includes('nomina') || normText.includes('sueldo') || normText.includes('haberes') || normText.includes('pension')) {
-      const nomCat = categories.find(c => c.name.toLowerCase().includes('nomina') || c.id === 'cat-nomina');
+    if (
+      (normText.includes('nomina') || normText.includes('sueldo') || normText.includes('haberes') || normText.includes('pension') || normText.includes('sepe')) &&
+      !normText.includes('traspaso') &&
+      !normText.includes('liquidacion')
+    ) {
+      const nomCat = categories.find(c => c.id === 'cat-nomina' || c.name.toLowerCase().includes('nomina'));
       if (nomCat) return nomCat.id;
-    }
-    if (normText.includes('transferencia') || normText.includes('traspaso') || normText.includes('bizum') || normText.includes('deposito') || normText.includes('abono')) {
-      const bizCat = categories.find(c => c.name.toLowerCase().includes('transferencia') || c.id === 'cat-bizum-ingreso' || c.name.toLowerCase().includes('bizum'));
-      if (bizCat) return bizCat.id;
     }
   }
 
+  // 5. Hipoteca y vivienda REAL (únicamente hipotecas, comunidad o alquiler; NUNCA transferencias genéricas)
+  if (amount < 0) {
+    if (
+      (normText.includes('hipoteca') || normText.includes('prestamo') || normText.includes('comunidad') || normText.includes('alquiler') || normText.includes('ibi')) &&
+      !normText.includes('traspaso')
+    ) {
+      const vivCat = categories.find(c => c.id === 'cat-vivienda' || c.name.toLowerCase().includes('hipoteca') || c.name.toLowerCase().includes('vivienda'));
+      if (vivCat) return vivCat.id;
+    }
+  }
+
+  // 6. Comisiones bancarias -> Otros Gastos
+  if (normText.includes('comision') || normText.includes('comisiones') || normText.includes('mantenimiento') || normText.includes('cuota tarjeta')) {
+    const comCat = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense');
+    if (comCat) return comCat.id;
+  }
+
+  // 7. Búsqueda por diccionario de palabras clave
   for (const [catId, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     for (const kw of keywords) {
       const normKw = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (normText.includes(normKw)) {
-        // Verificar que la categoría exista en la lista actual
         const matched = categories.find(c => c.id === catId || c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(normKw));
         if (matched) return matched.id;
         const byId = categories.find(c => c.id === catId);
@@ -145,13 +200,13 @@ export function guessCategory(text: string, amount: number, categories: Transact
     }
   }
 
-  // Por defecto
+  // 8. Por defecto SEGURO (NUNCA asignar a Nómina ni a Vivienda/Hipoteca por descarte)
   if (amount >= 0) {
-    const defaultIncome = categories.find(c => c.type === 'income');
-    return defaultIncome ? defaultIncome.id : 'cat-otros-ingresos';
+    const defaultIncome = categories.find(c => c.id === 'cat-otros-ingresos') || categories.find(c => c.type === 'income' && c.id !== 'cat-nomina');
+    return defaultIncome ? defaultIncome.id : (categories.find(c => c.type === 'income')?.id || 'cat-otros-ingresos');
   } else {
-    const defaultExpense = categories.find(c => c.type === 'expense');
-    return defaultExpense ? defaultExpense.id : 'cat-otros-gastos';
+    const defaultExpense = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense' && c.id !== 'cat-vivienda');
+    return defaultExpense ? defaultExpense.id : (categories.find(c => c.type === 'expense')?.id || 'cat-otros-gastos');
   }
 }
 

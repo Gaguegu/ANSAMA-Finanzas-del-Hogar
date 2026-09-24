@@ -144,6 +144,14 @@ export const DEFAULT_CATEGORIES: TransactionCategory[] = [
     bgLight: '#f8fafc',
     monthlyBudget: 150
   },
+  {
+    id: 'cat-transferencias-gasto',
+    name: 'Transferencias & Traspasos',
+    iconName: 'ArrowUpRight',
+    type: 'expense',
+    color: '#0d9488', // teal
+    bgLight: '#f0fdfa',
+  },
   // Incomes
   {
     id: 'cat-nomina',

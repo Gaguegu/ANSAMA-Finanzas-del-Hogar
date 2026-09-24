@@ -136,6 +136,93 @@ export function loadAppState(): AppState {
       if (parsed.transactions.length !== prevCount) {
         hasRepairedTransactions = true;
       }
+
+      // 4. Asegurar que existe la categoría de gasto Transferencias & Traspasos
+      if (Array.isArray(parsed.categories)) {
+        const hasTransferExpenseCat = parsed.categories.some((c: TransactionCategory) => c.id === 'cat-transferencias-gasto');
+        if (!hasTransferExpenseCat) {
+          parsed.categories.push({
+            id: 'cat-transferencias-gasto',
+            name: 'Transferencias & Traspasos',
+            iconName: 'ArrowUpRight',
+            type: 'expense',
+            color: '#0d9488',
+            bgLight: '#f0fdfa'
+          });
+          hasRepairedTransactions = true;
+        }
+      }
+
+      // 5. Corregir y afinar categorías de transacciones históricas mal asignadas
+      let hasRecategorized = false;
+      parsed.transactions = parsed.transactions.map((tx: Transaction) => {
+        const titleNorm = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let newCategoryId = tx.categoryId;
+
+        // A. Liquidación de cuentas son intereses/rendimientos (NUNCA nóminas ni hipotecas)
+        if (
+          titleNorm.includes('liquidacion') ||
+          titleNorm.includes('intereses acreedores') ||
+          titleNorm.includes('abono intereses') ||
+          titleNorm.includes('rendimiento cuenta') ||
+          titleNorm.includes('retribucion cuenta')
+        ) {
+          if (tx.categoryId === 'cat-nomina' || tx.categoryId === 'cat-vivienda') {
+            newCategoryId = 'cat-rendimientos';
+          }
+        }
+
+        // B. Traspasos entre cuentas (NO son nóminas ni hipotecas)
+        if (
+          titleNorm.includes('traspaso') ||
+          titleNorm.includes('transferencia propia') ||
+          titleNorm.includes('transferencia interna') ||
+          titleNorm.includes('entre mis cuentas') ||
+          (titleNorm.includes('transferencia') && titleNorm.includes('andres'))
+        ) {
+          if (tx.categoryId === 'cat-nomina' || tx.categoryId === 'cat-vivienda') {
+            newCategoryId = tx.type === 'income' ? 'cat-bizum-ingreso' : 'cat-transferencias-gasto';
+          }
+        }
+
+        // C. Salidas por transferencia o traspaso erróneamente puestas en Vivienda / Hipoteca
+        if (tx.categoryId === 'cat-vivienda') {
+          const isRealHousing =
+            titleNorm.includes('hipoteca') ||
+            titleNorm.includes('prestamo') ||
+            titleNorm.includes('comunidad') ||
+            titleNorm.includes('alquiler') ||
+            titleNorm.includes('ibi');
+
+          if (!isRealHousing && (titleNorm.includes('transferencia') || titleNorm.includes('traspaso') || titleNorm.includes('bizum'))) {
+            newCategoryId = 'cat-transferencias-gasto';
+          }
+        }
+
+        // D. Ingresos con transferencia o traspaso erróneamente puestos en Nómina
+        if (tx.categoryId === 'cat-nomina') {
+          const isRealSalary =
+            titleNorm.includes('nomina') ||
+            titleNorm.includes('sueldo') ||
+            titleNorm.includes('haberes') ||
+            titleNorm.includes('pension') ||
+            titleNorm.includes('sepe');
+
+          if (!isRealSalary && (titleNorm.includes('transferencia') || titleNorm.includes('traspaso') || titleNorm.includes('bizum'))) {
+            newCategoryId = 'cat-bizum-ingreso';
+          }
+        }
+
+        if (newCategoryId !== tx.categoryId) {
+          hasRecategorized = true;
+          return { ...tx, categoryId: newCategoryId };
+        }
+        return tx;
+      });
+
+      if (hasRecategorized) {
+        hasRepairedTransactions = true;
+      }
     }
 
     // 4. Si la cuenta Trade Republic tiene balanceDate de emisión (ej: 2026) mientras sus movimientos son de 2025
