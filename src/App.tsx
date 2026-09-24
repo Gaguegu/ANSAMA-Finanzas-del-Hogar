@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppState, BankAccount, Transaction, BankSyncResult, MonthClosure, YieldRecord, YieldStatus, AccountType } from './types';
 import { 
   loadAppState, 
@@ -6,7 +6,10 @@ import {
   simulateBankSync, 
   importStatementTransactions,
   formatCurrency,
-  formatRelativeTime 
+  formatRelativeTime,
+  syncAccountsWithClosures,
+  getAvailableMonths,
+  getAccountBalanceForMonth
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { Header } from './components/Header';
@@ -27,12 +30,16 @@ import { ImportStatementModal } from './components/ImportStatementModal';
 import { MobileNav } from './components/MobileNav';
 import { LockScreen } from './components/LockScreen';
 import { AutoUpdateNotification } from './components/AutoUpdateNotification';
+import { PatrimonioPeriodSelector } from './components/PatrimonioPeriodSelector';
 import { Sparkles, CheckCircle2, RefreshCw, Info } from 'lucide-react';
 import { usePWA } from './utils/usePWA';
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  
+  // Selector de Mes y Año para consultar el Patrimonio y saldos bancarios a esa fecha
+  const [patrimonioMonth, setPatrimonioMonth] = useState<string>(() => new Date().toISOString().substring(0, 7));
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
@@ -408,25 +415,37 @@ export default function App() {
     }
   };
 
-  // Update or create a month closure
+  // Update or create a month closure and synchronize account balances
   const handleUpdateClosure = (closure: MonthClosure) => {
     const existing = appState.monthlyClosures || [];
     const index = existing.findIndex((c) => c.month === closure.month);
-    let updated: MonthClosure[];
+    let updatedClosures: MonthClosure[];
     if (index >= 0) {
-      updated = [...existing];
-      updated[index] = closure;
+      updatedClosures = [...existing];
+      updatedClosures[index] = closure;
     } else {
-      updated = [...existing, closure];
+      updatedClosures = [...existing, closure];
     }
+
+    // Sincronizar automáticamente las cuentas con los saldos de cierre auditados
+    // para que la pantalla de Patrimonio y Bancos reflejen los nuevos saldos al instante
+    const updatedAccounts = syncAccountsWithClosures(
+      appState.accounts,
+      updatedClosures,
+      appState.transactions
+    );
+
     const newState: AppState = {
       ...appState,
-      monthlyClosures: updated
+      accounts: updatedAccounts,
+      monthlyClosures: updatedClosures
     };
     setAppState(newState);
     saveAppState(newState);
     triggerNotification(
-      closure.isClosed ? `Mes ${closure.month} cerrado y auditado` : `Cierre del mes ${closure.month} actualizado`,
+      closure.isClosed 
+        ? `Mes ${closure.month} auditado: los saldos se han actualizado en tu pantalla de Patrimonio.`
+        : `Cierre del mes ${closure.month} guardado y sincronizado con Patrimonio.`,
       'success'
     );
   };
@@ -587,6 +606,31 @@ export default function App() {
     );
   };
 
+  // Lista ordenada de meses disponibles para el selector de Patrimonio
+  const availableMonths = useMemo(() => {
+    return getAvailableMonths(appState.transactions, appState.monthlyClosures);
+  }, [appState.transactions, appState.monthlyClosures]);
+
+  const currentMonthStr = new Date().toISOString().substring(0, 7);
+  const isCurrentPatrimonioMonth = patrimonioMonth === currentMonthStr;
+
+  // Cuentas con saldos y fechas reconstruidos para el mes seleccionado en Patrimonio
+  const effectivePatrimonioAccounts = useMemo(() => {
+    if (isCurrentPatrimonioMonth) {
+      return appState.accounts;
+    }
+    return appState.accounts.map((acc) => {
+      const info = getAccountBalanceForMonth(acc, patrimonioMonth, appState.transactions, appState.monthlyClosures);
+      return {
+        ...acc,
+        balance: info.balance,
+        balanceDate: info.balanceDate,
+        balanceSourceLabel: info.label,
+        isAudited: info.isAudited
+      };
+    });
+  }, [appState.accounts, patrimonioMonth, isCurrentPatrimonioMonth, appState.transactions, appState.monthlyClosures]);
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-20 md:pb-12 text-slate-900">
       
@@ -648,17 +692,31 @@ export default function App() {
         {/* Full Overview View (Patrimonio) */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Selector de Mes / Año con saldo y fecha de cada banco */}
+            <PatrimonioPeriodSelector
+              selectedMonth={patrimonioMonth}
+              onSelectMonth={setPatrimonioMonth}
+              availableMonths={availableMonths}
+              closures={appState.monthlyClosures}
+              isCurrentMonth={isCurrentPatrimonioMonth}
+              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
+            />
+
             <NetWorthCard 
-              accounts={appState.accounts} 
-              transactions={appState.transactions} 
+              accounts={effectivePatrimonioAccounts} 
+              transactions={appState.transactions}
+              selectedMonth={patrimonioMonth}
+              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* Left Column: Bank Accounts */}
               <div className="lg:col-span-7">
                 <BankAccountsList
-                  accounts={appState.accounts}
+                  accounts={effectivePatrimonioAccounts}
                   transactions={appState.transactions}
+                  selectedMonth={patrimonioMonth}
+                  monthlyClosures={appState.monthlyClosures}
                   onSyncBank={handleQuickSyncBank}
                   onOpenNewAccountModal={handleOpenNewAccountModal}
                   onEditAccount={(acc) => {
@@ -679,6 +737,7 @@ export default function App() {
                 <ExpenseCategoriesChart
                   categories={appState.categories}
                   transactions={appState.transactions}
+                  selectedMonth={patrimonioMonth}
                 />
               </div>
             </div>
@@ -700,9 +759,21 @@ export default function App() {
         {/* Dedicated Bank Accounts View */}
         {activeTab === 'accounts' && (
           <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Selector de Mes / Año también disponible en Bancos para mayor comodidad */}
+            <PatrimonioPeriodSelector
+              selectedMonth={patrimonioMonth}
+              onSelectMonth={setPatrimonioMonth}
+              availableMonths={availableMonths}
+              closures={appState.monthlyClosures}
+              isCurrentMonth={isCurrentPatrimonioMonth}
+              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
+            />
+
             <BankAccountsList
-              accounts={appState.accounts}
+              accounts={effectivePatrimonioAccounts}
               transactions={appState.transactions}
+              selectedMonth={patrimonioMonth}
+              monthlyClosures={appState.monthlyClosures}
               onSyncBank={handleQuickSyncBank}
               onOpenNewAccountModal={handleOpenNewAccountModal}
               onEditAccount={(acc) => {

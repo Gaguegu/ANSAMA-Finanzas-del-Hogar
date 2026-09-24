@@ -25,6 +25,7 @@ export interface BankAccount {
   type: AccountType;
   balance: number;
   balanceDate?: string; // Fecha (YYYY-MM-DD) a la que corresponde este saldo
+  balanceSourceLabel?: string; // Origen del saldo (ej. "Cierre auditado", "Extracto bancario", "Saldo actual")
   currency: string;
   lastSynced: string;
   accountNumberMasked: string;

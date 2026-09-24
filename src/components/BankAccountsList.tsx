@@ -20,8 +20,8 @@ import {
   Calendar,
   FileSpreadsheet
 } from 'lucide-react';
-import { BankAccount, Transaction, AccountType } from '../types';
-import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions } from '../utils/storage';
+import { BankAccount, Transaction, AccountType, MonthClosure } from '../types';
+import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth } from '../utils/storage';
 import { SyncAccountBalanceModal } from './SyncAccountBalanceModal';
 
 interface BankAccountsListProps {
@@ -35,6 +35,8 @@ interface BankAccountsListProps {
   onDeleteBank?: (bankId: string, bankName: string, accountIds: string[]) => void;
   onOpenImportModal?: (targetAccountId?: string) => void;
   isSyncing: boolean;
+  selectedMonth?: string;
+  monthlyClosures?: MonthClosure[];
 }
 
 export const BankAccountsList: React.FC<BankAccountsListProps> = ({
@@ -47,7 +49,9 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   onDeleteAccount,
   onDeleteBank,
   onOpenImportModal,
-  isSyncing
+  isSyncing,
+  selectedMonth,
+  monthlyClosures = []
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [accountToSyncBalance, setAccountToSyncBalance] = useState<BankAccount | null>(null);
@@ -58,6 +62,30 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     accounts: BankAccount[];
     total: number;
   } | null>(null);
+
+  const currentMonthPrefix = new Date().toISOString().substring(0, 7);
+  const isHistoricalMonth = Boolean(selectedMonth && selectedMonth !== currentMonthPrefix);
+
+  // Reconstruir saldos y fechas de cada cuenta para el mes seleccionado
+  const effectiveAccounts = useMemo(() => {
+    if (!selectedMonth || selectedMonth === currentMonthPrefix) {
+      return accounts.map((acc) => ({
+        ...acc,
+        balanceDate: acc.balanceDate || acc.lastSynced?.split('T')[0] || new Date().toISOString().split('T')[0],
+        balanceSourceLabel: acc.balanceSourceLabel || 'Tiempo real'
+      }));
+    }
+    return accounts.map((acc) => {
+      const info = getAccountBalanceForMonth(acc, selectedMonth, transactions, monthlyClosures);
+      return {
+        ...acc,
+        balance: info.balance,
+        balanceDate: info.balanceDate,
+        balanceSourceLabel: info.label,
+        isAudited: info.isAudited
+      };
+    });
+  }, [accounts, selectedMonth, currentMonthPrefix, transactions, monthlyClosures]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -73,17 +101,40 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   }, [bankToDelete, transactions]);
 
   // Specialized accounts
-  const investmentAccounts = accounts.filter((a) => a.type === 'investment');
-  const depositAccounts = accounts.filter((a) => a.type === 'deposit');
+  const investmentAccounts = effectiveAccounts.filter((a) => a.type === 'investment');
+  const depositAccounts = effectiveAccounts.filter((a) => a.type === 'deposit');
   const investmentTotal = investmentAccounts.reduce((sum, a) => sum + a.balance, 0);
   const depositTotal = depositAccounts.reduce((sum, a) => sum + a.balance, 0);
 
-  // Standard banking accounts (checking, savings, credit)
-  const bankingAccounts = accounts.filter((a) => a.type !== 'investment' && a.type !== 'deposit');
+  const investmentLatestDate = useMemo(() => {
+    return investmentAccounts.reduce<string | undefined>((latest, acc) => {
+      if (!acc.balanceDate) return latest;
+      if (!latest || acc.balanceDate > latest) return acc.balanceDate;
+      return latest;
+    }, undefined);
+  }, [investmentAccounts]);
 
-  // Dynamically group banking accounts by bank entity
+  const depositLatestDate = useMemo(() => {
+    return depositAccounts.reduce<string | undefined>((latest, acc) => {
+      if (!acc.balanceDate) return latest;
+      if (!latest || acc.balanceDate > latest) return acc.balanceDate;
+      return latest;
+    }, undefined);
+  }, [depositAccounts]);
+
+  // Standard banking accounts (checking, savings, credit)
+  const bankingAccounts = effectiveAccounts.filter((a) => a.type !== 'investment' && a.type !== 'deposit');
+
+  // Dynamically group banking accounts by bank entity and track latest balance date per bank
   const bankGroups = useMemo(() => {
-    const map = new Map<string, { bankId: string; bankName: string; color: string; accounts: BankAccount[]; total: number }>();
+    const map = new Map<string, { 
+      bankId: string; 
+      bankName: string; 
+      color: string; 
+      accounts: typeof effectiveAccounts; 
+      total: number;
+      latestDate?: string;
+    }>();
     for (const acc of bankingAccounts) {
       const key = acc.bankId === 'other' ? (acc.bankName || 'other') : acc.bankId;
       if (!map.has(key)) {
@@ -92,12 +143,18 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
           bankName: acc.bankName,
           color: acc.color || '#0E6A3B',
           accounts: [],
-          total: 0
+          total: 0,
+          latestDate: undefined
         });
       }
       const group = map.get(key)!;
       group.accounts.push(acc);
       group.total += acc.balance;
+      if (acc.balanceDate) {
+        if (!group.latestDate || acc.balanceDate > group.latestDate) {
+          group.latestDate = acc.balanceDate;
+        }
+      }
     }
     return Array.from(map.values());
   }, [bankingAccounts]);
@@ -110,6 +167,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
     const recalc = transactions ? recalculateAccountBalanceFromTransactions(account, transactions) : null;
     const hasDiscrepancy = Boolean(
+      !isHistoricalMonth &&
       recalc && 
       recalc.hasNewerTransactions && 
       recalc.transactionCount > 0 && 
@@ -254,10 +312,17 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               {formatCurrency(account.balance)}
             </span>
             {account.balanceDate && (
-              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-emerald-50/90 text-[10px] font-bold text-[#0E6A3B] border border-emerald-200/80">
-                <Calendar className="w-2.5 h-2.5" />
-                Saldo a: {formatDate(account.balanceDate)}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50/90 text-[10px] font-bold text-[#0E6A3B] border border-emerald-200/80">
+                  <Calendar className="w-2.5 h-2.5" />
+                  Saldo a: {formatDate(account.balanceDate)}
+                </span>
+                {account.balanceSourceLabel && (
+                  <span className="text-[10px] font-semibold text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200/70">
+                    {account.balanceSourceLabel}
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
@@ -405,9 +470,17 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                       {group.accounts.length} {group.accounts.length === 1 ? 'cuenta' : 'cuentas'}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-600 mt-0.5">
-                    Posición global {group.bankName}: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(group.total)}</span>
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <p className="text-xs text-zinc-600">
+                      Posición global {group.bankName}: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(group.total)}</span>
+                    </p>
+                    {group.latestDate && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-[11px] font-bold text-[#0E6A3B] border border-emerald-200 shadow-2xs">
+                        <Calendar className="w-3 h-3 text-[#0E6A3B]" />
+                        Saldo a: {formatDate(group.latestDate)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -478,9 +551,17 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                     Cartera Activa
                   </span>
                 </div>
-                <p className="text-xs text-zinc-600 mt-0.5">
-                  Valor liquidativo consolidado: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(investmentTotal)}</span>
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <p className="text-xs text-zinc-600">
+                    Valor liquidativo consolidado: <span className="font-extrabold text-[#0E6A3B] font-feature-settings-tnum">{formatCurrency(investmentTotal)}</span>
+                  </p>
+                  {investmentLatestDate && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-[11px] font-bold text-[#0E6A3B] border border-emerald-200 shadow-2xs">
+                      <Calendar className="w-3 h-3 text-[#0E6A3B]" />
+                      Saldo a: {formatDate(investmentLatestDate)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -514,9 +595,17 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
                     Rendimiento Garantizado
                   </span>
                 </div>
-                <p className="text-xs text-zinc-600 mt-0.5">
-                  Capital total en depósitos: <span className="font-extrabold text-sky-800 font-feature-settings-tnum">{formatCurrency(depositTotal)}</span>
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <p className="text-xs text-zinc-600">
+                    Capital total en depósitos: <span className="font-extrabold text-sky-800 font-feature-settings-tnum">{formatCurrency(depositTotal)}</span>
+                  </p>
+                  {depositLatestDate && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 text-[11px] font-bold text-sky-800 border border-sky-200 shadow-2xs">
+                      <Calendar className="w-3 h-3 text-sky-700" />
+                      Saldo a: {formatDate(depositLatestDate)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

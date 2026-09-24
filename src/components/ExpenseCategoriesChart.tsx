@@ -21,17 +21,19 @@ import { formatCurrency } from '../utils/storage';
 interface ExpenseCategoriesChartProps {
   categories: TransactionCategory[];
   transactions: Transaction[];
+  selectedMonth?: string;
 }
 
 export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   categories,
-  transactions
+  transactions,
+  selectedMonth
 }) => {
   const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
-  // Filter transactions for the current month
-  const currentMonth = new Date().toISOString().substring(0, 7);
+  // Filter transactions for the selected month or current month
+  const currentMonth = selectedMonth || new Date().toISOString().substring(0, 7);
   const monthTransactions = transactions.filter((t) => t.date.startsWith(currentMonth));
 
   // Compute category totals

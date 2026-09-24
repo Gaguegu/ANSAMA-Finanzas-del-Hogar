@@ -1,4 +1,4 @@
-import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult, YieldRecord } from '../types';
+import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult, YieldRecord, MonthClosure } from '../types';
 import { INITIAL_STATE } from '../data/defaultData';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './yieldDetection';
 
@@ -123,6 +123,30 @@ export function loadAppState(): AppState {
         }
         return acc;
       });
+    }
+
+    // 5. Sincronizar cuentas con los cierres auditados más recientes
+    // (garantiza que la pantalla de Patrimonio y Bancos reflejen los saldos de cierre ajustados)
+    if (Array.isArray(parsed.monthlyClosures) && parsed.monthlyClosures.length > 0 && Array.isArray(parsed.accounts)) {
+      const synced = syncAccountsWithClosures(
+        parsed.accounts,
+        parsed.monthlyClosures,
+        parsed.transactions || []
+      );
+      let changed = false;
+      for (let i = 0; i < parsed.accounts.length; i++) {
+        if (
+          parsed.accounts[i].balance !== synced[i]?.balance ||
+          parsed.accounts[i].balanceDate !== synced[i]?.balanceDate
+        ) {
+          changed = true;
+          break;
+        }
+      }
+      if (changed) {
+        parsed.accounts = synced;
+        hasRepairedAccount = true;
+      }
     }
 
     if (hasRepairedAccount || hasRepairedTransactions) {
@@ -593,26 +617,52 @@ export function recalculateAccountBalanceFromTransactions(
   const accountTxs = transactions.filter((t) => t.accountId === account.id);
   const baseDate = account.balanceDate || '';
   
-  // Movimientos en la fecha del saldo o posteriores
-  const relevantTxs = baseDate
-    ? accountTxs.filter((t) => t.date >= baseDate)
-    : accountTxs;
+  // 1. Si existen transacciones con saldo oficial del banco (balanceAfter), usar la más reciente
+  const txsWithBal = accountTxs
+    .filter((t) => t.balanceAfter !== undefined && t.balanceAfter !== null && !isNaN(t.balanceAfter))
+    .sort((a, b) => b.date.localeCompare(a.date));
 
-  const incomesTotal = relevantTxs
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const expensesTotal = relevantTxs
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netDelta = Math.round((incomesTotal - expensesTotal) * 100) / 100;
+  const latestTxWithBal = txsWithBal[0];
 
   let calculatedBalance: number;
-  if (account.type === 'credit') {
-    calculatedBalance = Math.round((account.balance - netDelta) * 100) / 100;
+  let incomesTotal = 0;
+  let expensesTotal = 0;
+  let netDelta = 0;
+  let relevantTxs: Transaction[] = [];
+
+  if (latestTxWithBal && (!baseDate || latestTxWithBal.date >= baseDate)) {
+    // Tomamos el saldo fidedigno del banco como punto de partida
+    relevantTxs = accountTxs.filter((t) => t.date > latestTxWithBal.date);
+    incomesTotal = relevantTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    expensesTotal = relevantTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    netDelta = Math.round((incomesTotal - expensesTotal) * 100) / 100;
+    
+    if (account.type === 'credit') {
+      calculatedBalance = Math.round((latestTxWithBal.balanceAfter! - netDelta) * 100) / 100;
+    } else {
+      calculatedBalance = Math.round((latestTxWithBal.balanceAfter! + netDelta) * 100) / 100;
+    }
   } else {
-    calculatedBalance = Math.round((account.balance + netDelta) * 100) / 100;
+    // Movimientos estrictamente posteriores a la fecha del saldo actual
+    relevantTxs = baseDate
+      ? accountTxs.filter((t) => t.date > baseDate)
+      : accountTxs;
+
+    incomesTotal = relevantTxs
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    expensesTotal = relevantTxs
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    netDelta = Math.round((incomesTotal - expensesTotal) * 100) / 100;
+
+    if (account.type === 'credit') {
+      calculatedBalance = Math.round((account.balance - netDelta) * 100) / 100;
+    } else {
+      calculatedBalance = Math.round((account.balance + netDelta) * 100) / 100;
+    }
   }
 
   const latestTransactionDate = accountTxs.length > 0
@@ -633,4 +683,317 @@ export function recalculateAccountBalanceFromTransactions(
     hasNewerTransactions
   };
 }
+
+/**
+ * Sincroniza los saldos de las cuentas (appState.accounts) con los cierres auditados más recientes
+ * garantizando que la pantalla de Patrimonio y Bancos reflejen inmediatamente los saldos de cierre
+ * guardados o ajustados por el usuario, sin dejar los del mes anterior.
+ */
+export function syncAccountsWithClosures(
+  accounts: BankAccount[],
+  closures: MonthClosure[],
+  transactions: Transaction[]
+): BankAccount[] {
+  if (!Array.isArray(accounts) || accounts.length === 0) return accounts;
+  if (!Array.isArray(closures) || closures.length === 0) return accounts;
+
+  return accounts.map((acc) => {
+    // Buscar todos los cierres que contengan saldo auditado válido para esta cuenta
+    const closuresWithAcc = closures
+      .filter((c) => c.auditedBalances && c.auditedBalances[acc.id] !== undefined && !isNaN(c.auditedBalances[acc.id]))
+      .sort((a, b) => a.month.localeCompare(b.month)); // Meses ordenados cronológicamente
+
+    if (closuresWithAcc.length === 0) {
+      return acc;
+    }
+
+    // El cierre auditado más reciente para esta cuenta
+    const latestClosure = closuresWithAcc[closuresWithAcc.length - 1];
+    const [cYear, cMonth] = latestClosure.month.split('-');
+    const lastDayOfMonth = new Date(parseInt(cYear, 10), parseInt(cMonth, 10), 0).getDate();
+    const closureEndDateStr = `${latestClosure.month}-${String(lastDayOfMonth).padStart(2, '0')}`;
+    const auditedVal = Math.round(latestClosure.auditedBalances![acc.id] * 100) / 100;
+
+    const accDate = acc.balanceDate || '';
+    const isClosureNewerOrEqual = !accDate || closureEndDateStr >= accDate || latestClosure.month >= accDate.substring(0, 7);
+
+    // Si la cuenta tiene una fecha de saldo estrictamente más reciente en otro mes futuro
+    // y tiene transacciones en ese mes futuro, respetamos esa fecha futura (a no ser que sea inversión/depósito)
+    if (!isClosureNewerOrEqual && acc.type !== 'investment' && acc.type !== 'deposit') {
+      const hasLaterTxs = transactions.some((t) => t.accountId === acc.id && t.date > closureEndDateStr);
+      if (hasLaterTxs) {
+        return acc;
+      }
+    }
+
+    // Buscar transacciones de esta cuenta estrictamente posteriores al fin del mes del cierre auditado
+    const newerTxs = transactions.filter((t) => t.accountId === acc.id && t.date > closureEndDateStr);
+
+    let newBalance = auditedVal;
+    let newBalanceDate = closureEndDateStr;
+
+    if (acc.type === 'investment' || acc.type === 'deposit') {
+      // Para carteras de valores y depósitos: el saldo es la valoración auditada al cierre
+      newBalance = auditedVal;
+      newBalanceDate = closureEndDateStr;
+    } else {
+      // Para cuentas bancarias: saldo auditado al cierre + ingresos posteriores - gastos posteriores
+      if (newerTxs.length > 0) {
+        const inc = newerTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const exp = newerTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        const net = inc - exp;
+        newBalance = acc.type === 'credit'
+          ? Math.round((auditedVal - net) * 100) / 100
+          : Math.round((auditedVal + net) * 100) / 100;
+        newBalanceDate = newerTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), closureEndDateStr);
+      } else {
+        newBalance = auditedVal;
+        newBalanceDate = closureEndDateStr;
+      }
+    }
+
+    return {
+      ...acc,
+      balance: newBalance,
+      balanceDate: newBalanceDate,
+      lastSynced: new Date().toISOString()
+    };
+  });
+}
+
+export interface AccountHistoricalBalanceInfo {
+  accountId: string;
+  balance: number;
+  balanceDate: string; // YYYY-MM-DD
+  source: 'audited' | 'statement' | 'calculated' | 'current';
+  isAudited: boolean;
+  label: string;
+}
+
+/**
+ * Reconstruye el saldo y la fecha efectiva de una cuenta para un mes específico (YYYY-MM).
+ * Se apoya en:
+ *  1. Cierres auditados registrados en ese mes.
+ *  2. Extractos bancarios con movimientos y balanceAfter en ese mes.
+ *  3. Fecha de saldo registrada en la cuenta si cae en ese mes.
+ *  4. Cierres previos auditados con movimientos intermedios.
+ *  5. Reconstrucción matemática a partir del saldo actual si no hay auditorías previas.
+ */
+export function getAccountBalanceForMonth(
+  acc: BankAccount,
+  monthStr: string, // YYYY-MM
+  transactions: Transaction[] = [],
+  monthlyClosures: MonthClosure[] = []
+): AccountHistoricalBalanceInfo {
+  const [yearStr, mStr] = monthStr.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(mStr, 10);
+  const lastDay = new Date(year, month, 0).getDate();
+  const lastDayOfMonthStr = `${monthStr}-${String(lastDay).padStart(2, '0')}`;
+  
+  const todayStr = new Date().toISOString().split('T')[0];
+  const currentMonthStr = todayStr.substring(0, 7);
+  const isCurrentMonth = monthStr === currentMonthStr;
+
+  const closure = monthlyClosures.find((c) => c.month === monthStr);
+
+  // 1. Si existe un cierre auditado con saldo específico para esta cuenta en este mes
+  if (closure?.auditedBalances?.[acc.id] !== undefined) {
+    const audBal = Math.round(closure.auditedBalances[acc.id] * 100) / 100;
+    const closedDate = closure.closedAt ? closure.closedAt.split('T')[0] : lastDayOfMonthStr;
+    return {
+      accountId: acc.id,
+      balance: audBal,
+      balanceDate: closedDate > lastDayOfMonthStr ? lastDayOfMonthStr : closedDate,
+      source: 'audited',
+      isAudited: true,
+      label: 'Cierre auditado'
+    };
+  }
+
+  // 2. Si es el mes actual y no está cerrado, el saldo base es el saldo actual en tiempo real
+  if (isCurrentMonth) {
+    const effectiveDate = acc.balanceDate || todayStr;
+    return {
+      accountId: acc.id,
+      balance: acc.balance,
+      balanceDate: effectiveDate,
+      source: 'current',
+      isAudited: false,
+      label: 'Tiempo real'
+    };
+  }
+
+  // 3. Si existen transacciones para esta cuenta dentro de este mes con saldo de extracto registrado (balanceAfter)
+  const monthTxsWithBal = transactions
+    .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(monthStr) && tx.balanceAfter !== undefined)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (monthTxsWithBal.length > 0) {
+    const lastTx = monthTxsWithBal[monthTxsWithBal.length - 1];
+    return {
+      accountId: acc.id,
+      balance: Math.round(lastTx.balanceAfter! * 100) / 100,
+      balanceDate: lastTx.date,
+      source: 'statement',
+      isAudited: false,
+      label: 'Extracto bancario'
+    };
+  }
+
+  // 4. Si la fecha del saldo de la cuenta está dentro de este mes y no hay movimientos posteriores en el mes
+  if (acc.balanceDate && acc.balanceDate.startsWith(monthStr)) {
+    const txsAfterBal = transactions.filter(
+      (tx) => tx.accountId === acc.id && tx.date > acc.balanceDate! && tx.date <= lastDayOfMonthStr
+    );
+    if (txsAfterBal.length === 0) {
+      return {
+        accountId: acc.id,
+        balance: Math.round(acc.balance * 100) / 100,
+        balanceDate: acc.balanceDate,
+        source: 'statement',
+        isAudited: false,
+        label: 'Saldo registrado'
+      };
+    }
+  }
+
+  // 5. Si hay un cierre auditado PREVIO más reciente para esta cuenta
+  const priorClosures = monthlyClosures
+    .filter((c) => c.month < monthStr && c.auditedBalances && c.auditedBalances[acc.id] !== undefined)
+    .sort((a, b) => b.month.localeCompare(a.month));
+
+  const latestPrior = priorClosures[0];
+  if (latestPrior && latestPrior.auditedBalances) {
+    const priorBalance = latestPrior.auditedBalances[acc.id];
+
+    if (acc.type === 'deposit' || acc.type === 'investment') {
+      return {
+        accountId: acc.id,
+        balance: Math.round(priorBalance * 100) / 100,
+        balanceDate: lastDayOfMonthStr,
+        source: 'audited',
+        isAudited: false,
+        label: 'Arrastrado de cierre previo'
+      };
+    }
+
+    const [pYear, pMonth] = latestPrior.month.split('-');
+    const pLastDay = new Date(parseInt(pYear, 10), parseInt(pMonth, 10), 0).getDate();
+    const pEndStr = `${latestPrior.month}-${String(pLastDay).padStart(2, '0')}`;
+
+    const intervalTxs = transactions.filter(
+      (tx) => tx.accountId === acc.id && tx.date > pEndStr && tx.date <= lastDayOfMonthStr
+    );
+    const inc = intervalTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const exp = intervalTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    
+    // Fecha del último movimiento en el mes o fin de mes
+    const lastTxDate = intervalTxs.length > 0
+      ? intervalTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), '')
+      : lastDayOfMonthStr;
+
+    const net = inc - exp;
+    const calcBal = acc.type === 'credit'
+      ? priorBalance - net
+      : priorBalance + net;
+
+    return {
+      accountId: acc.id,
+      balance: Math.round(calcBal * 100) / 100,
+      balanceDate: lastTxDate || lastDayOfMonthStr,
+      source: 'calculated',
+      isAudited: false,
+      label: 'Calculado a fin de mes'
+    };
+  }
+
+  // 6. Si no hay cierres previos:
+  if (acc.type === 'investment' || acc.type === 'deposit') {
+    return {
+      accountId: acc.id,
+      balance: Math.round(acc.balance * 100) / 100,
+      balanceDate: acc.balanceDate || lastDayOfMonthStr,
+      source: 'current',
+      isAudited: false,
+      label: 'Saldo actual'
+    };
+  }
+
+  // Para cuentas bancarias sin historial previo:
+  // Saldo fin de mes = Saldo actual - (Ingresos posteriores a ese mes) + (Gastos posteriores a ese mes)
+  const futureTxs = transactions.filter((tx) => tx.accountId === acc.id && tx.date > lastDayOfMonthStr);
+  const futureIncome = futureTxs.filter((tx) => tx.type === 'income').reduce((s, tx) => s + tx.amount, 0);
+  const futureExpense = futureTxs.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + tx.amount, 0);
+  const netFuture = futureIncome - futureExpense;
+  const calculated = acc.type === 'credit'
+    ? acc.balance + netFuture
+    : acc.balance - netFuture;
+
+  // Fecha del saldo: última transacción dentro o antes de ese mes
+  const pastTxs = transactions.filter((tx) => tx.accountId === acc.id && tx.date <= lastDayOfMonthStr);
+  const lastPastDate = pastTxs.length > 0
+    ? pastTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), '')
+    : lastDayOfMonthStr;
+
+  return {
+    accountId: acc.id,
+    balance: Math.round(calculated * 100) / 100,
+    balanceDate: lastPastDate || lastDayOfMonthStr,
+    source: 'calculated',
+    isAudited: false,
+    label: 'Calculado a fin de mes'
+  };
+}
+
+/**
+ * Obtiene la lista ordenada de todos los meses (YYYY-MM) relevantes disponibles en la app
+ * (mes actual + meses con movimientos + meses con cierres).
+ */
+export function getAvailableMonths(
+  transactions: Transaction[] = [],
+  monthlyClosures: MonthClosure[] = []
+): string[] {
+  const monthSet = new Set<string>();
+  
+  // Mes actual garantizado
+  const currentMonth = new Date().toISOString().substring(0, 7);
+  monthSet.add(currentMonth);
+
+  // De los cierres mensuales
+  if (Array.isArray(monthlyClosures)) {
+    monthlyClosures.forEach((c) => {
+      if (c.month && c.month.length === 7) {
+        monthSet.add(c.month);
+      }
+    });
+  }
+
+  // De las transacciones
+  if (Array.isArray(transactions)) {
+    transactions.forEach((t) => {
+      if (t.date && t.date.length >= 7) {
+        monthSet.add(t.date.substring(0, 7));
+      }
+    });
+  }
+
+  // Orden descendente (el más reciente primero)
+  return Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+}
+
+/**
+ * Formatea un identificador YYYY-MM en nombre de mes en español capitalizado (ej. "Agosto 2026")
+ */
+export function formatMonthName(monthStr: string): string {
+  try {
+    const [year, month] = monthStr.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    const name = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(date);
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  } catch {
+    return monthStr;
+  }
+}
+
 

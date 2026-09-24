@@ -14,11 +14,20 @@ import { formatCurrency } from '../utils/storage';
 interface NetWorthCardProps {
   accounts: BankAccount[];
   transactions: Transaction[];
+  selectedMonth?: string;
+  onResetToCurrentMonth?: () => void;
 }
 
-export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactions }) => {
+export const NetWorthCard: React.FC<NetWorthCardProps> = ({ 
+  accounts, 
+  transactions,
+  selectedMonth,
+  onResetToCurrentMonth
+}) => {
   // Current month calculation
   const currentMonthPrefix = new Date().toISOString().substring(0, 7); // '2026-09'
+  const activeMonth = selectedMonth || currentMonthPrefix;
+  const isHistorical = activeMonth !== currentMonthPrefix;
 
   // Total Assets & Liabilities
   let totalAssets = 0;
@@ -34,8 +43,8 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
 
   const netWorth = totalAssets - totalLiabilities;
 
-  // Monthly income and expense calculation
-  const monthlyTransactions = transactions.filter((t) => t.date.startsWith(currentMonthPrefix));
+  // Monthly income and expense calculation for active month
+  const monthlyTransactions = transactions.filter((t) => t.date.startsWith(activeMonth));
   
   const monthlyIncome = monthlyTransactions
     .filter((t) => t.type === 'income')
@@ -49,7 +58,9 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
   const savingsRate = monthlyIncome > 0 ? (monthlySavings / monthlyIncome) * 100 : 0;
   const expensePercentage = monthlyIncome > 0 ? Math.min(100, (monthlyExpense / monthlyIncome) * 100) : 0;
 
-  const currentMonthName = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date());
+  const [yearStr, monthStr] = activeMonth.split('-');
+  const displayDate = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
+  const activeMonthName = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(displayDate);
 
   return (
     <div id="section-net-worth" className="bg-white rounded-2xl border-2 border-[#0E6A3B]/50 shadow-sm ring-1 ring-emerald-950/10 overflow-hidden">
@@ -63,7 +74,7 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs font-black tracking-wider text-[#0E6A3B] uppercase">
-                Patrimonio Consolidado • Hogar ANSAMA
+                {isHistorical ? `Patrimonio Consolidado • ${activeMonthName}` : 'Patrimonio Consolidado • Hogar ANSAMA'}
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/90 text-emerald-900 border border-emerald-300">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#0E6A3B]" />
@@ -81,7 +92,7 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-emerald-200/80 text-xs font-semibold text-zinc-800 shadow-2xs">
               <Calendar className="w-3.5 h-3.5 text-[#0E6A3B]" />
-              <span className="capitalize">{currentMonthName}</span>
+              <span className="capitalize">{activeMonthName}</span>
             </div>
 
             <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-xl border-2 shadow-2xs ${
@@ -94,6 +105,26 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({ accounts, transactio
             </span>
           </div>
         </div>
+
+        {isHistorical && (
+          <div className="mt-4 p-3 bg-amber-50/90 border border-amber-300/80 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                Estás visualizando la posición global consolidada y los saldos bancarios a cierre de <strong className="capitalize">{activeMonthName}</strong>.
+              </span>
+            </div>
+            {onResetToCurrentMonth && (
+              <button
+                type="button"
+                onClick={onResetToCurrentMonth}
+                className="font-bold text-[#0E6A3B] hover:text-[#094d2a] hover:underline cursor-pointer"
+              >
+                Volver a saldos actuales &rarr;
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Grid of 4 Key Metrics */}

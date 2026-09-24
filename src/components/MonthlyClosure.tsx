@@ -725,8 +725,18 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                       {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
                     </td>
                     <td className="px-4 py-3 text-right font-feature-settings-tnum whitespace-nowrap bg-zinc-50/50">
-                      <div className="font-black text-zinc-950 text-sm">
-                        {formatCurrency(balance)}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="font-black text-zinc-950 text-sm">
+                          {formatCurrency(balance)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditBalances()}
+                          className="p-1 text-zinc-400 hover:text-[#0E6A3B] hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                          title="Ajustar saldo al cierre de esta cuenta"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
                       </div>
                       {balanceSource === 'statement' && (
                         <span className="inline-block text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300 mt-0.5" title="Saldo extraído directamente del extracto bancario oficial">
@@ -873,8 +883,18 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                             {net > 0 ? `+${formatCurrency(net)}` : formatCurrency(net)}
                           </td>
                           <td className="px-5 py-2.5 text-right font-feature-settings-tnum bg-emerald-50/40">
-                            <div className="font-black text-zinc-900">
-                              {formatCurrency(balance)}
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="font-black text-zinc-900">
+                                {formatCurrency(balance)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditBalances()}
+                                className="p-1 text-zinc-400 hover:text-[#0E6A3B] hover:bg-emerald-100 rounded-md transition-colors cursor-pointer"
+                                title="Ajustar saldo al cierre de esta cuenta"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
                             </div>
                             {balanceSource === 'statement' && (
                               <span className="inline-block text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300" title="Saldo extraído directamente del extracto bancario oficial">
@@ -1022,6 +1042,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                   Ideal para Cuentas de Valores, Depósitos o Cierres Pasados (2025):
                 </p>
                 Los saldos de las cuentas corrientes se han calculado automáticamente a partir de los movimientos. Para tus <strong>cuentas de valores / inversiones</strong> y <strong>depósitos a plazo fijo</strong>, introduce o verifica el capital que tenías a <strong>último día de {capitalizedMonth} {year}</strong>.
+                <p className="mt-2 text-[11px] font-semibold text-emerald-900 flex items-center gap-1.5 bg-white/80 p-2 rounded-lg border border-emerald-300">
+                  <Check className="w-3.5 h-3.5 text-[#0E6A3B] shrink-0" />
+                  <span>Al guardar, estos saldos se actualizan y sincronizan automáticamente en tu pantalla principal de <strong>Patrimonio</strong>.</span>
+                </p>
               </div>
 
               <div className="space-y-3">
@@ -1129,7 +1153,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Guardar Saldos y Auditar Cierre</span>
+                <span>Guardar y Sincronizar en Patrimonio</span>
               </button>
             </div>
           </div>
