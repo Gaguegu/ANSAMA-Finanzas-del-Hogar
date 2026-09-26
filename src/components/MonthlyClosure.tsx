@@ -29,11 +29,13 @@ import { formatCurrency, formatDate, parseCurrencyInput, isInternalTransfer } fr
 interface MonthlyClosureProps {
   appState: AppState;
   onUpdateClosure: (closure: MonthClosure) => void;
+  onUpdateTransaction?: (tx: Transaction) => void;
 }
 
 export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   appState,
-  onUpdateClosure
+  onUpdateClosure,
+  onUpdateTransaction
 }) => {
   const today = new Date();
   const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -73,6 +75,25 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     };
   }, [appState.monthlyClosures, selectedMonth]);
 
+  // Buscar si hay nóminas o sueldos en los primeros 3 días del mes siguiente (ej. 01/09 o 02/09)
+  // que habitualmente correspondan al mes devengado (agosto) por desfase de fecha valor o emisión de fin de mes
+  const [nextYear, nextMonthNum] = month === 12 ? [year + 1, 1] : [year, month + 1];
+  const nextMonthKey = `${nextYear}-${String(nextMonthNum).padStart(2, '0')}`;
+  const nextMonthName = new Date(nextYear, nextMonthNum - 1, 1).toLocaleString('es-ES', { month: 'long' });
+  
+  const earlyNextMonthPayrolls = useMemo(() => {
+    return appState.transactions.filter((tx) => {
+      if (!tx.date.startsWith(nextMonthKey)) return false;
+      const day = parseInt(tx.date.split('-')[2], 10);
+      if (day > 3) return false;
+      const tNorm = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return (
+        tx.type === 'income' &&
+        (tNorm.includes('nomina') || tNorm.includes('sueldo') || tNorm.includes('haberes') || tx.categoryId === 'cat-nomina')
+      );
+    });
+  }, [appState.transactions, nextMonthKey]);
+
   // Sync notes text with current closure
   React.useEffect(() => {
     setNotesText(currentClosure.notes || '');
@@ -85,19 +106,55 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       return { balance: Math.round(currentClosure.auditedBalances[acc.id] * 100) / 100, source: 'audited' };
     }
 
-    // 2. Si existen transacciones para esta cuenta dentro de este mes con saldo de extracto registrado (balanceAfter),
-    // el saldo final del mes es el saldo posterior del último movimiento realizado en este mes:
+    // 2. Evaluar saldos dentro de este mes a partir de extractos y fecha de saldo de la cuenta
+    const accBalDate = acc.balanceDate || '';
+    const hasAccBalInMonth = accBalDate.startsWith(selectedMonth);
+
     const monthTxsWithBal = appState.transactions
-      .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(selectedMonth) && tx.balanceAfter !== undefined)
+      .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(selectedMonth) && tx.balanceAfter !== undefined && tx.balanceAfter !== null && !isNaN(tx.balanceAfter))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (monthTxsWithBal.length > 0) {
-      const lastTx = monthTxsWithBal[monthTxsWithBal.length - 1];
-      return { balance: Math.round(lastTx.balanceAfter! * 100) / 100, source: 'statement' };
+    const lastTxWithBal = monthTxsWithBal.length > 0 ? monthTxsWithBal[monthTxsWithBal.length - 1] : null;
+
+    // A. Si la fecha del saldo de la cuenta está dentro de este mes y es más reciente o igual al último movimiento con saldo
+    if (hasAccBalInMonth && (!lastTxWithBal || accBalDate >= lastTxWithBal.date)) {
+      const txsAfterBal = appState.transactions.filter(
+        (tx) => tx.accountId === acc.id && tx.date > accBalDate && tx.date <= lastDayOfMonthStr
+      );
+      if (txsAfterBal.length === 0) {
+        return { balance: Math.round(acc.balance * 100) / 100, source: 'statement' };
+      }
+      const inc = txsAfterBal.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const exp = txsAfterBal.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const net = inc - exp;
+      const calc = acc.type === 'credit' ? acc.balance - net : acc.balance + net;
+      return { balance: Math.round(calc * 100) / 100, source: 'calculated' };
+    }
+
+    // B. Si existe un movimiento con saldo de extracto en este mes
+    if (lastTxWithBal) {
+      const txsAfterLastBal = appState.transactions.filter(
+        (tx) => tx.accountId === acc.id && tx.date > lastTxWithBal.date && tx.date <= lastDayOfMonthStr
+      );
+
+      if (txsAfterLastBal.length === 0) {
+        return { balance: Math.round(lastTxWithBal.balanceAfter! * 100) / 100, source: 'statement' };
+      }
+
+      // Si hay movimientos posteriores dentro del mismo mes (nómina, transferencias, gastos),
+      // proyectamos el saldo hasta fin de mes sumando ingresos y restando gastos
+      const inc = txsAfterLastBal.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const exp = txsAfterLastBal.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const net = inc - exp;
+      const rolled = acc.type === 'credit'
+        ? lastTxWithBal.balanceAfter! - net
+        : lastTxWithBal.balanceAfter! + net;
+
+      return { balance: Math.round(rolled * 100) / 100, source: 'calculated' };
     }
 
     // 3. Si la fecha del saldo de la cuenta está dentro de este mes y no hay movimientos posteriores a esa fecha en el mes:
-    if (acc.balanceDate && acc.balanceDate.startsWith(selectedMonth)) {
+    if (hasAccBalInMonth) {
       const txsAfterBal = appState.transactions.filter(
         (tx) => tx.accountId === acc.id && tx.date > acc.balanceDate! && tx.date <= lastDayOfMonthStr
       );
@@ -518,6 +575,45 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Sugerencia inteligente de Nómina / Sueldo con fecha de primeros del mes siguiente (desfase Fecha Valor) */}
+      {earlyNextMonthPayrolls.length > 0 && onUpdateTransaction && (
+        <div className="bg-gradient-to-r from-emerald-50 via-emerald-50/70 to-teal-50 border-2 border-emerald-400 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#092B19] border border-emerald-700/60 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs sm:text-sm font-black text-emerald-950">
+                  ¿Nómina de {capitalizedMonth} registrada a primeros de {nextMonthName}?
+                </h4>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                  Desfase Fecha Valor Banco
+                </span>
+              </div>
+              <p className="text-xs text-zinc-700 mt-1">
+                {earlyNextMonthPayrolls.map(p => `"${p.title}" (+${formatCurrency(p.amount)}, con fecha bancaria ${formatDate(p.date)})`).join(', ')}.
+                En bancos como BBVA o Santander, las nóminas abonadas a último día de mes suelen registrarse con fecha valor del día 1 del mes siguiente.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end md:self-auto shrink-0 flex-wrap">
+            {earlyNextMonthPayrolls.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onUpdateTransaction({ ...p, date: lastDayOfMonthStr })}
+                className="px-4 py-2 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                title={`Mover la fecha de "${p.title}" al ${formatDate(lastDayOfMonthStr)} para que compute como ingreso de ${capitalizedMonth}`}
+              >
+                <Check className="w-4 h-4" />
+                <span>Imputar ingreso a {capitalizedMonth} (31/{String(month).padStart(2, '0')})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* KPI Summary Cards for the selected month */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -646,12 +646,25 @@ export function importStatementTransactions(
   explicitBalance?: number,
   explicitBalanceDate?: string
 ): { newState: AppState; importedCount: number } {
-  if (!transactionsToImport || transactionsToImport.length === 0) {
-    return { newState: currentState, importedCount: 0 };
-  }
-
   const accountsCopy = [...currentState.accounts];
   const targetAcc = accountsCopy.find((a) => a.id === accountId);
+
+  // Si no hay nuevos movimientos (por ejemplo porque todos ya estaban importados como duplicados)
+  // pero se ha indicado un saldo oficial del extracto para actualizar la cuenta:
+  if (!transactionsToImport || transactionsToImport.length === 0) {
+    if (targetAcc && updateAccountBalance && explicitBalance !== undefined && !isNaN(explicitBalance)) {
+      targetAcc.balance = Math.round(explicitBalance * 100) / 100;
+      targetAcc.balanceDate = explicitBalanceDate || new Date().toISOString().split('T')[0];
+      targetAcc.lastSynced = new Date().toISOString();
+      const newState: AppState = {
+        ...currentState,
+        accounts: accountsCopy
+      };
+      saveAppState(newState);
+      return { newState, importedCount: 0 };
+    }
+    return { newState: currentState, importedCount: 0 };
+  }
 
   let netBalanceDelta = 0;
   const newTransactions: Transaction[] = transactionsToImport.map((item, idx) => {
@@ -947,25 +960,85 @@ export function getAccountBalanceForMonth(
     };
   }
 
-  // 3. Si existen transacciones para esta cuenta dentro de este mes con saldo de extracto registrado (balanceAfter)
+  // 3. Evaluar saldos dentro de este mes a partir de extractos y fecha de saldo de la cuenta
+  const accBalDate = acc.balanceDate || '';
+  const hasAccBalInMonth = accBalDate.startsWith(monthStr);
+
   const monthTxsWithBal = transactions
-    .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(monthStr) && tx.balanceAfter !== undefined)
+    .filter((tx) => tx.accountId === acc.id && tx.date.startsWith(monthStr) && tx.balanceAfter !== undefined && tx.balanceAfter !== null && !isNaN(tx.balanceAfter))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  if (monthTxsWithBal.length > 0) {
-    const lastTx = monthTxsWithBal[monthTxsWithBal.length - 1];
+  const lastTxWithBal = monthTxsWithBal.length > 0 ? monthTxsWithBal[monthTxsWithBal.length - 1] : null;
+
+  // A. Si la fecha del saldo de la cuenta está dentro de este mes y es más reciente o igual al último movimiento con saldo
+  if (hasAccBalInMonth && (!lastTxWithBal || accBalDate >= lastTxWithBal.date)) {
+    const txsAfterBal = transactions.filter(
+      (tx) => tx.accountId === acc.id && tx.date > accBalDate && tx.date <= lastDayOfMonthStr
+    );
+    if (txsAfterBal.length === 0) {
+      return {
+        accountId: acc.id,
+        balance: Math.round(acc.balance * 100) / 100,
+        balanceDate: accBalDate,
+        source: 'statement',
+        isAudited: false,
+        label: 'Saldo registrado'
+      };
+    }
+    const inc = txsAfterBal.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const exp = txsAfterBal.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const net = inc - exp;
+    const calc = acc.type === 'credit' ? acc.balance - net : acc.balance + net;
     return {
       accountId: acc.id,
-      balance: Math.round(lastTx.balanceAfter! * 100) / 100,
-      balanceDate: lastTx.date,
-      source: 'statement',
+      balance: Math.round(calc * 100) / 100,
+      balanceDate: lastDayOfMonthStr,
+      source: 'calculated',
       isAudited: false,
-      label: 'Extracto bancario'
+      label: 'Calculado a fin de mes'
+    };
+  }
+
+  // B. Si existe un movimiento con saldo de extracto en este mes
+  if (lastTxWithBal) {
+    const txsAfterLastBal = transactions.filter(
+      (tx) => tx.accountId === acc.id && tx.date > lastTxWithBal.date && tx.date <= lastDayOfMonthStr
+    );
+
+    if (txsAfterLastBal.length === 0) {
+      return {
+        accountId: acc.id,
+        balance: Math.round(lastTxWithBal.balanceAfter! * 100) / 100,
+        balanceDate: lastTxWithBal.date,
+        source: 'statement',
+        isAudited: false,
+        label: 'Extracto bancario'
+      };
+    }
+
+    // Si hay movimientos posteriores dentro del mismo mes (nómina, transferencias, gastos),
+    // proyectamos el saldo hasta fin de mes sumando ingresos y restando gastos
+    const inc = txsAfterLastBal.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const exp = txsAfterLastBal.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const net = inc - exp;
+    const rolled = acc.type === 'credit'
+      ? lastTxWithBal.balanceAfter! - net
+      : lastTxWithBal.balanceAfter! + net;
+
+    const lastDate = txsAfterLastBal.reduce((latest, t) => (t.date > latest ? t.date : latest), lastTxWithBal.date);
+
+    return {
+      accountId: acc.id,
+      balance: Math.round(rolled * 100) / 100,
+      balanceDate: lastDate || lastDayOfMonthStr,
+      source: 'calculated',
+      isAudited: false,
+      label: 'Calculado a fin de mes'
     };
   }
 
   // 4. Si la fecha del saldo de la cuenta está dentro de este mes y no hay movimientos posteriores en el mes
-  if (acc.balanceDate && acc.balanceDate.startsWith(monthStr)) {
+  if (hasAccBalInMonth) {
     const txsAfterBal = transactions.filter(
       (tx) => tx.accountId === acc.id && tx.date > acc.balanceDate! && tx.date <= lastDayOfMonthStr
     );
@@ -973,7 +1046,7 @@ export function getAccountBalanceForMonth(
       return {
         accountId: acc.id,
         balance: Math.round(acc.balance * 100) / 100,
-        balanceDate: acc.balanceDate,
+        balanceDate: acc.balanceDate!,
         source: 'statement',
         isAudited: false,
         label: 'Saldo registrado'

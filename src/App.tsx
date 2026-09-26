@@ -6,6 +6,7 @@ import {
   simulateBankSync, 
   importStatementTransactions,
   formatCurrency,
+  formatDate,
   formatRelativeTime,
   syncAccountsWithClosures,
   getAvailableMonths,
@@ -172,6 +173,18 @@ export default function App() {
         ? 'Anotación eliminada correctamente.'
         : 'Movimiento eliminado y saldo restaurado.'
     );
+  };
+
+  // Update existing transaction (e.g. adjust date to impute payroll to correct month)
+  const handleUpdateTransaction = (updatedTx: Transaction) => {
+    const updatedTransactions = appState.transactions.map((t) => (t.id === updatedTx.id ? updatedTx : t));
+    const newState: AppState = {
+      ...appState,
+      transactions: updatedTransactions
+    };
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(`Movimiento "${updatedTx.title}" actualizado con fecha ${formatDate(updatedTx.date)}.`);
   };
 
   // Move transactions between accounts and synchronize balances
@@ -832,6 +845,7 @@ export default function App() {
             <MonthlyClosure
               appState={appState}
               onUpdateClosure={handleUpdateClosure}
+              onUpdateTransaction={handleUpdateTransaction}
             />
           </div>
         )}

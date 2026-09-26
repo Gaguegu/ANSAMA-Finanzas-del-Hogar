@@ -214,12 +214,14 @@ export function guessCategory(text: string, amount: number, categories: Transact
 export function parseDateString(val: any): string | null {
   if (val === undefined || val === null || val === '') return null;
 
-  // Si viene como objeto Date nativo de JS
+  // Si viene como objeto Date nativo de JS (generado por XLSX con cellDates: true)
   if (val instanceof Date) {
     if (!isNaN(val.getTime())) {
-      const y = val.getFullYear();
-      const m = String(val.getMonth() + 1).padStart(2, '0');
-      const d = String(val.getDate()).padStart(2, '0');
+      // XLSX crea fechas de Excel con hora 00:00:00 UTC a partir del número de serie.
+      // Usar getUTCDate() preserva el día exacto del calendario contable independientemente de la zona horaria del cliente.
+      const y = val.getUTCFullYear();
+      const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(val.getUTCDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     }
     return null;
@@ -581,8 +583,25 @@ export function extractRowsWithMapping(
     });
   }
 
-  // Ordenar cronológicamente descendente
-  rows.sort((a, b) => b.date.localeCompare(a.date));
+  // Determinar dirección cronológica del extracto original
+  let isOriginalOldestFirst = false;
+  if (rows.length >= 2) {
+    const firstRowDate = rows[0].date;
+    const lastRowDate = rows[rows.length - 1].date;
+    if (firstRowDate < lastRowDate) {
+      isOriginalOldestFirst = true;
+    }
+  }
+
+  // Ordenar cronológicamente descendente (más recientes primero)
+  // En caso de movimientos en el mismo día, respetamos el orden intra-día original
+  rows.sort((a, b) => {
+    const cmp = b.date.localeCompare(a.date);
+    if (cmp !== 0) return cmp;
+    return isOriginalOldestFirst
+      ? b.originalIndex - a.originalIndex
+      : a.originalIndex - b.originalIndex;
+  });
   return rows;
 }
 
@@ -814,12 +833,23 @@ export function parseStatementFile(
     return validCells > 0 && (dateHits / validCells) >= 0.5;
   };
 
-  // 1. FECHA: Priorizar 'f. oper', 'f.oper', 'fecha operacion', 'fecha'
+  // 1. FECHA: Priorizar 'f. oper', 'f.oper', 'fecha operacion', 'fecha contable', 'fecha' (NUNCA FECHA VALOR)
   for (let i = 0; i < lowerHeaders.length; i++) {
     const h = lowerHeaders[i];
-    if (h.includes('f.oper') || h.includes('f. oper') || h.includes('fecha oper') || h === 'fecha') {
+    if (h.includes('f.oper') || h.includes('f. oper') || h.includes('fecha oper') || h.includes('fecha conta') || h === 'fecha') {
       dateCol = headers[i];
       break;
+    }
+  }
+  if (!dateCol) {
+    // Si no se encontró operación explícita, buscar fechas evitando 'fecha valor'
+    for (let i = 0; i < lowerHeaders.length; i++) {
+      const h = lowerHeaders[i];
+      if (h.includes('valor') || h.includes('value')) continue;
+      if (dateKeywords.some(kw => h.includes(kw))) {
+        dateCol = headers[i];
+        break;
+      }
     }
   }
   if (!dateCol) {

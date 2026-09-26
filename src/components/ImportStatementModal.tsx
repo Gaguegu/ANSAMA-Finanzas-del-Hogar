@@ -279,8 +279,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       return;
     }
 
-    if (selectedRows.length === 0) {
-      setErrorMsg('Selecciona al menos un movimiento para importar.');
+    if (selectedRows.length === 0 && (!shouldUpdateBalance || targetBalanceNumber === undefined)) {
+      setErrorMsg('No hay movimientos seleccionados para importar.');
       return;
     }
 
@@ -932,17 +932,29 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
             <button
               type="button"
               onClick={handleConfirmImport}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 && (!shouldUpdateBalance || targetBalanceNumber === undefined)}
               className="px-5 py-2.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />
               <span>
-                Importar {selectedCount} Movimientos
-                {shouldUpdateBalance && targetBalanceNumber !== undefined ? (
-                  <span className="opacity-90 font-mono ml-1 font-semibold">
-                    (Fijar saldo: {formatCurrency(targetBalanceNumber)})
-                  </span>
-                ) : null}
+                {selectedCount > 0 ? (
+                  <>
+                    Importar {selectedCount} Movimiento{selectedCount !== 1 ? 's' : ''}
+                    {duplicateCount > 0 ? ` (${duplicateCount} omitidos por ya existir)` : ''}
+                    {shouldUpdateBalance && targetBalanceNumber !== undefined ? (
+                      <span className="opacity-90 font-mono ml-1.5 font-semibold">
+                        • Fijar saldo en {formatCurrency(targetBalanceNumber)}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    Actualizar Saldo a {formatCurrency(targetBalanceNumber || 0)}
+                    <span className="opacity-85 text-[11px] font-normal ml-1">
+                      (Sin duplicar movimientos ya registrados)
+                    </span>
+                  </>
+                )}
               </span>
             </button>
           )}
