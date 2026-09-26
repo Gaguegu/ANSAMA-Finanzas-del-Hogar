@@ -89,6 +89,9 @@ export function loadAppState(): AppState {
             titleLower.includes('traspaso a ') ||
             titleLower.includes('traspaso hacia') ||
             titleLower.includes('transferencia a ') ||
+            titleLower.includes('transferencia realizada') ||
+            titleLower.includes('transf. realizada') ||
+            titleLower.includes('transferencia ordenada') ||
             titleLower.includes('transferencia emitida') ||
             titleLower.includes('transferencia enviada') ||
             titleLower.includes('cargo') ||

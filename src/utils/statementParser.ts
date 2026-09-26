@@ -527,7 +527,17 @@ export function extractRowsWithMapping(
         lowerTitle.includes('retirada') ||
         lowerTitle.includes('pago con tarjeta') ||
         lowerTitle.includes('tarjeta') ||
-        lowerTitle.includes('suscripcion');
+        lowerTitle.includes('suscripcion') ||
+        lowerTitle.includes('transferencia realizada') ||
+        lowerTitle.includes('transf. realizada') ||
+        lowerTitle.includes('transferencia emitida') ||
+        lowerTitle.includes('transferencia enviada') ||
+        lowerTitle.includes('transferencia ordenada') ||
+        lowerTitle.includes('traspaso a ') ||
+        lowerTitle.includes('traspaso hacia') ||
+        lowerTitle.includes('ret. efectivo') ||
+        lowerTitle.includes('cajero') ||
+        lowerTitle.includes('adeudo');
 
       if (isExplicitExpense && !lowerTitle.includes('venta') && !lowerTitle.includes('interes') && !lowerTitle.includes('dividendo')) {
         type = 'expense';
