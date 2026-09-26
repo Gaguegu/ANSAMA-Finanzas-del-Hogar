@@ -194,6 +194,10 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
                   </div>
                   <ArrowRight className="w-6 h-6 text-[#0E6A3B]" />
                 </div>
+
+                <p className="text-[11px] text-zinc-500 italic bg-white/70 p-2 rounded-lg border border-emerald-100">
+                  💡 <strong>Importante:</strong> Este importe es una estimación sumando los movimientos posteriores. Si corresponden a un mes nuevo del que aún no tienes el extracto bancario oficial, mantén tu saldo cerrado anterior o importa el extracto cuando esté disponible.
+                </p>
               </div>
 
               <button

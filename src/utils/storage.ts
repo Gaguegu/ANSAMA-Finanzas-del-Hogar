@@ -648,17 +648,64 @@ export function importStatementTransactions(
 ): { newState: AppState; importedCount: number } {
   const accountsCopy = [...currentState.accounts];
   const targetAcc = accountsCopy.find((a) => a.id === accountId);
+  const currentMonthStr = new Date().toISOString().substring(0, 7);
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Si no hay nuevos movimientos (por ejemplo porque todos ya estaban importados como duplicados)
   // pero se ha indicado un saldo oficial del extracto para actualizar la cuenta:
   if (!transactionsToImport || transactionsToImport.length === 0) {
     if (targetAcc && updateAccountBalance && explicitBalance !== undefined && !isNaN(explicitBalance)) {
-      targetAcc.balance = Math.round(explicitBalance * 100) / 100;
-      targetAcc.balanceDate = explicitBalanceDate || new Date().toISOString().split('T')[0];
+      let calculatedCurrentBal = explicitBalance;
+      let finalBalanceDate = explicitBalanceDate || todayStr;
+
+      // Si el extracto tiene una fecha (ej: 31/08/2026) y ya existen movimientos posteriores en la cuenta:
+      if (explicitBalanceDate) {
+        const postTxs = currentState.transactions.filter(
+          (t) => t.accountId === accountId && t.date > explicitBalanceDate
+        );
+        if (postTxs.length > 0) {
+          const postInc = postTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+          const postExp = postTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+          const postNet = postInc - postExp;
+          calculatedCurrentBal = targetAcc.type === 'credit'
+            ? explicitBalance - postNet
+            : explicitBalance + postNet;
+          finalBalanceDate = postTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), explicitBalanceDate);
+        }
+      }
+
+      targetAcc.balance = Math.round(calculatedCurrentBal * 100) / 100;
+      targetAcc.balanceDate = finalBalanceDate;
       targetAcc.lastSynced = new Date().toISOString();
+
+      // Guardar también el saldo oficial en el cierre del mes correspondiente
+      let updatedClosures = [...(currentState.monthlyClosures || [])];
+      const extractMonth = explicitBalanceDate?.substring(0, 7);
+      if (extractMonth) {
+        const closureIdx = updatedClosures.findIndex((c) => c.month === extractMonth);
+        if (closureIdx >= 0) {
+          updatedClosures[closureIdx] = {
+            ...updatedClosures[closureIdx],
+            auditedBalances: {
+              ...(updatedClosures[closureIdx].auditedBalances || {}),
+              [accountId]: Math.round(explicitBalance * 100) / 100
+            }
+          };
+        } else {
+          updatedClosures.push({
+            month: extractMonth,
+            isClosed: false,
+            auditedBalances: {
+              [accountId]: Math.round(explicitBalance * 100) / 100
+            }
+          });
+        }
+      }
+
       const newState: AppState = {
         ...currentState,
-        accounts: accountsCopy
+        accounts: accountsCopy,
+        monthlyClosures: updatedClosures
       };
       saveAppState(newState);
       return { newState, importedCount: 0 };
@@ -684,10 +731,55 @@ export function importStatementTransactions(
     };
   });
 
+  let updatedClosures = [...(currentState.monthlyClosures || [])];
+
   if (targetAcc && updateAccountBalance) {
     if (explicitBalance !== undefined && !isNaN(explicitBalance)) {
-      targetAcc.balance = Math.round(explicitBalance * 100) / 100;
-      targetAcc.balanceDate = explicitBalanceDate || new Date().toISOString().split('T')[0];
+      let calculatedCurrentBal = explicitBalance;
+      let finalBalanceDate = explicitBalanceDate || todayStr;
+
+      // Comprobar si hay movimientos posteriores al saldo oficial indicado
+      if (explicitBalanceDate) {
+        const allTransactions = [...currentState.transactions, ...newTransactions];
+        const postTxs = allTransactions.filter(
+          (t) => t.accountId === accountId && t.date > explicitBalanceDate
+        );
+        if (postTxs.length > 0) {
+          const postInc = postTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+          const postExp = postTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+          const postNet = postInc - postExp;
+          calculatedCurrentBal = targetAcc.type === 'credit'
+            ? explicitBalance - postNet
+            : explicitBalance + postNet;
+          finalBalanceDate = postTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), explicitBalanceDate);
+        }
+      }
+
+      targetAcc.balance = Math.round(calculatedCurrentBal * 100) / 100;
+      targetAcc.balanceDate = finalBalanceDate;
+
+      // Registrar también el saldo oficial en el mes al que corresponde el extracto
+      const extractMonth = explicitBalanceDate?.substring(0, 7);
+      if (extractMonth) {
+        const closureIdx = updatedClosures.findIndex((c) => c.month === extractMonth);
+        if (closureIdx >= 0) {
+          updatedClosures[closureIdx] = {
+            ...updatedClosures[closureIdx],
+            auditedBalances: {
+              ...(updatedClosures[closureIdx].auditedBalances || {}),
+              [accountId]: Math.round(explicitBalance * 100) / 100
+            }
+          };
+        } else {
+          updatedClosures.push({
+            month: extractMonth,
+            isClosed: false,
+            auditedBalances: {
+              [accountId]: Math.round(explicitBalance * 100) / 100
+            }
+          });
+        }
+      }
     } else {
       if (targetAcc.type === 'credit') {
         targetAcc.balance = Math.round((targetAcc.balance - netBalanceDelta) * 100) / 100;
@@ -725,6 +817,7 @@ export function importStatementTransactions(
   const newState: AppState = {
     ...currentState,
     accounts: accountsCopy,
+    monthlyClosures: updatedClosures,
     transactions: [...newTransactions, ...currentState.transactions],
     yieldRecords: [...newAutoYields, ...currentYields]
   };

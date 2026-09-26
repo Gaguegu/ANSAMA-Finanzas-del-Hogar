@@ -18,7 +18,9 @@ import {
   AlertCircle,
   X,
   Calendar,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Info,
+  Eye
 } from 'lucide-react';
 import { BankAccount, Transaction, AccountType, MonthClosure } from '../types';
 import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth } from '../utils/storage';
@@ -62,6 +64,26 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     accounts: BankAccount[];
     total: number;
   } | null>(null);
+
+  // Cuentas cuyo aviso de movimientos posteriores ha sido descartado por el usuario
+  const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('ansama_dismissed_discrepancies');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const handleDismissWarning = (accountId: string) => {
+    setDismissedWarnings((prev) => {
+      const next = new Set(prev).add(accountId);
+      try {
+        localStorage.setItem('ansama_dismissed_discrepancies', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
 
   const currentMonthPrefix = new Date().toISOString().substring(0, 7);
   const isHistoricalMonth = Boolean(selectedMonth && selectedMonth !== currentMonthPrefix);
@@ -166,12 +188,43 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     const isDeposit = account.type === 'deposit';
 
     const recalc = transactions ? recalculateAccountBalanceFromTransactions(account, transactions) : null;
+    
+    // Comprobar si el saldo de la cuenta proviene de un cierre mensual auditado oficial (ej: fin de agosto)
+    const isAuditedClosure = monthlyClosures.some(c => 
+      c.isClosed && 
+      c.auditedBalances && 
+      c.auditedBalances[account.id] !== undefined &&
+      Math.abs(c.auditedBalances[account.id] - account.balance) < 0.01
+    );
+
+    // O si la fecha del saldo coincide con el fin de un mes cerrado
+    const isClosedMonthEndDate = monthlyClosures.some(c => {
+      if (!c.isClosed) return false;
+      const [y, m] = c.month.split('-');
+      const lastDay = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
+      const endStr = `${c.month}-${String(lastDay).padStart(2, '0')}`;
+      return account.balanceDate === endStr;
+    });
+
+    const isCertifiedClosure = isAuditedClosure || isClosedMonthEndDate;
+
+    // Solo hay discrepancia si la cuenta NO está avalada por un cierre oficial auditado
     const hasDiscrepancy = Boolean(
       !isHistoricalMonth &&
+      !isCertifiedClosure &&
       recalc && 
       recalc.hasNewerTransactions && 
       recalc.transactionCount > 0 && 
       Math.abs(recalc.calculatedBalance - account.balance) >= 0.01
+    );
+
+    // Si tiene saldo cerrado oficial pero hay movimientos de un mes posterior pendiente de nuevo extracto:
+    const hasPendingNextMonthMovements = Boolean(
+      !isHistoricalMonth &&
+      isCertifiedClosure &&
+      recalc &&
+      recalc.hasNewerTransactions &&
+      recalc.transactionCount > 0
     );
 
     return (
@@ -344,46 +397,64 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
           </div>
         </div>
 
-        {/* Alerta si hay movimientos que modifican el saldo tras la fecha fijada */}
+        {/* Caso A: Cuenta con saldo oficial cerrado/auditado y movimientos posteriores pendientes de extracto */}
+        {hasPendingNextMonthMovements && recalc && (
+          <div className="mt-3.5 pt-3 border-t border-sky-200/90 bg-sky-50/80 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-3.5 sm:px-4 rounded-b-xl space-y-2">
+            <div className="flex items-start gap-2 text-xs">
+              <Info className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold text-sky-950 block">
+                  Movimientos posteriores pendientes de extracto
+                </span>
+                <p className="text-[11px] text-sky-800 leading-snug">
+                  Saldo oficial cerrado al {formatDate(account.balanceDate)}: <strong className="font-mono font-extrabold text-sky-950">{formatCurrency(account.balance)}</strong>. Hay {recalc.transactionCount} movimiento(s) registrados con fecha posterior que se conciliarán al importar el extracto del mes siguiente.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-0.5">
+              {onOpenImportModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenImportModal(account.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-800 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Importar extracto</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setAccountToSyncBalance(account)}
+                className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-lg border border-sky-300 transition-all cursor-pointer"
+              >
+                Ver movimientos posteriores
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Caso B: Cuenta sin cierre auditado donde los movimientos no concuerdan */}
         {hasDiscrepancy && recalc && (
           <div className="mt-3.5 pt-3 border-t border-amber-200/90 bg-amber-50/90 -mx-4 -mb-4 sm:-mx-5 sm:-mb-5 p-3.5 sm:px-4 rounded-b-xl space-y-2.5">
             <div className="flex items-start gap-2 text-xs">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <span className="font-bold text-amber-950 block">
-                  Saldo desactualizado respecto a tus movimientos
+                  Movimientos posteriores registrados
                 </span>
                 <p className="text-[11px] text-amber-800 leading-snug">
-                  Hay {recalc.transactionCount} movimientos desde el {formatDate(account.balanceDate)}. Saldo calculado: <strong className="font-mono font-extrabold text-amber-950">{formatCurrency(recalc.calculatedBalance)}</strong>
+                  Hay {recalc.transactionCount} movimientos desde el {formatDate(account.balanceDate)}. Puedes revisar la conciliación o mantener tu saldo fijado de {formatCurrency(account.balance)}.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (onSaveAccount) {
-                    onSaveAccount({
-                      ...account,
-                      balance: recalc.calculatedBalance,
-                      balanceDate: recalc.latestTransactionDate || new Date().toISOString().split('T')[0],
-                      lastSynced: new Date().toISOString()
-                    });
-                  } else {
-                    setAccountToSyncBalance(account);
-                  }
-                }}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#0E6A3B] hover:bg-[#094d2a] text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                onClick={() => setAccountToSyncBalance(account)}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Actualizar saldo a {formatCurrency(recalc.calculatedBalance)}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAccountToSyncBalance(account)}
-                className="px-2.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 text-xs font-semibold rounded-lg border border-amber-300 transition-all cursor-pointer"
-              >
-                Ver detalle
+                <span>Revisar conciliación de saldo</span>
               </button>
             </div>
           </div>

@@ -41,7 +41,8 @@ interface ImportStatementModalProps {
     accountId: string,
     updateBalance: boolean,
     explicitBalance?: number,
-    explicitBalanceDate?: string
+    explicitBalanceDate?: string,
+    statementMovementsWithBalance?: Array<{ date: string; amount: number; type: 'income' | 'expense'; balanceAfter?: number }>
   ) => void;
 }
 
@@ -296,12 +297,22 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       balanceAfter: r.balanceAfter
     }));
 
+    const statementMovementsWithBalance = rows
+      .filter(r => r.balanceAfter !== undefined && r.balanceAfter !== null && !isNaN(r.balanceAfter))
+      .map(r => ({
+        date: r.date,
+        amount: r.amount,
+        type: r.type,
+        balanceAfter: r.balanceAfter
+      }));
+
     onImport(
       transactionsToImport,
       activeAccountId,
       shouldUpdateBalance,
       (balanceUpdateMode === 'statement' || balanceUpdateMode === 'manual') ? targetBalanceNumber : undefined,
-      targetBalanceDate
+      targetBalanceDate,
+      statementMovementsWithBalance
     );
     handleReset();
     onClose();

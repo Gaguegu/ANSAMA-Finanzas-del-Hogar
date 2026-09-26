@@ -317,15 +317,17 @@ export default function App() {
     accountId: string,
     updateBalance: boolean = true,
     explicitBalance?: number,
-    explicitBalanceDate?: string
+    explicitBalanceDate?: string,
+    statementMovementsWithBalance?: Array<{ date: string; amount: number; type: 'income' | 'expense'; balanceAfter?: number }>
   ) => {
-    const { newState, importedCount } = importStatementTransactions(
+    const { newState, importedCount, enrichedCount } = importStatementTransactions(
       appState,
       transactions,
       accountId,
       updateBalance,
       explicitBalance,
-      explicitBalanceDate
+      explicitBalanceDate,
+      statementMovementsWithBalance
     );
     setAppState(newState);
     saveAppState(newState);
@@ -334,9 +336,17 @@ export default function App() {
     const balanceInfo = updateBalance && targetAcc
       ? ` Saldo disponible actualizado a ${formatCurrency(targetAcc.balance)} (fecha: ${targetAcc.balanceDate || 'hoy'}).`
       : '';
-    triggerNotification(
-      `¡Éxito! Se han importado ${importedCount} movimientos en ${bankName}.${balanceInfo}`
-    );
+    
+    if (importedCount === 0) {
+      const enrichedMsg = enrichedCount && enrichedCount > 0 ? ` (${enrichedCount} movimientos vinculados con su saldo bancario oficial).` : '';
+      triggerNotification(
+        `¡Extracto verificado! No se duplicó ningún movimiento existente.${enrichedMsg}${balanceInfo}`
+      );
+    } else {
+      triggerNotification(
+        `¡Éxito! Se han importado ${importedCount} movimientos en ${bankName}.${balanceInfo}`
+      );
+    }
   };
 
   // Save (add or update) account
