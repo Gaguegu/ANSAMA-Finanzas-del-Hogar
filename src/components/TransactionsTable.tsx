@@ -11,10 +11,11 @@ import {
   CheckSquare,
   Square,
   CheckCircle2,
-  X
+  X,
+  Calendar
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
-import { formatCurrency, formatDate } from '../utils/storage';
+import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -38,6 +39,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onBatchDeleteTransactions
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterBank, setFilterBank] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -65,6 +67,22 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     return Array.from(bankSet.entries()).map(([id, name]) => ({ id, name }));
   }, [accounts]);
 
+  // Lista ordenada de periodos disponibles (Años completos y Meses específicos)
+  const availablePeriods = useMemo(() => {
+    const monthSet = new Set<string>();
+    const yearSet = new Set<string>();
+    transactions.forEach((tx) => {
+      if (tx.date && tx.date.length >= 7) {
+        monthSet.add(tx.date.substring(0, 7));
+        yearSet.add(tx.date.substring(0, 4));
+      }
+    });
+    return {
+      months: Array.from(monthSet).sort().reverse(),
+      years: Array.from(yearSet).sort().reverse()
+    };
+  }, [transactions]);
+
   const categoryMap = useMemo(() => {
     const map = new Map<string, TransactionCategory>();
     categories.forEach((c) => map.set(c.id, c));
@@ -83,6 +101,16 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         if (!matchesTitle && !matchesNote && !matchesAmount) return false;
       }
 
+      // Filter by Month or Year
+      if (filterMonth !== 'all') {
+        if (filterMonth.startsWith('year-')) {
+          const y = filterMonth.replace('year-', '');
+          if (!tx.date.startsWith(y)) return false;
+        } else {
+          if (!tx.date.startsWith(filterMonth)) return false;
+        }
+      }
+
       // Filter by type
       if (filterType !== 'all' && tx.type !== filterType) return false;
 
@@ -97,12 +125,30 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       return true;
     });
-  }, [transactions, searchQuery, filterType, filterBank, filterCategory, accountMap]);
+  }, [transactions, searchQuery, filterMonth, filterType, filterBank, filterCategory, accountMap]);
 
-  const hasActiveFilters = searchQuery !== '' || filterBank !== 'all' || filterType !== 'all' || filterCategory !== 'all';
+  // Resumen contable de la selección filtrada
+  const filteredStats = useMemo(() => {
+    const inc = filteredTransactions
+      .filter((t) => t.type === 'income')
+      .reduce((s, t) => s + t.amount, 0);
+    const exp = filteredTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((s, t) => s + t.amount, 0);
+    return {
+      income: Math.round(inc * 100) / 100,
+      expense: Math.round(exp * 100) / 100,
+      net: Math.round((inc - exp) * 100) / 100,
+      incomeCount: filteredTransactions.filter((t) => t.type === 'income').length,
+      expenseCount: filteredTransactions.filter((t) => t.type === 'expense').length
+    };
+  }, [filteredTransactions]);
+
+  const hasActiveFilters = searchQuery !== '' || filterMonth !== 'all' || filterBank !== 'all' || filterType !== 'all' || filterCategory !== 'all';
 
   const resetFilters = () => {
     setSearchQuery('');
+    setFilterMonth('all');
     setFilterBank('all');
     setFilterType('all');
     setFilterCategory('all');
@@ -248,7 +294,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       )}
 
       {/* Filter Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         
         {/* Search input */}
         <div className="relative">
@@ -260,6 +306,34 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-900 placeholder:text-zinc-400 font-medium"
           />
+        </div>
+
+        {/* Month & Year Filter */}
+        <div>
+          <select
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="w-full px-3 py-2 text-xs rounded-xl bg-emerald-50/70 border border-emerald-300 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-900 font-bold cursor-pointer shadow-2xs"
+            title="Filtrar por Mes o Año específico"
+          >
+            <option value="all">📅 Todos los Meses y Años</option>
+            {availablePeriods.years.length > 0 && (
+              <optgroup label="── Años Completos ──">
+                {availablePeriods.years.map((y) => (
+                  <option key={`year-${y}`} value={`year-${y}`}>
+                    Año Completo {y}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="── Meses Específicos ──">
+              {availablePeriods.months.map((m) => (
+                <option key={m} value={m}>
+                  {formatMonthName(m)}
+                </option>
+              ))}
+            </optgroup>
+          </select>
         </div>
 
         {/* Bank Filter */}
@@ -283,7 +357,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as 'all' | 'expense' | 'income')}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold cursor-pointer"
           >
             <option value="all">Tipo: Todos los Flujos</option>
             <option value="expense">Solo Gastos</option>
@@ -296,7 +370,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold"
+            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold cursor-pointer"
           >
             <option value="all">Todas las Categorías</option>
             {categories.map((c) => (
@@ -310,11 +384,29 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {hasActiveFilters && (
-        <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-950">
-          <span className="font-medium">Filtros aplicados ({filteredTransactions.length} encontrados)</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 animate-in fade-in">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="font-extrabold flex items-center gap-1.5 text-zinc-900">
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+              {filteredTransactions.length} movimiento(s)
+            </span>
+            <span className="text-zinc-300">|</span>
+            <span className="text-emerald-800 font-bold">
+              Ingresos: +{formatCurrency(filteredStats.income)} ({filteredStats.incomeCount})
+            </span>
+            <span className="text-zinc-300">|</span>
+            <span className="text-rose-700 font-bold">
+              Gastos: -{formatCurrency(filteredStats.expense)} ({filteredStats.expenseCount})
+            </span>
+            <span className="text-zinc-300">|</span>
+            <span className={`font-black ${filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}`}>
+              Neto: {filteredStats.net >= 0 ? `+${formatCurrency(filteredStats.net)}` : formatCurrency(filteredStats.net)}
+            </span>
+          </div>
+
           <button
             onClick={resetFilters}
-            className="inline-flex items-center gap-1 font-bold text-[#0E6A3B] hover:text-emerald-950 cursor-pointer"
+            className="inline-flex items-center gap-1 font-bold text-[#0E6A3B] hover:text-emerald-950 cursor-pointer text-xs shrink-0 self-end sm:self-auto"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Restablecer filtros
