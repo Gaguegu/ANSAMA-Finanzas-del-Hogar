@@ -13,13 +13,27 @@ import {
   CheckCircle2,
   X,
   Calendar,
+  CalendarRange,
   Download,
   ChevronDown,
-  FileText
+  FileText,
+  Check
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
+
+export type PeriodFilterMode = 'all' | 'single' | 'range' | 'multi' | 'custom-dates';
+
+export interface PeriodFilterState {
+  mode: PeriodFilterMode;
+  singleValue: string; // 'all' | 'year-2025' | '2025-02'
+  rangeStart: string;  // '2025-02'
+  rangeEnd: string;    // '2025-03'
+  selectedMonths: string[]; // e.g. ['2025-02', '2025-03']
+  startDate: string;   // 'YYYY-MM-DD'
+  endDate: string;     // 'YYYY-MM-DD'
+}
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -43,7 +57,26 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onBatchDeleteTransactions
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMonth, setFilterMonth] = useState<string>('all');
+  
+  // Estado flexible del filtro de Periodo (Rango, Multiselección, Mes o Año Único)
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>({
+    mode: 'all',
+    singleValue: 'all',
+    rangeStart: '2025-02',
+    rangeEnd: '2025-03',
+    selectedMonths: [],
+    startDate: '',
+    endDate: ''
+  });
+  const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false);
+  const [periodActiveTab, setPeriodActiveTab] = useState<'range' | 'multi' | 'single' | 'dates'>('range');
+  const [tempRangeStart, setTempRangeStart] = useState('2025-02');
+  const [tempRangeEnd, setTempRangeEnd] = useState('2025-03');
+  const [tempSelectedMonths, setTempSelectedMonths] = useState<string[]>([]);
+  const [tempStartDate, setTempStartDate] = useState('');
+  const [tempEndDate, setTempEndDate] = useState('');
+  const periodMenuRef = useRef<HTMLDivElement>(null);
+
   const [filterBank, setFilterBank] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -59,20 +92,21 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar menú de descarga al hacer clic fuera
+  // Cerrar menús al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
         setIsDownloadMenuOpen(false);
       }
+      if (periodMenuRef.current && !periodMenuRef.current.contains(event.target as Node)) {
+        setIsPeriodMenuOpen(false);
+      }
     };
-    if (isDownloadMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isDownloadMenuOpen]);
+  }, []);
 
   const accountMap = useMemo(() => {
     const map = new Map<string, BankAccount>();
@@ -107,6 +141,93 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     };
   }, [transactions]);
 
+  // Lista de todos los meses seleccionables (año actual, anterior, siguiente y con movimientos)
+  const selectableMonthsList = useMemo(() => {
+    const yearsSet = new Set<number>();
+    const currentYear = new Date().getFullYear();
+    yearsSet.add(currentYear);
+    yearsSet.add(currentYear - 1);
+    yearsSet.add(currentYear + 1);
+    transactions.forEach((tx) => {
+      if (tx.date && tx.date.length >= 4) {
+        const y = parseInt(tx.date.substring(0, 4), 10);
+        if (!isNaN(y)) yearsSet.add(y);
+      }
+    });
+
+    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
+    const months: { value: string; label: string; year: number; monthNum: number; shortName: string }[] = [];
+    const monthNamesShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    sortedYears.forEach((y) => {
+      for (let m = 12; m >= 1; m--) {
+        const mStr = String(m).padStart(2, '0');
+        const val = `${y}-${mStr}`;
+        months.push({
+          value: val,
+          label: formatMonthName(val),
+          year: y,
+          monthNum: m,
+          shortName: monthNamesShort[m - 1]
+        });
+      }
+    });
+
+    return months;
+  }, [transactions]);
+
+  // Meses agrupados por año para multiselección rápida
+  const monthsByYear = useMemo(() => {
+    const map = new Map<number, typeof selectableMonthsList>();
+    selectableMonthsList.forEach((m) => {
+      if (!map.has(m.year)) {
+        map.set(m.year, []);
+      }
+      map.get(m.year)!.push(m);
+    });
+    map.forEach((list) => {
+      list.sort((a, b) => a.monthNum - b.monthNum);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[0] - a[0]);
+  }, [selectableMonthsList]);
+
+  // Etiqueta legible del periodo actualmente seleccionado
+  const periodLabel = useMemo(() => {
+    if (periodFilter.mode === 'all') {
+      return 'Todos los Meses y Años';
+    }
+    if (periodFilter.mode === 'single') {
+      if (periodFilter.singleValue === 'all') return 'Todos los Meses y Años';
+      if (periodFilter.singleValue.startsWith('year-')) {
+        return `Año Completo ${periodFilter.singleValue.replace('year-', '')}`;
+      }
+      return formatMonthName(periodFilter.singleValue);
+    }
+    if (periodFilter.mode === 'range') {
+      const minM = periodFilter.rangeStart < periodFilter.rangeEnd ? periodFilter.rangeStart : periodFilter.rangeEnd;
+      const maxM = periodFilter.rangeStart > periodFilter.rangeEnd ? periodFilter.rangeStart : periodFilter.rangeEnd;
+      if (minM === maxM) return formatMonthName(minM);
+      return `${formatMonthName(minM)} a ${formatMonthName(maxM)}`;
+    }
+    if (periodFilter.mode === 'multi') {
+      if (periodFilter.selectedMonths.length === 0) return 'Ningún mes seleccionado';
+      if (periodFilter.selectedMonths.length === 1) {
+        return formatMonthName(periodFilter.selectedMonths[0]);
+      }
+      if (periodFilter.selectedMonths.length === 2) {
+        const sorted = [...periodFilter.selectedMonths].sort();
+        return `${formatMonthName(sorted[0])} y ${formatMonthName(sorted[1])}`;
+      }
+      return `${periodFilter.selectedMonths.length} meses seleccionados`;
+    }
+    if (periodFilter.mode === 'custom-dates') {
+      const s = periodFilter.startDate ? formatDate(periodFilter.startDate) : 'Inicio';
+      const e = periodFilter.endDate ? formatDate(periodFilter.endDate) : 'Hoy';
+      return `${s} al ${e}`;
+    }
+    return 'Todos los Meses y Años';
+  }, [periodFilter]);
+
   const categoryMap = useMemo(() => {
     const map = new Map<string, TransactionCategory>();
     categories.forEach((c) => map.set(c.id, c));
@@ -125,14 +246,29 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         if (!matchesTitle && !matchesNote && !matchesAmount) return false;
       }
 
-      // Filter by Month or Year
-      if (filterMonth !== 'all') {
-        if (filterMonth.startsWith('year-')) {
-          const y = filterMonth.replace('year-', '');
-          if (!tx.date.startsWith(y)) return false;
-        } else {
-          if (!tx.date.startsWith(filterMonth)) return false;
+      // Filter by Period
+      if (periodFilter.mode === 'single') {
+        if (periodFilter.singleValue !== 'all') {
+          if (periodFilter.singleValue.startsWith('year-')) {
+            const y = periodFilter.singleValue.replace('year-', '');
+            if (!tx.date.startsWith(y)) return false;
+          } else {
+            if (!tx.date.startsWith(periodFilter.singleValue)) return false;
+          }
         }
+      } else if (periodFilter.mode === 'range') {
+        const minM = periodFilter.rangeStart < periodFilter.rangeEnd ? periodFilter.rangeStart : periodFilter.rangeEnd;
+        const maxM = periodFilter.rangeStart > periodFilter.rangeEnd ? periodFilter.rangeStart : periodFilter.rangeEnd;
+        const txMonth = tx.date.substring(0, 7);
+        if (txMonth < minM || txMonth > maxM) return false;
+      } else if (periodFilter.mode === 'multi') {
+        if (periodFilter.selectedMonths.length > 0) {
+          const txMonth = tx.date.substring(0, 7);
+          if (!periodFilter.selectedMonths.includes(txMonth)) return false;
+        }
+      } else if (periodFilter.mode === 'custom-dates') {
+        if (periodFilter.startDate && tx.date < periodFilter.startDate) return false;
+        if (periodFilter.endDate && tx.date > periodFilter.endDate) return false;
       }
 
       // Filter by type
@@ -149,7 +285,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       return true;
     });
-  }, [transactions, searchQuery, filterMonth, filterType, filterBank, filterCategory, accountMap]);
+  }, [transactions, searchQuery, periodFilter, filterType, filterBank, filterCategory, accountMap]);
 
   // Resumen contable de la selección filtrada
   const filteredStats = useMemo(() => {
@@ -168,14 +304,140 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     };
   }, [filteredTransactions]);
 
-  const hasActiveFilters = searchQuery !== '' || filterMonth !== 'all' || filterBank !== 'all' || filterType !== 'all' || filterCategory !== 'all';
+  const hasActiveFilters = searchQuery !== '' || periodFilter.mode !== 'all' || filterBank !== 'all' || filterType !== 'all' || filterCategory !== 'all';
 
   const resetFilters = () => {
     setSearchQuery('');
-    setFilterMonth('all');
+    setPeriodFilter({
+      mode: 'all',
+      singleValue: 'all',
+      rangeStart: '2025-02',
+      rangeEnd: '2025-03',
+      selectedMonths: [],
+      startDate: '',
+      endDate: ''
+    });
     setFilterBank('all');
     setFilterType('all');
     setFilterCategory('all');
+  };
+
+  // Manejadores para abrir y aplicar periodos
+  const handleOpenPeriodMenu = () => {
+    setTempRangeStart(periodFilter.rangeStart || '2025-02');
+    setTempRangeEnd(periodFilter.rangeEnd || '2025-03');
+    setTempSelectedMonths(periodFilter.selectedMonths.length > 0 ? periodFilter.selectedMonths : ['2025-02', '2025-03']);
+    setTempStartDate(periodFilter.startDate || '');
+    setTempEndDate(periodFilter.endDate || '');
+    if (periodFilter.mode === 'range') setPeriodActiveTab('range');
+    else if (periodFilter.mode === 'multi') setPeriodActiveTab('multi');
+    else if (periodFilter.mode === 'custom-dates') setPeriodActiveTab('dates');
+    else setPeriodActiveTab('range');
+    setIsPeriodMenuOpen(true);
+  };
+
+  const handleApplyRange = (start?: string, end?: string) => {
+    const s = start || tempRangeStart;
+    const e = end || tempRangeEnd;
+    const minM = s < e ? s : e;
+    const maxM = s > e ? s : e;
+    setPeriodFilter({
+      mode: 'range',
+      singleValue: 'all',
+      rangeStart: minM,
+      rangeEnd: maxM,
+      selectedMonths: [],
+      startDate: '',
+      endDate: ''
+    });
+    setIsPeriodMenuOpen(false);
+  };
+
+  const handleApplyMulti = (months?: string[]) => {
+    const mList = months || tempSelectedMonths;
+    if (mList.length === 0) {
+      setPeriodFilter({
+        mode: 'all',
+        singleValue: 'all',
+        rangeStart: '2025-02',
+        rangeEnd: '2025-03',
+        selectedMonths: [],
+        startDate: '',
+        endDate: ''
+      });
+    } else {
+      setPeriodFilter({
+        mode: 'multi',
+        singleValue: 'all',
+        rangeStart: '2025-02',
+        rangeEnd: '2025-03',
+        selectedMonths: [...mList].sort(),
+        startDate: '',
+        endDate: ''
+      });
+    }
+    setIsPeriodMenuOpen(false);
+  };
+
+  const handleToggleMonthInMulti = (monthVal: string) => {
+    setTempSelectedMonths((prev) => {
+      if (prev.includes(monthVal)) {
+        return prev.filter((m) => m !== monthVal);
+      } else {
+        return [...prev, monthVal];
+      }
+    });
+  };
+
+  const handleApplySingle = (val: string) => {
+    if (val === 'all') {
+      setPeriodFilter({
+        mode: 'all',
+        singleValue: 'all',
+        rangeStart: '2025-02',
+        rangeEnd: '2025-03',
+        selectedMonths: [],
+        startDate: '',
+        endDate: ''
+      });
+    } else {
+      setPeriodFilter({
+        mode: 'single',
+        singleValue: val,
+        rangeStart: '2025-02',
+        rangeEnd: '2025-03',
+        selectedMonths: [],
+        startDate: '',
+        endDate: ''
+      });
+    }
+    setIsPeriodMenuOpen(false);
+  };
+
+  const handleApplyCustomDates = () => {
+    setPeriodFilter({
+      mode: 'custom-dates',
+      singleValue: 'all',
+      rangeStart: '2025-02',
+      rangeEnd: '2025-03',
+      selectedMonths: [],
+      startDate: tempStartDate,
+      endDate: tempEndDate
+    });
+    setIsPeriodMenuOpen(false);
+  };
+
+  const handleResetPeriodToAll = () => {
+    setPeriodFilter({
+      mode: 'all',
+      singleValue: 'all',
+      rangeStart: '2025-02',
+      rangeEnd: '2025-03',
+      selectedMonths: [],
+      startDate: '',
+      endDate: ''
+    });
+    setIsPeriodMenuOpen(false);
   };
 
   // Manejadores de selección
@@ -235,21 +497,21 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
   // Descarga de movimientos en PDF, Excel o CSV
   const handleExportPdfFiltered = () => {
-    let filterLabel = '';
-    if (filterMonth !== 'all') {
-      filterLabel = filterMonth;
-    }
+    const filterLabel = periodFilter.mode !== 'all' ? periodLabel : 'Todos los periodos';
     const bankObj = accounts.find((a) => a.bankId === filterBank);
     const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+    const sanitizedPeriod = periodFilter.mode !== 'all' 
+      ? `_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)}` 
+      : '';
 
     const { filename, count } = exportTransactionsToPdf(
       filteredTransactions,
       accounts,
       categories,
       {
-        filterLabel: filterLabel || 'Filtrados',
+        filterLabel,
         bankLabel: bankName,
-        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Extracto` : 'ANSAMA_Extracto'
+        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Extracto${sanitizedPeriod}` : `ANSAMA_Extracto${sanitizedPeriod}`
       }
     );
 
@@ -293,12 +555,12 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   };
 
   const handleExportFiltered = (format: 'xlsx' | 'csv') => {
-    let filterLabel = '';
-    if (filterMonth !== 'all') {
-      filterLabel = filterMonth;
-    }
+    const filterLabel = periodFilter.mode !== 'all' ? periodLabel : 'Todos los periodos';
     const bankObj = accounts.find((a) => a.bankId === filterBank);
     const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+    const sanitizedPeriod = periodFilter.mode !== 'all' 
+      ? `_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)}` 
+      : '';
 
     const { filename, count } = exportTransactionsToSpreadsheet(
       filteredTransactions,
@@ -306,9 +568,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       categories,
       format,
       {
-        filterLabel: filterLabel || 'Filtrados',
+        filterLabel,
         bankLabel: bankName,
-        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Movimientos` : 'ANSAMA_Movimientos'
+        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Movimientos${sanitizedPeriod}` : `ANSAMA_Movimientos${sanitizedPeriod}`
       }
     );
 
@@ -622,32 +884,411 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           />
         </div>
 
-        {/* Month & Year Filter */}
-        <div>
-          <select
-            value={filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-emerald-50/70 border border-emerald-300 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-900 font-bold cursor-pointer shadow-2xs"
-            title="Filtrar por Mes o Año específico"
+        {/* Month & Year Filter: Selector Flexible (Rango, Varios Meses, Mes/Año, Fechas) */}
+        <div className="relative" ref={periodMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isPeriodMenuOpen) handleOpenPeriodMenu();
+              else setIsPeriodMenuOpen(false);
+            }}
+            className={`w-full px-3 py-2 text-xs rounded-xl border flex items-center justify-between gap-1.5 transition-all cursor-pointer font-bold shadow-2xs ${
+              periodFilter.mode !== 'all'
+                ? 'bg-emerald-100 border-emerald-400 text-emerald-950 ring-2 ring-emerald-500/20'
+                : 'bg-emerald-50/70 border-emerald-300 text-zinc-900 hover:bg-emerald-100/60'
+            }`}
+            title="Elegir periodo: mes, año, rango de meses o varios meses a la vez"
           >
-            <option value="all">📅 Todos los Meses y Años</option>
-            {availablePeriods.years.length > 0 && (
-              <optgroup label="── Años Completos ──">
-                {availablePeriods.years.map((y) => (
-                  <option key={`year-${y}`} value={`year-${y}`}>
-                    Año Completo {y}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label="── Meses Específicos ──">
-              {availablePeriods.months.map((m) => (
-                <option key={m} value={m}>
-                  {formatMonthName(m)}
-                </option>
-              ))}
-            </optgroup>
-          </select>
+            <div className="flex items-center gap-1.5 truncate">
+              <Calendar className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+              <span className="truncate">{periodLabel}</span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform ${isPeriodMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Menú Desplegable de Configuración de Periodo */}
+          {isPeriodMenuOpen && (
+            <div 
+              className="absolute left-0 mt-2 w-[340px] sm:w-[480px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border-2 border-emerald-600/35 p-4 z-50 animate-in fade-in zoom-in-95 space-y-3.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Cabecera del popover */}
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                <div className="flex items-center gap-1.5">
+                  <CalendarRange className="w-4 h-4 text-[#0E6A3B]" />
+                  <span className="text-xs font-black text-zinc-900 uppercase tracking-wide">
+                    Elegir Periodo de Consulta
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPeriodMenuOpen(false)}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Pestañas de modo */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-100 rounded-xl text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPeriodActiveTab('range')}
+                  className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
+                    periodActiveTab === 'range'
+                      ? 'bg-white text-[#0E6A3B] shadow-2xs font-black'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  🎯 Rango
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriodActiveTab('multi')}
+                  className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
+                    periodActiveTab === 'multi'
+                      ? 'bg-white text-[#0E6A3B] shadow-2xs font-black'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  ☑️ Varios
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriodActiveTab('single')}
+                  className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
+                    periodActiveTab === 'single'
+                      ? 'bg-white text-[#0E6A3B] shadow-2xs font-black'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  📆 Mes/Año
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriodActiveTab('dates')}
+                  className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
+                    periodActiveTab === 'dates'
+                      ? 'bg-white text-[#0E6A3B] shadow-2xs font-black'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  📅 Fechas
+                </button>
+              </div>
+
+              {/* Contenido Pestaña 1: Rango de Meses (Desde - Hasta) */}
+              {periodActiveTab === 'range' && (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-zinc-500">
+                    Selecciona el mes de inicio y de fin (ejemplo: <span className="font-bold text-zinc-700">febrero y marzo del 2025</span>):
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase text-zinc-500 mb-1">
+                        Desde:
+                      </label>
+                      <select
+                        value={tempRangeStart}
+                        onChange={(e) => setTempRangeStart(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
+                      >
+                        {selectableMonthsList.map((m) => (
+                          <option key={`start-${m.value}`} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase text-zinc-500 mb-1">
+                        Hasta:
+                      </label>
+                      <select
+                        value={tempRangeEnd}
+                        onChange={(e) => setTempRangeEnd(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
+                      >
+                        {selectableMonthsList.map((m) => (
+                          <option key={`end-${m.value}`} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Atajos rápidos frecuentes */}
+                  <div>
+                    <span className="block text-[10px] font-extrabold uppercase text-zinc-400 mb-1.5">
+                      Atajos Rápidos:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-02', '2025-03')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                      >
+                        ⚡ Feb + Mar 2025
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-01', '2025-03')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        Q1 2025 (Ene-Mar)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-04', '2025-06')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        Q2 2025 (Abr-Jun)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-07', '2025-09')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        Q3 2025 (Jul-Sep)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-01', '2025-06')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        1º Semestre 2025
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-07', '2025-12')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        2º Semestre 2025
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyRange()}
+                    className="w-full py-2 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-xs active:scale-98 flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Aplicar Rango</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Contenido Pestaña 2: Varios Meses a la vez (Multiselección) */}
+              {periodActiveTab === 'multi' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-zinc-500">
+                      Marca los meses que deseas combinar:
+                    </span>
+                    <span className="font-extrabold text-[#0E6A3B]">
+                      {tempSelectedMonths.length} seleccionado(s)
+                    </span>
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto space-y-2.5 pr-1 divide-y divide-zinc-100">
+                    {monthsByYear.map(([year, months]) => (
+                      <div key={`multi-year-${year}`} className="pt-2 first:pt-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-black text-zinc-900">{year}</span>
+                          <div className="flex gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const yearMonthVals = months.map((m) => m.value);
+                                setTempSelectedMonths((prev) => Array.from(new Set([...prev, ...yearMonthVals])));
+                              }}
+                              className="text-emerald-700 hover:underline font-bold cursor-pointer"
+                            >
+                              Marcar todo el año
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const yearMonthVals = new Set(months.map((m) => m.value));
+                                setTempSelectedMonths((prev) => prev.filter((v) => !yearMonthVals.has(v)));
+                              }}
+                              className="text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                            >
+                              Limpiar
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                          {months.map((m) => {
+                            const isSelected = tempSelectedMonths.includes(m.value);
+                            return (
+                              <button
+                                key={`chip-${m.value}`}
+                                type="button"
+                                onClick={() => handleToggleMonthInMulti(m.value)}
+                                className={`px-2 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer text-center ${
+                                  isSelected
+                                    ? 'bg-[#0E6A3B] border-[#0E6A3B] text-white shadow-2xs'
+                                    : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                                }`}
+                              >
+                                {m.shortName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMulti()}
+                    className="w-full py-2 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-xs active:scale-98 flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Aplicar Selección ({tempSelectedMonths.length} meses)</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Contenido Pestaña 3: Mes o Año Único */}
+              {periodActiveTab === 'single' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-zinc-500">
+                    Selecciona un único mes o un año completo:
+                  </p>
+
+                  <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                    <button
+                      type="button"
+                      onClick={() => handleApplySingle('all')}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                        periodFilter.mode === 'all'
+                          ? 'bg-emerald-100 text-[#0E6A3B]'
+                          : 'text-zinc-800 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <span>📅 Todos los Meses y Años</span>
+                      {periodFilter.mode === 'all' && <Check className="w-3.5 h-3.5 text-[#0E6A3B]" />}
+                    </button>
+
+                    {availablePeriods.years.length > 0 && (
+                      <div className="pt-1.5 pb-0.5">
+                        <span className="text-[10px] font-black uppercase text-zinc-400 block px-3">
+                          Años Completos
+                        </span>
+                      </div>
+                    )}
+                    {availablePeriods.years.map((y) => (
+                      <button
+                        key={`single-year-${y}`}
+                        type="button"
+                        onClick={() => handleApplySingle(`year-${y}`)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-between ${
+                          periodFilter.mode === 'single' && periodFilter.singleValue === `year-${y}`
+                            ? 'bg-emerald-100 text-[#0E6A3B] font-bold'
+                            : 'text-zinc-700 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <span>Año Completo {y}</span>
+                        {periodFilter.mode === 'single' && periodFilter.singleValue === `year-${y}` && (
+                          <Check className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                        )}
+                      </button>
+                    ))}
+
+                    <div className="pt-2 pb-0.5">
+                      <span className="text-[10px] font-black uppercase text-zinc-400 block px-3">
+                        Meses Específicos
+                      </span>
+                    </div>
+                    {availablePeriods.months.map((m) => (
+                      <button
+                        key={`single-month-${m}`}
+                        type="button"
+                        onClick={() => handleApplySingle(m)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center justify-between ${
+                          periodFilter.mode === 'single' && periodFilter.singleValue === m
+                            ? 'bg-emerald-100 text-[#0E6A3B] font-bold'
+                            : 'text-zinc-700 hover:bg-zinc-50'
+                        }`}
+                      >
+                        <span>{formatMonthName(m)}</span>
+                        {periodFilter.mode === 'single' && periodFilter.singleValue === m && (
+                          <Check className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Contenido Pestaña 4: Por Fechas Exactas */}
+              {periodActiveTab === 'dates' && (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-zinc-500">
+                    Introduce un rango de fechas exactas (día, mes y año):
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase text-zinc-500 mb-1">
+                        Desde:
+                      </label>
+                      <input
+                        type="date"
+                        value={tempStartDate}
+                        onChange={(e) => setTempStartDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-extrabold uppercase text-zinc-500 mb-1">
+                        Hasta:
+                      </label>
+                      <input
+                        type="date"
+                        value={tempEndDate}
+                        onChange={(e) => setTempEndDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyCustomDates}
+                    className="w-full py-2 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-black rounded-xl transition-all cursor-pointer shadow-xs active:scale-98 flex items-center justify-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Aplicar Fechas</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Pie con botón de restablecer */}
+              {periodFilter.mode !== 'all' && (
+                <div className="pt-2 border-t border-zinc-100 flex justify-between items-center text-xs">
+                  <span className="text-[11px] text-zinc-500">
+                    Filtro activo: <strong className="text-zinc-800">{periodLabel}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetPeriodToAll}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-800 cursor-pointer"
+                  >
+                    Quitar filtro
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Bank Filter */}
@@ -704,6 +1345,23 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
               {filteredTransactions.length} movimiento(s)
             </span>
+            {periodFilter.mode !== 'all' && (
+              <>
+                <span className="text-zinc-300">|</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[11px] border border-emerald-200">
+                  <Calendar className="w-3 h-3 text-[#0E6A3B]" />
+                  <span>{periodLabel}</span>
+                  <button
+                    type="button"
+                    onClick={handleResetPeriodToAll}
+                    className="hover:text-rose-700 ml-0.5 cursor-pointer"
+                    title="Quitar filtro de periodo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              </>
+            )}
             <span className="text-zinc-300">|</span>
             <span className="text-emerald-800 font-bold">
               Ingresos: +{formatCurrency(filteredStats.income)} ({filteredStats.incomeCount})
