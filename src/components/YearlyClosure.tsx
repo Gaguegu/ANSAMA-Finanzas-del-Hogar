@@ -36,6 +36,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
   const [viewGrouping, setViewGrouping] = useState<'by-bank' | 'by-category'>('by-bank');
   const [tableMetric, setTableMetric] = useState<'balance' | 'income' | 'expense' | 'net'>('balance');
+  const [cashflowAccountFilter, setCashflowAccountFilter] = useState<string>('all');
+  const [cashflowViewMode, setCashflowViewMode] = useState<'selected' | 'all-accounts'>('selected');
 
   const toggleExpand = (id: string) => {
     setExpandedEntities(prev => ({
@@ -422,6 +424,128 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       };
     });
   }, [yearTransactions, selectedYear]);
+
+  // Cashflow desglosado para cada una de las cuentas individuales
+  const allAccountsMonthlyCashflow = useMemo(() => {
+    return appState.accounts.map((acc) => {
+      const months = MONTH_NAMES_SHORT.map((name, idx) => {
+        const monthNum = String(idx + 1).padStart(2, '0');
+        const prefix = `${selectedYear}-${monthNum}`;
+        const txs = yearTransactions.filter((t) => t.accountId === acc.id && t.date.startsWith(prefix));
+        const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        const net = income - expense;
+        return {
+          month: name,
+          fullMonth: MONTH_NAMES_FULL[idx],
+          income,
+          expense,
+          net,
+          hasActivity: txs.length > 0
+        };
+      });
+
+      const yearIncome = Math.round(months.reduce((s, m) => s + m.income, 0) * 100) / 100;
+      const yearExpense = Math.round(months.reduce((s, m) => s + m.expense, 0) * 100) / 100;
+      const yearNet = Math.round((yearIncome - yearExpense) * 100) / 100;
+
+      return {
+        account: acc,
+        months,
+        yearIncome,
+        yearExpense,
+        yearNet,
+        hasYearActivity: months.some((m) => m.hasActivity)
+      };
+    });
+  }, [appState.accounts, yearTransactions, selectedYear]);
+
+  // Datos activos del flujo según el filtro seleccionado
+  const activeCashflowData = useMemo(() => {
+    if (cashflowAccountFilter === 'all') {
+      return {
+        title: 'Hogar Consolidado (Todas las Cuentas)',
+        subtitle: 'Flujo de ahorro familiar real neto (excluye traspasos internos)',
+        bankColor: '#0E6A3B',
+        months: monthlyCashflow,
+        yearIncome: totalYearIncome,
+        yearExpense: totalYearExpense,
+        yearNet: totalYearNet
+      };
+    }
+
+    if (cashflowAccountFilter.startsWith('bank-')) {
+      const bankKey = cashflowAccountFilter.replace('bank-', '');
+      const bankAccs = appState.accounts.filter(
+        (a) => (a.bankId === 'other' ? a.bankName : a.bankId) === bankKey
+      );
+      const bankName = bankAccs[0]?.bankName || bankKey.toUpperCase();
+      const bankColor = bankAccs[0]?.color || '#004481';
+      const months = MONTH_NAMES_SHORT.map((name, idx) => {
+        const monthNum = String(idx + 1).padStart(2, '0');
+        const prefix = `${selectedYear}-${monthNum}`;
+        const txs = yearTransactions.filter(
+          (t) => bankAccs.some((a) => a.id === t.accountId) && t.date.startsWith(prefix)
+        );
+        const income = txs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        return {
+          month: name,
+          fullMonth: MONTH_NAMES_FULL[idx],
+          income,
+          expense,
+          net: income - expense,
+          hasActivity: txs.length > 0
+        };
+      });
+      const yearIncome = Math.round(months.reduce((s, m) => s + m.income, 0) * 100) / 100;
+      const yearExpense = Math.round(months.reduce((s, m) => s + m.expense, 0) * 100) / 100;
+      return {
+        title: `Banco: ${bankName}`,
+        subtitle: `Todas las cuentas y productos de ${bankName}`,
+        bankColor,
+        months,
+        yearIncome,
+        yearExpense,
+        yearNet: Math.round((yearIncome - yearExpense) * 100) / 100
+      };
+    }
+
+    // Cuenta individual
+    const accId = cashflowAccountFilter.replace('acc-', '');
+    const accItem = allAccountsMonthlyCashflow.find((item) => item.account.id === accId);
+    if (accItem) {
+      return {
+        title: `${accItem.account.bankName} — ${accItem.account.accountName}`,
+        subtitle: `Cuenta: ${accItem.account.accountNumberMasked || accItem.account.type}`,
+        bankColor: accItem.account.color || '#004481',
+        months: accItem.months,
+        yearIncome: accItem.yearIncome,
+        yearExpense: accItem.yearExpense,
+        yearNet: accItem.yearNet
+      };
+    }
+
+    return {
+      title: 'Cuenta seleccionada',
+      subtitle: '',
+      bankColor: '#0E6A3B',
+      months: monthlyCashflow,
+      yearIncome: totalYearIncome,
+      yearExpense: totalYearExpense,
+      yearNet: totalYearNet
+    };
+  }, [
+    cashflowAccountFilter,
+    monthlyCashflow,
+    totalYearIncome,
+    totalYearExpense,
+    totalYearNet,
+    appState.accounts,
+    yearTransactions,
+    selectedYear,
+    allAccountsMonthlyCashflow
+  ]);
 
   const handlePrint = () => {
     window.print();
@@ -1050,51 +1174,295 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         </div>
       </div>
 
-      {/* Flujo Mensual en el Año: Ingresos vs Gastos vs Ahorro */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm">
-        <h3 className="text-base font-black text-zinc-950 mb-4 flex items-center gap-2">
-          <CalendarRange className="w-5 h-5 text-[#0E6A3B]" />
-          Desglose Mensual de Ingresos, Gastos y Ahorro ({selectedYear})
-        </h3>
+      {/* Flujo Mensual en el Año: Desglose por Cuenta de Bancos Mes a Mes y Año */}
+      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+              <CalendarRange className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-zinc-950 flex items-center gap-2">
+                <span>Desglose Mensual de Ingresos, Gastos y Ahorro ({selectedYear})</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Auditoría mes a mes y balance anual por cuenta de banco o consolidado familiar
+              </p>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {monthlyCashflow.map((m, idx) => (
-            <div 
-              key={idx}
-              className={`p-3 rounded-xl border transition-all ${
-                m.hasActivity 
-                  ? 'bg-zinc-50 border-zinc-200' 
-                  : 'bg-zinc-50/50 border-zinc-100 opacity-60'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-extrabold text-xs text-zinc-900">{m.fullMonth}</span>
-                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                  m.net >= 0 ? 'bg-emerald-100 text-[#0E6A3B]' : 'bg-rose-100 text-rose-700'
-                }`}>
-                  {m.net >= 0 ? 'Superávit' : 'Déficit'}
-                </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Selector de Cuenta / Banco */}
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="select-cashflow-account" className="text-xs font-bold text-zinc-600 shrink-0">
+                Cuenta:
+              </label>
+              <select
+                id="select-cashflow-account"
+                value={cashflowAccountFilter}
+                onChange={(e) => setCashflowAccountFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50/80 text-zinc-900 text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs max-w-[260px] truncate"
+              >
+                <option value="all">🏛️ Hogar Consolidado (Todas las Cuentas)</option>
+                {bankEntities.length > 1 && (
+                  <optgroup label="── Por Banco / Entidad ──">
+                    {bankEntities.map((b) => (
+                      <option key={`bank-${b.id}`} value={`bank-${b.id}`}>
+                        🏦 {b.name} (Todas sus cuentas)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="── Cuentas Individuales ──">
+                  {appState.accounts.map((acc) => (
+                    <option key={`acc-${acc.id}`} value={`acc-${acc.id}`}>
+                      💳 {acc.bankName} — {acc.accountName} ({acc.accountNumberMasked || acc.type})
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Selector de modo de vista */}
+            <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300 text-xs">
+              <button
+                type="button"
+                onClick={() => setCashflowViewMode('selected')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  cashflowViewMode === 'selected'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>🎴 Vista 12 Meses + Año</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCashflowViewMode('all-accounts')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  cashflowViewMode === 'all-accounts'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Ver todas las cuentas bancarias desglosadas a la vez con sus 12 meses"
+              >
+                <span>🏢 Ver Todas las Cuentas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {cashflowViewMode === 'selected' ? (
+          <div className="space-y-4">
+            {/* Tarjeta Resumen del Año para la cuenta/entidad seleccionada */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-[#0E6A3B] to-emerald-900 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="w-3 h-3 rounded-full shrink-0 border border-white/40" 
+                    style={{ backgroundColor: activeCashflowData.bankColor }}
+                  />
+                  <h4 className="text-base font-black text-white">
+                    {activeCashflowData.title}
+                  </h4>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-200 font-extrabold uppercase">
+                    Ejercicio {selectedYear}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-200/80 font-medium">
+                  {activeCashflowData.subtitle}
+                </p>
               </div>
 
-              <div className="space-y-1 text-xs font-feature-settings-tnum">
-                <div className="flex justify-between text-emerald-800">
-                  <span className="text-[11px] text-zinc-500">Ingresos:</span>
-                  <span className="font-bold">+{formatCurrency(m.income)}</span>
+              <div className="flex flex-wrap items-center gap-3 font-feature-settings-tnum">
+                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15">
+                  <span className="text-[10px] text-emerald-200 block uppercase font-bold">Ingresos Anuales</span>
+                  <span className="text-base font-black text-emerald-300">+{formatCurrency(activeCashflowData.yearIncome)}</span>
                 </div>
-                <div className="flex justify-between text-rose-600">
-                  <span className="text-[11px] text-zinc-500">Gastos:</span>
-                  <span className="font-bold">-{formatCurrency(m.expense)}</span>
+                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15">
+                  <span className="text-[10px] text-rose-200 block uppercase font-bold">Gastos Anuales</span>
+                  <span className="text-base font-black text-rose-300">-{formatCurrency(activeCashflowData.yearExpense)}</span>
                 </div>
-                <div className="flex justify-between pt-1 border-t border-zinc-200 font-extrabold">
-                  <span className="text-[11px] text-zinc-700">Neto:</span>
-                  <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
-                    {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
+                <div className={`px-4 py-2 rounded-xl border font-black ${
+                  activeCashflowData.yearNet >= 0 
+                    ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200' 
+                    : 'bg-rose-500/20 border-rose-400/40 text-rose-200'
+                }`}>
+                  <span className="text-[10px] block uppercase font-bold text-white/80">Balance Neto del Año</span>
+                  <span className="text-lg font-black text-white">
+                    {activeCashflowData.yearNet >= 0 ? `+${formatCurrency(activeCashflowData.yearNet)}` : formatCurrency(activeCashflowData.yearNet)}
                   </span>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+
+            {/* Cuadrícula de 12 Meses + 13ª Tarjeta de Total Anual */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {activeCashflowData.months.map((m, idx) => (
+                <div 
+                  key={idx}
+                  className={`p-3.5 rounded-xl border transition-all ${
+                    m.hasActivity 
+                      ? 'bg-zinc-50 border-zinc-200 shadow-2xs hover:border-emerald-300 hover:bg-white' 
+                      : 'bg-zinc-50/50 border-zinc-100 opacity-60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-extrabold text-xs text-zinc-900">{m.fullMonth}</span>
+                    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                      m.net >= 0 ? 'bg-emerald-100 text-[#0E6A3B]' : 'bg-rose-100 text-rose-700'
+                    }`}>
+                      {m.net >= 0 ? 'Superávit' : 'Déficit'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs font-feature-settings-tnum">
+                    <div className="flex justify-between text-emerald-800">
+                      <span className="text-[11px] text-zinc-500">Ingresos:</span>
+                      <span className="font-bold">+{formatCurrency(m.income)}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-600">
+                      <span className="text-[11px] text-zinc-500">Gastos:</span>
+                      <span className="font-bold">-{formatCurrency(m.expense)}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-zinc-200 font-extrabold">
+                      <span className="text-[11px] text-zinc-700">Neto:</span>
+                      <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                        {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* 13ª Tarjeta: TOTAL DEL AÑO */}
+              <div className="p-3.5 rounded-xl border-2 border-emerald-600/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-100/50 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-black text-xs text-emerald-950 uppercase tracking-wide flex items-center gap-1">
+                      <span>✨ TOTAL AÑO {selectedYear}</span>
+                    </span>
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                      activeCashflowData.yearNet >= 0 ? 'bg-[#0E6A3B] text-white' : 'bg-rose-600 text-white'
+                    }`}>
+                      {activeCashflowData.yearNet >= 0 ? 'Superávit' : 'Déficit'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs font-feature-settings-tnum mt-2">
+                    <div className="flex justify-between text-emerald-900">
+                      <span className="text-[11px] font-semibold text-zinc-600">Ingresos Totales:</span>
+                      <span className="font-extrabold text-sm">+{formatCurrency(activeCashflowData.yearIncome)}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-700">
+                      <span className="text-[11px] font-semibold text-zinc-600">Gastos Totales:</span>
+                      <span className="font-extrabold text-sm">-{formatCurrency(activeCashflowData.yearExpense)}</span>
+                    </div>
+                    <div className="flex justify-between pt-1.5 border-t border-emerald-300 font-black text-sm">
+                      <span className="text-zinc-800">Neto Anual:</span>
+                      <span className={activeCashflowData.yearNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                        {activeCashflowData.yearNet >= 0 ? `+${formatCurrency(activeCashflowData.yearNet)}` : formatCurrency(activeCashflowData.yearNet)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-500 font-semibold flex justify-between">
+                  <span>Balance consolidado</span>
+                  <span>{activeCashflowData.yearIncome > 0 ? `${Math.round((activeCashflowData.yearNet / activeCashflowData.yearIncome) * 100)}% ahorro` : ''}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Modo: Ver Todas las Cuentas Desglosadas con sus 12 meses */
+          <div className="space-y-6">
+            {allAccountsMonthlyCashflow.map((item) => (
+              <div 
+                key={item.account.id}
+                className="p-4 rounded-2xl border-2 border-zinc-200 bg-white shadow-xs space-y-3"
+              >
+                {/* Cabecera de la cuenta con resumen anual */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-200">
+                  <div className="flex items-center gap-2">
+                    <span 
+                      className="w-3.5 h-3.5 rounded-full shrink-0" 
+                      style={{ backgroundColor: item.account.color || '#004481' }}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-sm text-zinc-950">
+                          {item.account.bankName} — {item.account.accountName}
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-zinc-100 text-zinc-600 border border-zinc-200">
+                          {item.account.accountNumberMasked || item.account.type}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resumen Anual de esta cuenta */}
+                  <div className="flex items-center gap-3 text-xs font-feature-settings-tnum">
+                    <span className="text-emerald-700 font-bold">
+                      Ingresos: +{formatCurrency(item.yearIncome)}
+                    </span>
+                    <span className="text-zinc-300">|</span>
+                    <span className="text-rose-600 font-bold">
+                      Gastos: -{formatCurrency(item.yearExpense)}
+                    </span>
+                    <span className="text-zinc-300">|</span>
+                    <span className={`font-black px-2 py-0.5 rounded ${
+                      item.yearNet >= 0 ? 'bg-emerald-100 text-[#0E6A3B]' : 'bg-rose-100 text-rose-700'
+                    }`}>
+                      Neto Año: {item.yearNet >= 0 ? `+${formatCurrency(item.yearNet)}` : formatCurrency(item.yearNet)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Los 12 meses de esta cuenta */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {item.months.map((m, idx) => (
+                    <div 
+                      key={idx}
+                      className={`p-2.5 rounded-xl border text-[11px] ${
+                        m.hasActivity 
+                          ? 'bg-zinc-50 border-zinc-200' 
+                          : 'bg-zinc-50/40 border-zinc-100 opacity-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-zinc-900">{m.month}</span>
+                        {m.hasActivity && (
+                          <span className={`text-[9px] font-bold px-1 rounded ${
+                            m.net >= 0 ? 'text-[#0E6A3B] bg-emerald-100' : 'text-rose-700 bg-rose-100'
+                          }`}>
+                            {m.net >= 0 ? '+' : '−'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-0.5 font-feature-settings-tnum">
+                        <div className="flex justify-between text-emerald-800">
+                          <span className="text-[10px] text-zinc-500">Ing:</span>
+                          <span className="font-semibold">+{formatCurrency(m.income)}</span>
+                        </div>
+                        <div className="flex justify-between text-rose-600">
+                          <span className="text-[10px] text-zinc-500">Gas:</span>
+                          <span className="font-semibold">-{formatCurrency(m.expense)}</span>
+                        </div>
+                        <div className="flex justify-between pt-0.5 border-t border-zinc-200 font-bold">
+                          <span className="text-[10px] text-zinc-700">Net:</span>
+                          <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                            {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
     </div>
