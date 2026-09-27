@@ -647,12 +647,49 @@ export function importStatementTransactions(
   accountId: string,
   updateAccountBalance: boolean = true,
   explicitBalance?: number,
-  explicitBalanceDate?: string
-): { newState: AppState; importedCount: number } {
+  explicitBalanceDate?: string,
+  statementMovementsWithBalance?: Array<{ date: string; amount: number; type: 'income' | 'expense'; balanceAfter?: number }>
+): { newState: AppState; importedCount: number; enrichedCount: number } {
   const accountsCopy = [...currentState.accounts];
   const targetAcc = accountsCopy.find((a) => a.id === accountId);
   const currentMonthStr = new Date().toISOString().substring(0, 7);
   const todayStr = new Date().toISOString().split('T')[0];
+  let enrichedCount = 0;
+
+  // Si se han proporcionado saldos intermedios del extracto, enriquecer los cierres mensuales correspondientes
+  let updatedClosures = [...(currentState.monthlyClosures || [])];
+  if (statementMovementsWithBalance && statementMovementsWithBalance.length > 0) {
+    const monthsProcessed = new Set<string>();
+    // Ordenamos cronológicamente descendente para tomar el último saldo disponible de cada mes
+    const sorted = [...statementMovementsWithBalance].sort((a, b) => b.date.localeCompare(a.date));
+    for (const mov of sorted) {
+      if (mov.balanceAfter !== undefined && !isNaN(mov.balanceAfter) && mov.date.length >= 7) {
+        const mKey = mov.date.substring(0, 7);
+        if (!monthsProcessed.has(mKey)) {
+          monthsProcessed.add(mKey);
+          const cIdx = updatedClosures.findIndex((c) => c.month === mKey);
+          if (cIdx >= 0) {
+            updatedClosures[cIdx] = {
+              ...updatedClosures[cIdx],
+              auditedBalances: {
+                ...(updatedClosures[cIdx].auditedBalances || {}),
+                [accountId]: Math.round(mov.balanceAfter * 100) / 100
+              }
+            };
+          } else {
+            updatedClosures.push({
+              month: mKey,
+              isClosed: false,
+              auditedBalances: {
+                [accountId]: Math.round(mov.balanceAfter * 100) / 100
+              }
+            });
+          }
+          enrichedCount++;
+        }
+      }
+    }
+  }
 
   // Si no hay nuevos movimientos (por ejemplo porque todos ya estaban importados como duplicados)
   // pero se ha indicado un saldo oficial del extracto para actualizar la cuenta:
@@ -682,7 +719,6 @@ export function importStatementTransactions(
       targetAcc.lastSynced = new Date().toISOString();
 
       // Guardar también el saldo oficial en el cierre del mes correspondiente
-      let updatedClosures = [...(currentState.monthlyClosures || [])];
       const extractMonth = explicitBalanceDate?.substring(0, 7);
       if (extractMonth) {
         const closureIdx = updatedClosures.findIndex((c) => c.month === extractMonth);
@@ -711,9 +747,9 @@ export function importStatementTransactions(
         monthlyClosures: updatedClosures
       };
       saveAppState(newState);
-      return { newState, importedCount: 0 };
+      return { newState, importedCount: 0, enrichedCount };
     }
-    return { newState: currentState, importedCount: 0 };
+    return { newState: { ...currentState, monthlyClosures: updatedClosures }, importedCount: 0, enrichedCount };
   }
 
   let netBalanceDelta = 0;
@@ -733,8 +769,6 @@ export function importStatementTransactions(
       isSimulated: false
     };
   });
-
-  let updatedClosures = [...(currentState.monthlyClosures || [])];
 
   if (targetAcc && updateAccountBalance) {
     if (explicitBalance !== undefined && !isNaN(explicitBalance)) {
@@ -826,7 +860,7 @@ export function importStatementTransactions(
   };
 
   saveAppState(newState);
-  return { newState, importedCount: newTransactions.length };
+  return { newState, importedCount: newTransactions.length, enrichedCount };
 }
 
 /**

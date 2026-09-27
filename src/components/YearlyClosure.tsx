@@ -35,6 +35,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
   const [viewGrouping, setViewGrouping] = useState<'by-bank' | 'by-category'>('by-bank');
+  const [tableMetric, setTableMetric] = useState<'balance' | 'income' | 'expense' | 'net'>('balance');
 
   const toggleExpand = (id: string) => {
     setExpandedEntities(prev => ({
@@ -74,16 +75,34 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const totalYearNet = totalYearIncome - totalYearExpense;
   const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
-  // Helper function to compute monthly balances for any list of accounts
+  // Helper function to compute monthly balances and flows for any list of accounts
   const computeMonthlyStats = (accounts: BankAccount[]) => {
     const accIds = accounts.map((a) => a.id);
     const currentBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
     const monthlyBalances: number[] = [];
+    const monthlyIncomes: number[] = [];
+    const monthlyExpenses: number[] = [];
+    const monthlyNets: number[] = [];
 
     for (let m = 0; m < 12; m++) {
       const monthNum = String(m + 1).padStart(2, '0');
       const monthKey = `${selectedYear}-${monthNum}`;
       const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
+
+      // Flujos de ingresos y gastos de estas cuentas en este mes
+      const txsInMonth = yearTransactions.filter(
+        (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
+      );
+      const inc = txsInMonth
+        .filter((t) => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+      const exp = txsInMonth
+        .filter((t) => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      monthlyIncomes.push(Math.round(inc * 100) / 100);
+      monthlyExpenses.push(Math.round(exp * 100) / 100);
+      monthlyNets.push(Math.round((inc - exp) * 100) / 100);
 
       // Si el mes está cerrado y tiene saldos auditados para estas cuentas, usamos esos saldos exactos
       if (closure?.isClosed && closure.auditedBalances) {
@@ -124,8 +143,18 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       (monthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
     ) / 100;
 
+    const totalYearAccIncome = Math.round(monthlyIncomes.reduce((a, b) => a + b, 0) * 100) / 100;
+    const totalYearAccExpense = Math.round(monthlyExpenses.reduce((a, b) => a + b, 0) * 100) / 100;
+    const totalYearAccNet = Math.round((totalYearAccIncome - totalYearAccExpense) * 100) / 100;
+
     return {
       monthlyBalances,
+      monthlyIncomes,
+      monthlyExpenses,
+      monthlyNets,
+      totalYearAccIncome,
+      totalYearAccExpense,
+      totalYearAccNet,
       startBalance,
       endBalance,
       averageBalance,
@@ -298,7 +327,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     setExpandedEntities(nextState);
   };
 
-  // Total Consolidated balance row across all banks per month
+  // Total Consolidated row across all banks per month based on active tableMetric
   const consolidatedMonthlyBalances = useMemo(() => {
     const totals: number[] = Array(12).fill(0);
     bankEntities.forEach((entity) => {
@@ -309,6 +338,27 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return totals.map(v => Math.round(v * 100) / 100);
   }, [bankEntities]);
 
+  const consolidatedMonthlyValues = useMemo(() => {
+    const totals: number[] = Array(12).fill(0);
+    bankEntities.forEach((entity) => {
+      const arr = tableMetric === 'balance'
+        ? entity.monthlyBalances
+        : tableMetric === 'income'
+          ? entity.monthlyIncomes
+          : tableMetric === 'expense'
+            ? entity.monthlyExpenses
+            : entity.monthlyNets;
+      arr.forEach((val, idx) => {
+        totals[idx] += val;
+      });
+    });
+    return totals.map(v => Math.round(v * 100) / 100);
+  }, [bankEntities, tableMetric]);
+
+  const consolidatedTotalYear = useMemo(() => {
+    return Math.round(consolidatedMonthlyValues.reduce((sum, v) => sum + v, 0) * 100) / 100;
+  }, [consolidatedMonthlyValues]);
+
   const totalStartYear = consolidatedMonthlyBalances[0] || 0;
   const totalEndYear = consolidatedMonthlyBalances[11] || 0;
   const totalYearGrowth = totalEndYear - totalStartYear;
@@ -318,6 +368,40 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const totalAverageBalance = Math.round(
     (consolidatedMonthlyBalances.reduce((sum, v) => sum + v, 0) / 12) * 100
   ) / 100;
+
+  // Formateador dinámico según métrica seleccionada
+  const renderMetricValue = (val: number, isLastMonth: boolean = false, isBold: boolean = false) => {
+    if (tableMetric === 'balance') {
+      return (
+        <span className={isLastMonth ? 'font-bold text-emerald-950' : 'text-zinc-700'}>
+          {formatCurrency(val)}
+        </span>
+      );
+    }
+    if (tableMetric === 'income') {
+      if (val === 0) return <span className="text-zinc-300 font-normal">0,00 €</span>;
+      return (
+        <span className={`font-semibold text-emerald-700 ${isBold ? 'font-black text-emerald-800' : ''}`}>
+          +{formatCurrency(val)}
+        </span>
+      );
+    }
+    if (tableMetric === 'expense') {
+      if (val === 0) return <span className="text-zinc-300 font-normal">0,00 €</span>;
+      return (
+        <span className={`font-semibold text-rose-600 ${isBold ? 'font-black text-rose-700' : ''}`}>
+          -{formatCurrency(val)}
+        </span>
+      );
+    }
+    // 'net'
+    if (val === 0) return <span className="text-zinc-400 font-normal">0,00 €</span>;
+    return (
+      <span className={`font-semibold ${val > 0 ? 'text-[#0E6A3B]' : 'text-rose-600'} ${isBold ? 'font-black' : ''}`}>
+        {val > 0 ? `+${formatCurrency(val)}` : formatCurrency(val)}
+      </span>
+    );
+  };
 
   // Monthly cashflow: Real Income vs Real Expense per month for the year
   const monthlyCashflow = useMemo(() => {
@@ -488,42 +572,103 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         </div>
       </div>
 
-      {/* MATRIZ MAESTRA: TABLA DE SALDOS TOTALES DE CADA BANCO POR MESES */}
+      {/* MATRIZ MAESTRA: TABLA DE SALDOS, INGRESOS, GASTOS Y BALANCE DE CADA CUENTA POR MESES */}
       <div className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#092B19] text-emerald-400 flex items-center justify-center shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-[#092B19] text-emerald-400 flex items-center justify-center shadow-xs shrink-0">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-base font-black text-zinc-950 flex items-center gap-2">
-                <span>Saldos por Entidad y Cuentas — {selectedYear}</span>
+                <span>
+                  {tableMetric === 'balance' && `Saldos por Entidad y Cuentas — ${selectedYear}`}
+                  {tableMetric === 'income' && `Ingresos Mensuales por Entidad y Cuentas — ${selectedYear}`}
+                  {tableMetric === 'expense' && `Gastos Mensuales por Entidad y Cuentas — ${selectedYear}`}
+                  {tableMetric === 'net' && `Balance Neto (Ingresos − Gastos) por Entidad y Cuentas — ${selectedYear}`}
+                </span>
               </h3>
               <p className="text-xs text-zinc-500">
-                Evolución mensual auditada de cada banco, depósito y cuenta de valores
+                {tableMetric === 'balance' && 'Evolución mensual auditada de los saldos a fin de cada mes'}
+                {tableMetric === 'income' && 'Desglose mes por mes de todos los ingresos y cobros en cada cuenta'}
+                {tableMetric === 'expense' && 'Desglose mes por mes de todos los gastos y pagos en cada cuenta'}
+                {tableMetric === 'net' && 'Ahorro neto generado mes a mes en cada cuenta bancaria'}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Selector de Métrica */}
+            <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300 text-xs">
+              <button
+                type="button"
+                onClick={() => setTableMetric('balance')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  tableMetric === 'balance'
+                    ? 'bg-white text-[#0E6A3B] shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Ver saldos acumulados al cierre de cada mes"
+              >
+                <span>💰 Saldos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableMetric('income')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  tableMetric === 'income'
+                    ? 'bg-white text-emerald-800 shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Ver ingresos mensuales por cada cuenta"
+              >
+                <span>📈 Ingresos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableMetric('expense')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  tableMetric === 'expense'
+                    ? 'bg-white text-rose-700 shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Ver gastos mensuales por cada cuenta"
+              >
+                <span>📉 Gastos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableMetric('net')}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  tableMetric === 'net'
+                    ? 'bg-white text-emerald-950 shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Ver balance neto mensual (Ingresos menos Gastos)"
+              >
+                <span>⚖️ Balance Neto</span>
+              </button>
+            </div>
+
             {/* Selector de modo de agrupación */}
             <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300 text-xs">
               <button
                 type="button"
                 onClick={() => setViewGrouping('by-bank')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   viewGrouping === 'by-bank'
                     ? 'bg-white text-[#0E6A3B] shadow-xs'
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
-                title="Mostrar cada banco o entidad financiera por separado (BBVA, Santander, etc.) sumando todas sus cuentas"
+                title="Mostrar cada banco o entidad financiera por separado"
               >
                 <Building2 className="w-3.5 h-3.5" />
-                <span>Por Banco / Entidad</span>
+                <span className="hidden sm:inline">Por Banco</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewGrouping('by-category')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   viewGrouping === 'by-category'
                     ? 'bg-white text-[#0E6A3B] shadow-xs'
                     : 'text-zinc-600 hover:text-zinc-900'
@@ -531,7 +676,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 title="Mostrar agrupados por tipo: Bancos ordinarios, Cuentas de Valores y Depósitos"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Por Categoría</span>
+                <span className="hidden sm:inline">Por Categoría</span>
               </button>
             </div>
 
@@ -541,36 +686,29 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               title="Expandir o contraer el desglose de cuentas individuales"
             >
               <Layers className="w-3.5 h-3.5 text-[#0E6A3B]" />
-              <span>{areAllExpanded ? 'Contraer cuentas' : 'Desglosar todas las cuentas'}</span>
+              <span>{areAllExpanded ? 'Contraer cuentas' : 'Desglosar cuentas'}</span>
             </button>
-            <span className="text-xs font-extrabold text-[#0E6A3B] bg-emerald-100/80 px-3 py-1 rounded-full border border-emerald-300">
-              Saldos en Euros (€)
-            </span>
           </div>
         </div>
 
         {/* Banner explicativo del modo de vista */}
         <div className={`px-4 py-2 text-xs flex items-center justify-between border-b ${
-          viewGrouping === 'by-bank' 
-            ? 'bg-emerald-50/80 text-emerald-950 border-emerald-100' 
-            : 'bg-blue-50/80 text-blue-950 border-blue-100'
+          tableMetric === 'balance'
+            ? 'bg-emerald-50/80 text-emerald-950 border-emerald-100'
+            : tableMetric === 'income'
+              ? 'bg-emerald-100/60 text-emerald-950 border-emerald-200'
+              : tableMetric === 'expense'
+                ? 'bg-rose-50 text-rose-950 border-rose-100'
+                : 'bg-emerald-50 text-emerald-950 border-emerald-100'
         }`}>
           <div className="flex items-center gap-2">
-            {viewGrouping === 'by-bank' ? (
-              <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
-            ) : (
-              <Info className="w-4 h-4 text-blue-600 shrink-0" />
-            )}
+            <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
             <span>
-              {viewGrouping === 'by-bank' ? (
-                <>
-                  <strong>Vista por Banco / Entidad:</strong> Cada fila representa uno de tus bancos o gestoras (con todas sus cuentas corrientes, de ahorro, depósitos y valores unificadas).
-                </>
-              ) : (
-                <>
-                  <strong>Vista por Categoría:</strong> Las cuentas bancarias ordinarias, las carteras de valores y los depósitos a plazo fijo se muestran en bloques separados.
-                </>
-              )}
+              <strong>Modo activo:</strong>{' '}
+              {tableMetric === 'balance' && 'Saldos al final de cada mes para cada entidad y cuenta bancaria.'}
+              {tableMetric === 'income' && 'Entradas y cobros netos registrados mes por mes en cada una de tus cuentas.'}
+              {tableMetric === 'expense' && 'Pagos y consumos registrados mes por mes en cada una de tus cuentas.'}
+              {tableMetric === 'net' && 'Diferencia mensual (Ingresos − Gastos) generada en cada cuenta.'}
             </span>
           </div>
           <span className="text-[11px] font-semibold text-zinc-500 hidden sm:inline">
@@ -583,7 +721,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
             <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
               <tr>
                 <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
-                  Entidad / Producto
+                  Entidad / Cuenta
                 </th>
                 {MONTH_NAMES_SHORT.map((m, idx) => (
                   <th 
@@ -593,7 +731,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                         ? 'bg-emerald-100/70 text-emerald-950 font-black border-l-2 border-emerald-600/50' 
                         : ''
                     }`}
-                    title={idx === 11 ? `Saldo a 31 de Diciembre (Cierre de Ejercicio ${selectedYear})` : undefined}
+                    title={idx === 11 ? `Cierre de Diciembre (${selectedYear})` : undefined}
                   >
                     {idx === 11 ? (
                       <span className="inline-flex items-center gap-1 font-black">
@@ -604,24 +742,46 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                     )}
                   </th>
                 ))}
-                <th 
-                  className="px-3.5 py-3 text-right bg-emerald-50 text-emerald-950 font-black border-l border-emerald-200"
-                  title="Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)"
-                >
-                  Saldo Medio
-                </th>
-                <th 
-                  className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black"
-                  title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
-                >
-                  Var. Anual
-                </th>
+                
+                {tableMetric === 'balance' ? (
+                  <>
+                    <th 
+                      className="px-3.5 py-3 text-right bg-emerald-50 text-emerald-950 font-black border-l border-emerald-200"
+                      title="Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)"
+                    >
+                      Saldo Medio
+                    </th>
+                    <th 
+                      className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black"
+                      title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
+                    >
+                      Var. Anual
+                    </th>
+                  </>
+                ) : (
+                  <th 
+                    colSpan={2}
+                    className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black border-l border-emerald-200"
+                  >
+                    {tableMetric === 'income' && `Total Ingresos ${selectedYear}`}
+                    {tableMetric === 'expense' && `Total Gastos ${selectedYear}`}
+                    {tableMetric === 'net' && `Balance Neto Anual ${selectedYear}`}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {bankEntities.map((entity) => {
                 const isExpanded = !!expandedEntities[entity.id];
                 const hasMultipleAccounts = entity.accounts.length > 0;
+
+                const metricValues = tableMetric === 'balance'
+                  ? entity.monthlyBalances
+                  : tableMetric === 'income'
+                    ? entity.monthlyIncomes
+                    : tableMetric === 'expense'
+                      ? entity.monthlyExpenses
+                      : entity.monthlyNets;
 
                 return (
                   <React.Fragment key={entity.id}>
@@ -675,116 +835,159 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                         )}
                       </td>
 
-                      {/* 12 Monthly Balances */}
-                      {entity.monthlyBalances.map((val, idx) => (
+                      {/* 12 Monthly Values */}
+                      {metricValues.map((val, idx) => (
                         <td 
                           key={idx} 
                           className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
                             idx === 11
-                              ? 'font-black text-emerald-950 bg-emerald-50/40 border-l-2 border-emerald-600/30'
-                              : 'font-medium text-zinc-700'
+                              ? 'bg-emerald-50/40 border-l-2 border-emerald-600/30 font-black'
+                              : 'font-medium'
                           }`}
                         >
-                          {formatCurrency(val)}
+                          {renderMetricValue(val, idx === 11, true)}
                         </td>
                       ))}
 
-                      {/* Saldo Medio Anual */}
-                      <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
-                        {formatCurrency(entity.averageBalance)}
-                      </td>
-
-                      {/* Yearly Difference */}
-                      <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
-                        entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
-                      }`}>
-                        <div className="flex flex-col items-end">
-                          <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
-                          <span className="text-[10px] font-semibold text-zinc-400">
-                            {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
-                          </span>
-                        </div>
-                      </td>
+                      {/* Summary Columns */}
+                      {tableMetric === 'balance' ? (
+                        <>
+                          <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
+                            {formatCurrency(entity.averageBalance)}
+                          </td>
+                          <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
+                            entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                          }`}>
+                            <div className="flex flex-col items-end">
+                              <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
+                              <span className="text-[10px] font-semibold text-zinc-400">
+                                {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
+                              </span>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <td colSpan={2} className="px-4 py-3.5 text-right font-black border-l border-emerald-100 bg-emerald-50/20 font-feature-settings-tnum text-sm">
+                          {tableMetric === 'income' && (
+                            <span className="text-emerald-800">+{formatCurrency(entity.totalYearAccIncome)}</span>
+                          )}
+                          {tableMetric === 'expense' && (
+                            <span className="text-rose-600">-{formatCurrency(entity.totalYearAccExpense)}</span>
+                          )}
+                          {tableMetric === 'net' && (
+                            <span className={entity.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                              {entity.totalYearAccNet >= 0 ? `+${formatCurrency(entity.totalYearAccNet)}` : formatCurrency(entity.totalYearAccNet)}
+                            </span>
+                          )}
+                        </td>
+                      )}
                     </tr>
 
                     {/* Sub-rows: Individual Accounts if Expanded */}
-                    {isExpanded && entity.accounts.map((acc) => (
-                      <tr key={acc.id} className="bg-zinc-50/60 hover:bg-zinc-100/60 transition-colors text-[11px]">
-                        <td className="px-4 py-2.5 pl-8 sticky left-0 bg-zinc-50/90 z-10 shadow-xs border-l-2 border-emerald-500/40">
-                          <div className="flex items-center gap-2 text-zinc-700">
-                            <span className="text-zinc-400 font-mono">↳</span>
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-zinc-900">{acc.name}</span>
-                                <span 
-                                  className="text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase"
-                                  style={{ 
-                                    backgroundColor: `${acc.bankColor}15`, 
-                                    color: acc.bankColor,
-                                    border: `1px solid ${acc.bankColor}40`
-                                  }}
-                                >
-                                  {acc.bankName}
-                                </span>
-                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
-                                  acc.type === 'investment'
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                    : acc.type === 'deposit'
-                                      ? 'bg-sky-100 text-sky-800 border border-sky-300'
-                                      : acc.type === 'credit'
-                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                                        : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
-                                }`}>
-                                  {acc.type === 'investment' 
-                                    ? 'Valores' 
-                                    : acc.type === 'deposit' 
-                                      ? 'Plazo Fijo' 
-                                      : acc.type === 'credit' 
-                                        ? 'Tarjeta' 
-                                        : acc.type === 'savings' 
-                                          ? 'Ahorro' 
-                                          : 'Corriente'}
-                                </span>
+                    {isExpanded && entity.accounts.map((acc) => {
+                      const accMetricValues = tableMetric === 'balance'
+                        ? acc.monthlyBalances
+                        : tableMetric === 'income'
+                          ? acc.monthlyIncomes
+                          : tableMetric === 'expense'
+                            ? acc.monthlyExpenses
+                            : acc.monthlyNets;
+
+                      return (
+                        <tr key={acc.id} className="bg-zinc-50/60 hover:bg-zinc-100/60 transition-colors text-[11px]">
+                          <td className="px-4 py-2.5 pl-8 sticky left-0 bg-zinc-50/90 z-10 shadow-xs border-l-2 border-emerald-500/40">
+                            <div className="flex items-center gap-2 text-zinc-700">
+                              <span className="text-zinc-400 font-mono">↳</span>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-zinc-900">{acc.name}</span>
+                                  <span 
+                                    className="text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase"
+                                    style={{ 
+                                      backgroundColor: `${acc.bankColor}15`, 
+                                      color: acc.bankColor,
+                                      border: `1px solid ${acc.bankColor}40`
+                                    }}
+                                  >
+                                    {acc.bankName}
+                                  </span>
+                                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                    acc.type === 'investment'
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                      : acc.type === 'deposit'
+                                        ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                                        : acc.type === 'credit'
+                                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                          : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
+                                  }`}>
+                                    {acc.type === 'investment' 
+                                      ? 'Valores' 
+                                      : acc.type === 'deposit' 
+                                        ? 'Plazo Fijo' 
+                                        : acc.type === 'credit' 
+                                          ? 'Tarjeta' 
+                                          : acc.type === 'savings' 
+                                            ? 'Ahorro' 
+                                            : 'Corriente'}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-zinc-400 font-mono block">{acc.mask}</span>
                               </div>
-                              <span className="text-[10px] text-zinc-400 font-mono block">{acc.mask}</span>
                             </div>
-                          </div>
-                        </td>
-
-                        {acc.monthlyBalances.map((val, idx) => (
-                          <td 
-                            key={idx} 
-                            className={`px-3 py-2.5 text-right font-feature-settings-tnum text-zinc-600 ${
-                              idx === 11 ? 'font-bold text-emerald-900 bg-emerald-50/20 border-l-2 border-emerald-600/20' : ''
-                            }`}
-                          >
-                            {formatCurrency(val)}
                           </td>
-                        ))}
 
-                        <td className="px-3.5 py-2.5 text-right font-semibold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
-                          {formatCurrency(acc.averageBalance)}
-                        </td>
+                          {accMetricValues.map((val, idx) => (
+                            <td 
+                              key={idx} 
+                              className={`px-3 py-2.5 text-right font-feature-settings-tnum ${
+                                idx === 11 ? 'bg-emerald-50/20 border-l-2 border-emerald-600/20 font-bold' : ''
+                              }`}
+                            >
+                              {renderMetricValue(val, idx === 11, false)}
+                            </td>
+                          ))}
 
-                        <td className={`px-4 py-2.5 text-right font-bold font-feature-settings-tnum ${
-                          acc.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                        }`}>
-                          {acc.yearlyDiff >= 0 ? `+${formatCurrency(acc.yearlyDiff)}` : formatCurrency(acc.yearlyDiff)}
-                        </td>
-                      </tr>
-                    ))}
+                          {tableMetric === 'balance' ? (
+                            <>
+                              <td className="px-3.5 py-2.5 text-right font-semibold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
+                                {formatCurrency(acc.averageBalance)}
+                              </td>
+                              <td className={`px-4 py-2.5 text-right font-bold font-feature-settings-tnum ${
+                                acc.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                              }`}>
+                                {acc.yearlyDiff >= 0 ? `+${formatCurrency(acc.yearlyDiff)}` : formatCurrency(acc.yearlyDiff)}
+                              </td>
+                            </>
+                          ) : (
+                            <td colSpan={2} className="px-4 py-2.5 text-right font-extrabold border-l border-zinc-200 font-feature-settings-tnum">
+                              {tableMetric === 'income' && (
+                                <span className="text-emerald-700">+{formatCurrency(acc.totalYearAccIncome)}</span>
+                              )}
+                              {tableMetric === 'expense' && (
+                                <span className="text-rose-600">-{formatCurrency(acc.totalYearAccExpense)}</span>
+                              )}
+                              {tableMetric === 'net' && (
+                                <span className={acc.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                                  {acc.totalYearAccNet >= 0 ? `+${formatCurrency(acc.totalYearAccNet)}` : formatCurrency(acc.totalYearAccNet)}
+                                </span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })}
             </tbody>
 
-            {/* Total Row (Patrimonio Consolidado Mensual) */}
+            {/* Total Row (Consolidado Mensual) */}
             <tfoot className="bg-[#092B19] text-white font-black border-t-2 border-[#0E6A3B]">
               <tr>
                 <td className="px-4 py-3.5 text-emerald-300 uppercase text-[11px] sticky left-0 bg-[#092B19] z-10 shadow-xs">
                   TOTAL CONSOLIDADO (€)
                 </td>
-                {consolidatedMonthlyBalances.map((val, idx) => (
+                {consolidatedMonthlyValues.map((val, idx) => (
                   <td 
                     key={idx} 
                     className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
@@ -793,22 +996,44 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                         : 'text-white font-black'
                     }`}
                   >
-                    {formatCurrency(val)}
+                    {tableMetric === 'balance' && formatCurrency(val)}
+                    {tableMetric === 'income' && `+${formatCurrency(val)}`}
+                    {tableMetric === 'expense' && `-${formatCurrency(val)}`}
+                    {tableMetric === 'net' && (val >= 0 ? `+${formatCurrency(val)}` : formatCurrency(val))}
                   </td>
                 ))}
-                <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-700 font-feature-settings-tnum">
-                  {formatCurrency(totalAverageBalance)}
-                </td>
-                <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum ${
-                  totalYearGrowth >= 0 ? 'text-emerald-300' : 'text-rose-400'
-                }`}>
-                  <div className="flex flex-col items-end">
-                    <span>{totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}</span>
-                    <span className="text-[10px] font-semibold text-emerald-300/80">
-                      {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
-                    </span>
-                  </div>
-                </td>
+
+                {tableMetric === 'balance' ? (
+                  <>
+                    <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-700 font-feature-settings-tnum">
+                      {formatCurrency(totalAverageBalance)}
+                    </td>
+                    <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum ${
+                      totalYearGrowth >= 0 ? 'text-emerald-300' : 'text-rose-400'
+                    }`}>
+                      <div className="flex flex-col items-end">
+                        <span>{totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}</span>
+                        <span className="text-[10px] font-semibold text-emerald-300/80">
+                          {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
+                        </span>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <td colSpan={2} className="px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l border-emerald-700">
+                    {tableMetric === 'income' && (
+                      <span className="text-emerald-300 font-black text-base">+{formatCurrency(consolidatedTotalYear)}</span>
+                    )}
+                    {tableMetric === 'expense' && (
+                      <span className="text-rose-300 font-black text-base">-{formatCurrency(consolidatedTotalYear)}</span>
+                    )}
+                    {tableMetric === 'net' && (
+                      <span className={`font-black text-base ${consolidatedTotalYear >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                        {consolidatedTotalYear >= 0 ? `+${formatCurrency(consolidatedTotalYear)}` : formatCurrency(consolidatedTotalYear)}
+                      </span>
+                    )}
+                  </td>
+                )}
               </tr>
             </tfoot>
           </table>
