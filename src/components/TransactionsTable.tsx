@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Search, 
   Trash2, 
@@ -12,10 +12,14 @@ import {
   Square,
   CheckCircle2,
   X,
-  Calendar
+  Calendar,
+  Download,
+  ChevronDown,
+  FileText
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
+import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
 
 interface TransactionsTableProps {
   transactions: Transaction[];
@@ -49,6 +53,26 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [targetAccountIdForMove, setTargetAccountIdForMove] = useState<string>('');
   const [adjustBalancesOnMove, setAdjustBalancesOnMove] = useState(true);
+
+  // Estado de descarga / exportación de movimientos
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar menú de descarga al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
+        setIsDownloadMenuOpen(false);
+      }
+    };
+    if (isDownloadMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDownloadMenuOpen]);
 
   const accountMap = useMemo(() => {
     const map = new Map<string, BankAccount>();
@@ -209,6 +233,126 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     }
   };
 
+  // Descarga de movimientos en PDF, Excel o CSV
+  const handleExportPdfFiltered = () => {
+    let filterLabel = '';
+    if (filterMonth !== 'all') {
+      filterLabel = filterMonth;
+    }
+    const bankObj = accounts.find((a) => a.bankId === filterBank);
+    const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+
+    const { filename, count } = exportTransactionsToPdf(
+      filteredTransactions,
+      accounts,
+      categories,
+      {
+        filterLabel: filterLabel || 'Filtrados',
+        bankLabel: bankName,
+        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Extracto` : 'ANSAMA_Extracto'
+      }
+    );
+
+    setIsDownloadMenuOpen(false);
+    setDownloadToast(`Generado extracto PDF con ${count} movimiento(s): ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
+  const handleExportPdfAll = () => {
+    const { filename, count } = exportTransactionsToPdf(
+      transactions,
+      accounts,
+      categories,
+      {
+        filterLabel: 'Historico_Completo',
+        customFilename: 'ANSAMA_Extracto_Completo'
+      }
+    );
+
+    setIsDownloadMenuOpen(false);
+    setDownloadToast(`Generado extracto PDF con todos los ${count} movimientos: ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
+  const handleExportPdfSelected = () => {
+    const selectedList = transactions.filter((t) => selectedTxIds.has(t.id));
+    if (selectedList.length === 0) return;
+
+    const { filename, count } = exportTransactionsToPdf(
+      selectedList,
+      accounts,
+      categories,
+      {
+        filterLabel: 'Seleccionados',
+        customFilename: 'ANSAMA_Extracto_Seleccionados'
+      }
+    );
+
+    setDownloadToast(`Generado extracto PDF con ${count} movimiento(s) seleccionados: ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
+  const handleExportFiltered = (format: 'xlsx' | 'csv') => {
+    let filterLabel = '';
+    if (filterMonth !== 'all') {
+      filterLabel = filterMonth;
+    }
+    const bankObj = accounts.find((a) => a.bankId === filterBank);
+    const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+
+    const { filename, count } = exportTransactionsToSpreadsheet(
+      filteredTransactions,
+      accounts,
+      categories,
+      format,
+      {
+        filterLabel: filterLabel || 'Filtrados',
+        bankLabel: bankName,
+        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Movimientos` : 'ANSAMA_Movimientos'
+      }
+    );
+
+    setIsDownloadMenuOpen(false);
+    setDownloadToast(`Descargados ${count} movimiento(s) en ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
+  const handleExportAll = (format: 'xlsx' | 'csv') => {
+    const { filename, count } = exportTransactionsToSpreadsheet(
+      transactions,
+      accounts,
+      categories,
+      format,
+      {
+        filterLabel: 'Historico_Completo',
+        customFilename: 'ANSAMA_Historico_Completo'
+      }
+    );
+
+    setIsDownloadMenuOpen(false);
+    setDownloadToast(`Descargados ${count} movimientos en ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
+  const handleExportSelected = (format: 'xlsx' | 'csv') => {
+    const selectedList = transactions.filter((t) => selectedTxIds.has(t.id));
+    if (selectedList.length === 0) return;
+
+    const { filename, count } = exportTransactionsToSpreadsheet(
+      selectedList,
+      accounts,
+      categories,
+      format,
+      {
+        filterLabel: 'Seleccionados',
+        customFilename: 'ANSAMA_Movimientos_Seleccionados'
+      }
+    );
+
+    setDownloadToast(`Descargados ${count} movimiento(s) seleccionados en ${filename}`);
+    setTimeout(() => setDownloadToast(null), 5000);
+  };
+
   return (
     <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 space-y-4">
       
@@ -239,6 +383,129 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             </button>
           )}
 
+          {/* Botón Descargar Movimientos con menú desplegable */}
+          <div className="relative" ref={downloadMenuRef}>
+            <button
+              id="btn-download-transactions"
+              type="button"
+              onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
+              title="Descargar y exportar movimientos en Excel (.xlsx) o CSV"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+            >
+              <Download className="w-4 h-4 text-[#0E6A3B]" />
+              <span>Descargar</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${isDownloadMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isDownloadMenuOpen && (
+              <div 
+                className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border-2 border-emerald-600/30 p-2 z-50 animate-in fade-in zoom-in-95 space-y-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-3 py-1.5 border-b border-zinc-100">
+                  <span className="text-[11px] font-black text-zinc-900 uppercase tracking-wide block">
+                    Descargar Movimientos
+                  </span>
+                  <span className="text-[10px] text-zinc-500 block">
+                    {filteredTransactions.length} registros en pantalla · {transactions.length} en total
+                  </span>
+                </div>
+
+                {/* Opción 1: Documento PDF (.pdf) */}
+                <div className="space-y-1">
+                  <div className="px-2 pt-1 text-[10px] font-extrabold text-rose-700 uppercase flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Documento Oficial PDF (.pdf)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleExportPdfFiltered}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-rose-50 hover:text-rose-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Descargar vista filtrada en PDF</span>
+                      <span className="text-[10px] text-zinc-500">{filteredTransactions.length} movimiento(s) mostrados</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">.pdf</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportPdfAll}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-rose-50 hover:text-rose-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Descargar TODO el histórico en PDF</span>
+                      <span className="text-[10px] text-zinc-500">Todos los {transactions.length} movimientos</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">.pdf</span>
+                  </button>
+                </div>
+
+                {/* Opción 2: Excel (.xlsx) */}
+                <div className="space-y-1 pt-1 border-t border-zinc-100">
+                  <div className="px-2 pt-1 text-[10px] font-extrabold text-emerald-800 uppercase flex items-center gap-1">
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Formato Excel (.xlsx)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleExportFiltered('xlsx')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-emerald-50 hover:text-emerald-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Descargar vista filtrada</span>
+                      <span className="text-[10px] text-zinc-500">{filteredTransactions.length} movimiento(s) mostrados</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">.xlsx</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportAll('xlsx')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-emerald-50 hover:text-emerald-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Descargar TODO el histórico</span>
+                      <span className="text-[10px] text-zinc-500">Todos los {transactions.length} movimientos</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">.xlsx</span>
+                  </button>
+                </div>
+
+                {/* Opción 3: CSV (.csv) */}
+                <div className="space-y-1 pt-1 border-t border-zinc-100">
+                  <div className="px-2 pt-1 text-[10px] font-extrabold text-blue-800 uppercase flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Formato CSV universal (.csv)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleExportFiltered('csv')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-blue-50 hover:text-blue-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Vista filtrada en CSV</span>
+                      <span className="text-[10px] text-zinc-500">{filteredTransactions.length} movimiento(s)</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">.csv</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportAll('csv')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 hover:bg-blue-50 hover:text-blue-950 transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block">Todo el histórico en CSV</span>
+                      <span className="text-[10px] text-zinc-500">{transactions.length} movimiento(s)</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">.csv</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             id="btn-add-transaction-table"
             onClick={onOpenNewTransactionModal}
@@ -250,6 +517,23 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
       </div>
 
+      {/* Toast de confirmación de descarga */}
+      {downloadToast && (
+        <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#0E6A3B] shrink-0" />
+            <span>{downloadToast}</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setDownloadToast(null)}
+            className="text-zinc-500 hover:text-zinc-800 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Barra de acciones en lote si hay selección */}
       {selectedTxIds.size > 0 && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 animate-in fade-in">
@@ -259,6 +543,36 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Descargar seleccionados en PDF, Excel o CSV */}
+            <div className="inline-flex rounded-lg border border-emerald-300 bg-white p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={handleExportPdfSelected}
+                className="px-2.5 py-1 text-xs font-bold text-rose-800 hover:bg-rose-50 rounded-md transition-all flex items-center gap-1 cursor-pointer"
+                title="Descargar movimientos seleccionados en documento PDF (.pdf)"
+              >
+                <FileText className="w-3.5 h-3.5 text-rose-600" />
+                <span>PDF ({selectedTxIds.size})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportSelected('xlsx')}
+                className="px-2.5 py-1 text-xs font-bold text-emerald-900 hover:bg-emerald-50 rounded-md transition-all flex items-center gap-1 cursor-pointer"
+                title="Descargar movimientos seleccionados en Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                <span>Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportSelected('csv')}
+                className="px-2 py-1 text-xs font-bold text-zinc-600 hover:bg-zinc-100 rounded-md transition-all cursor-pointer"
+                title="Descargar movimientos seleccionados en CSV (.csv)"
+              >
+                <span>CSV</span>
+              </button>
+            </div>
+
             {onMoveTransactions && (
               <button
                 type="button"
