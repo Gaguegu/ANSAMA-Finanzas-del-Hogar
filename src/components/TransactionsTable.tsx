@@ -18,7 +18,8 @@ import {
   ChevronDown,
   FileText,
   Check,
-  Tag
+  Tag,
+  Building2
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
@@ -85,7 +86,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const [tempEndDate, setTempEndDate] = useState('');
   const periodMenuRef = useRef<HTMLDivElement>(null);
 
-  const [filterBank, setFilterBank] = useState<string>('all');
+  const [filterAccount, setFilterAccount] = useState<string>('all');
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
@@ -128,16 +129,53 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     return map;
   }, [accounts]);
 
-  // Lista única de bancos disponibles
-  const availableBanks = useMemo(() => {
-    const bankSet = new Map<string, string>();
-    accounts.forEach((acc) => {
-      if (!bankSet.has(acc.bankId)) {
-        bankSet.set(acc.bankId, acc.bankName);
-      }
+  // Estructura organizada de Cuentas agrupadas por Entidad Bancaria
+  const accountsByBank = useMemo(() => {
+    const txCountByAcc = new Map<string, number>();
+    transactions.forEach((tx) => {
+      txCountByAcc.set(tx.accountId, (txCountByAcc.get(tx.accountId) || 0) + 1);
     });
-    return Array.from(bankSet.entries()).map(([id, name]) => ({ id, name }));
-  }, [accounts]);
+
+    const groups = new Map<string, { bankId: string; bankName: string; totalTxCount: number; accounts: Array<{ account: BankAccount; txCount: number }> }>();
+
+    accounts.forEach((acc) => {
+      const bId = acc.bankId || 'otros';
+      if (!groups.has(bId)) {
+        groups.set(bId, {
+          bankId: bId,
+          bankName: acc.bankName || 'Otras Entidades',
+          totalTxCount: 0,
+          accounts: []
+        });
+      }
+      const g = groups.get(bId)!;
+      const count = txCountByAcc.get(acc.id) || 0;
+      g.accounts.push({ account: acc, txCount: count });
+      g.totalTxCount += count;
+    });
+
+    return Array.from(groups.values());
+  }, [accounts, transactions]);
+
+  // Etiqueta legible del filtro de cuenta o banco activo
+  const activeAccountLabel = useMemo(() => {
+    if (filterAccount === 'all') return 'Todas las Cuentas y Bancos';
+    if (filterAccount.startsWith('bank:')) {
+      const bId = filterAccount.replace('bank:', '');
+      const g = accountsByBank.find((item) => item.bankId === bId || item.bankName.toLowerCase() === bId.toLowerCase());
+      return g ? `Banco: ${g.bankName}` : `Banco: ${bId}`;
+    }
+    if (filterAccount.startsWith('acc:')) {
+      const accId = filterAccount.replace('acc:', '');
+      const acc = accountMap.get(accId);
+      return acc ? `${acc.bankName} (${acc.accountName})` : 'Cuenta seleccionada';
+    }
+    const acc = accountMap.get(filterAccount);
+    if (acc) return `${acc.bankName} (${acc.accountName})`;
+    const g = accountsByBank.find((item) => item.bankId === filterAccount);
+    if (g) return `Banco: ${g.bankName}`;
+    return 'Cuenta seleccionada';
+  }, [filterAccount, accountsByBank, accountMap]);
 
   // Lista ordenada de periodos disponibles (Años completos y Meses específicos)
   const availablePeriods = useMemo(() => {
@@ -288,10 +326,28 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       // Filter by type
       if (filterType !== 'all' && tx.type !== filterType) return false;
 
-      // Filter by bank
-      if (filterBank !== 'all') {
-        const account = accountMap.get(tx.accountId);
-        if (!account || account.bankId !== filterBank) return false;
+      // Filter by account or bank
+      if (filterAccount !== 'all') {
+        if (filterAccount.startsWith('bank:')) {
+          const targetBankId = filterAccount.replace('bank:', '');
+          const account = accountMap.get(tx.accountId);
+          const matchesBank = account && (
+            account.bankId === targetBankId || 
+            account.bankName.toLowerCase() === targetBankId.toLowerCase()
+          );
+          if (!matchesBank && tx.accountId !== targetBankId) return false;
+        } else if (filterAccount.startsWith('acc:')) {
+          const targetAccId = filterAccount.replace('acc:', '');
+          if (tx.accountId !== targetAccId) return false;
+        } else {
+          const account = accountMap.get(tx.accountId);
+          const matchesAcc = tx.accountId === filterAccount;
+          const matchesBank = account && (
+            account.bankId === filterAccount || 
+            account.bankName.toLowerCase() === filterAccount.toLowerCase()
+          );
+          if (!matchesAcc && !matchesBank) return false;
+        }
       }
 
       // Filter by category
@@ -299,7 +355,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       return true;
     });
-  }, [transactions, searchQuery, periodFilter, filterType, filterBank, filterCategory, accountMap]);
+  }, [transactions, searchQuery, periodFilter, filterType, filterAccount, filterCategory, accountMap]);
 
   // Resumen contable de la selección filtrada
   const filteredStats = useMemo(() => {
@@ -318,7 +374,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     };
   }, [filteredTransactions]);
 
-  const hasActiveFilters = searchQuery !== '' || periodFilter.mode !== 'all' || filterBank !== 'all' || filterType !== 'all' || filterCategory !== 'all';
+  const hasActiveFilters = searchQuery !== '' || periodFilter.mode !== 'all' || filterAccount !== 'all' || filterType !== 'all' || filterCategory !== 'all';
 
   const resetFilters = () => {
     setSearchQuery('');
@@ -331,7 +387,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       startDate: '',
       endDate: ''
     });
-    setFilterBank('all');
+    setFilterAccount('all');
     setFilterType('all');
     setFilterCategory('all');
   };
@@ -566,8 +622,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   // Descarga de movimientos en PDF, Excel o CSV
   const handleExportPdfFiltered = () => {
     const filterLabel = periodFilter.mode !== 'all' ? periodLabel : 'Todos los periodos';
-    const bankObj = accounts.find((a) => a.bankId === filterBank);
-    const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+    const bankOrAccLabel = filterAccount !== 'all' ? activeAccountLabel : undefined;
     const sanitizedPeriod = periodFilter.mode !== 'all' 
       ? `_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)}` 
       : '';
@@ -578,8 +633,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       categories,
       {
         filterLabel,
-        bankLabel: bankName,
-        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Extracto${sanitizedPeriod}` : `ANSAMA_Extracto${sanitizedPeriod}`
+        bankLabel: bankOrAccLabel,
+        customFilename: filterAccount !== 'all' ? `ANSAMA_${activeAccountLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}${sanitizedPeriod}` : `ANSAMA_Extracto${sanitizedPeriod}`
       }
     );
 
@@ -624,8 +679,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
   const handleExportFiltered = (format: 'xlsx' | 'csv') => {
     const filterLabel = periodFilter.mode !== 'all' ? periodLabel : 'Todos los periodos';
-    const bankObj = accounts.find((a) => a.bankId === filterBank);
-    const bankName = filterBank !== 'all' ? (bankObj?.bankName || filterBank) : undefined;
+    const bankOrAccLabel = filterAccount !== 'all' ? activeAccountLabel : undefined;
     const sanitizedPeriod = periodFilter.mode !== 'all' 
       ? `_${periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 30)}` 
       : '';
@@ -637,8 +691,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       format,
       {
         filterLabel,
-        bankLabel: bankName,
-        customFilename: filterBank !== 'all' ? `ANSAMA_${bankName}_Movimientos${sanitizedPeriod}` : `ANSAMA_Movimientos${sanitizedPeriod}`
+        bankLabel: bankOrAccLabel,
+        customFilename: filterAccount !== 'all' ? `ANSAMA_${activeAccountLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}${sanitizedPeriod}` : `ANSAMA_Movimientos${sanitizedPeriod}`
       }
     );
 
@@ -1428,18 +1482,27 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           )}
         </div>
 
-        {/* Bank Filter */}
+        {/* Bank & Account Filter */}
         <div>
           <select
-            value={filterBank}
-            onChange={(e) => setFilterBank(e.target.value)}
+            id="select-filter-account-bank"
+            value={filterAccount}
+            onChange={(e) => setFilterAccount(e.target.value)}
             className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold cursor-pointer"
+            title="Filtrar por cuenta bancaria específica o por entidad completa"
           >
-            <option value="all">Todos los Bancos</option>
-            {availableBanks.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
+            <option value="all">Todas las Cuentas y Bancos ({transactions.length})</option>
+            {accountsByBank.map((group) => (
+              <optgroup key={group.bankId} label={`🏦 ${group.bankName} (${group.totalTxCount} movs)`}>
+                <option value={`bank:${group.bankId}`}>
+                  Todo {group.bankName} (Todas sus cuentas) ({group.totalTxCount})
+                </option>
+                {group.accounts.map(({ account, txCount }) => (
+                  <option key={account.id} value={`acc:${account.id}`}>
+                    &nbsp;&nbsp;💳 {account.accountName} {account.accountNumberMasked ? `(${account.accountNumberMasked})` : ''} ({txCount})
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -1493,6 +1556,23 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     onClick={handleResetPeriodToAll}
                     className="hover:text-rose-700 ml-0.5 cursor-pointer"
                     title="Quitar filtro de periodo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              </>
+            )}
+            {filterAccount !== 'all' && (
+              <>
+                <span className="text-zinc-300">|</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-[#004481] font-bold text-[11px] border border-blue-200">
+                  <Building2 className="w-3 h-3 text-[#004481]" />
+                  <span>{activeAccountLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterAccount('all')}
+                    className="hover:text-rose-700 ml-0.5 cursor-pointer"
+                    title="Quitar filtro de cuenta"
                   >
                     <X className="w-3 h-3" />
                   </button>

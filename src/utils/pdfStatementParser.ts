@@ -124,6 +124,18 @@ function extractDateFromPdfLine(
   line: PdfLine,
   nextLine?: PdfLine
 ): { date: string; hasYearOnNextLine: boolean } | null {
+  const words = line.fullText.trim().split(/\s+/);
+  if (words.length === 0) return null;
+
+  // Si la línea empieza solo por un año aislado de 4 dígitos ("2026", "2025") sin día ni mes,
+  // NO puede ser el inicio de una transacción.
+  if (/^\d{4}$/.test(words[0])) {
+    const isFullYmd = parseDateString(`${words[0]} ${words[1] || ''} ${words[2] || ''}`);
+    if (!isFullYmd) {
+      return null;
+    }
+  }
+
   // 1. Probar combinaciones de 1, 2 o 3 items al inicio de la línea
   for (let j = 0; j < Math.min(line.items.length, 4); j++) {
     const d1 = parseDateString(line.items[j].str);
@@ -139,7 +151,6 @@ function extractDateFromPdfLine(
   }
 
   // 2. Probar sobre los primeros tokens del texto completo de la línea
-  const words = line.fullText.trim().split(/\s+/);
   if (words.length >= 3) {
     const d = parseDateString(`${words[0]} ${words[1]} ${words[2]}`);
     if (d) return { date: d, hasYearOnNextLine: false };
@@ -153,7 +164,8 @@ function extractDateFromPdfLine(
     if (d) return { date: d, hasYearOnNextLine: false };
   }
 
-  // 3. Probar si la fecha está dividida entre esta línea (día y mes) y la siguiente línea (año)
+  // 3. Probar si la fecha está dividida: día y mes en esta línea y año en la siguiente línea
+  // (caso típico de Trade Republic: "19 mar" en una línea y "2026" en la siguiente)
   if (nextLine) {
     const nextWords = nextLine.fullText.trim().split(/\s+/);
     const nextFirst = nextWords[0] || '';
@@ -164,6 +176,14 @@ function extractDateFromPdfLine(
       }
       if (words.length >= 1) {
         const d = parseDateString(`${words[0]} ${nextFirst}`);
+        if (d) return { date: d, hasYearOnNextLine: true };
+      }
+      if (line.items.length >= 2) {
+        const d = parseDateString(`${line.items[0].str} ${line.items[1].str} ${nextFirst}`);
+        if (d) return { date: d, hasYearOnNextLine: true };
+      }
+      if (line.items.length >= 1) {
+        const d = parseDateString(`${line.items[0].str} ${nextFirst}`);
         if (d) return { date: d, hasYearOnNextLine: true };
       }
     }
@@ -444,6 +464,12 @@ export async function parsePdfStatementFile(
     const blockLines: PdfLine[] = [line];
     let nextIdx = i + 1;
 
+    // Si el año de la fecha está en la siguiente línea, agregarla de inmediato al bloque
+    if (hasYearOnNextLine && nextIdx < allLines.length) {
+      blockLines.push(allLines[nextIdx]);
+      nextIdx++;
+    }
+
     while (nextIdx < allLines.length) {
       const candLine = allLines[nextIdx];
       const candNorm = norm(candLine.fullText);
@@ -494,7 +520,10 @@ export async function parsePdfStatementFile(
 
     const dateYear = parsedDate.slice(0, 4);
 
-    // Identificar cantidades o números que pertenecen a la descripción (ej: "quantity: 1000", "ISIN ...")
+    // Identificar si el bloque de ítems contiene importes monetarios con divisa (€, EUR, $)
+    const blockHasCurrency = allBlockItems.some(item => /[€$]|EUR\b/i.test(item.str));
+
+    // Identificar cantidades o números que pertenecen a la descripción (ej: "quantity: 185", "ISIN ...")
     // y extraer los candidatos numéricos de importe y saldo
     const numericItems: Array<{ val: number; str: string; x: number; originalItem: PdfTextItem }> = [];
 
@@ -502,28 +531,36 @@ export async function parsePdfStatementFile(
       const it = allBlockItems[k];
       const sTrim = it.str.trim();
 
-      // Excluir año de la fecha
-      if (sTrim === dateYear) continue;
+      // Excluir año de 4 dígitos (ej: 2025, 2026, 2024)
+      if (/^\d{4}$/.test(sTrim)) continue;
 
       // Excluir si es parte de la fecha inicial (ej: "28", "mar")
       if (k === 0 && parseDateString(sTrim) !== null) continue;
 
+      const hasCurrency = sTrim.includes('€') || sTrim.includes('EUR') || sTrim.includes('eur') || sTrim.includes('$');
+
+      // Si el bloque contiene importes con divisa (€), y este número NO tiene divisa ni decimales (ej: "185", "2475", "545"):
+      // Es una cantidad de títulos/acciones o ID numérico, NUNCA un importe monetario
+      if (blockHasCurrency && !hasCurrency && !sTrim.includes(',') && !sTrim.includes('.')) {
+        continue;
+      }
+
       // Excluir cantidades asociadas a "quantity:", "cantidad:", etc.
       // IMPORTANTE: Un importe con símbolo de divisa (€, EUR, $) NUNCA es una cantidad de títulos
-      const hasCurrency = sTrim.includes('€') || sTrim.includes('EUR') || sTrim.includes('eur') || sTrim.includes('$');
       if (!hasCurrency) {
-        if (norm(sTrim).startsWith('quantity') || norm(sTrim).startsWith('cantidad') || norm(sTrim).startsWith('stk')) {
-          continue;
-        }
-        if (k > 0) {
-          const prevStr = norm(allBlockItems[k - 1].str);
-          if (
-            (prevStr.includes('quantity') || prevStr.includes('cantidad') || prevStr.includes('stk') || prevStr.includes('titulos')) &&
-            !hasCurrency
-          ) {
-            continue;
+        let isQuantity = false;
+        if (/quantity|cantidad|titulos|shares|stk\b/i.test(sTrim)) {
+          isQuantity = true;
+        } else {
+          for (let p = Math.max(0, k - 3); p < k; p++) {
+            const pStr = norm(allBlockItems[p].str);
+            if (pStr.includes('quantity') || pStr.includes('cantidad') || pStr.includes('stk') || pStr.includes('titulos') || pStr.includes('shares')) {
+              isQuantity = true;
+              break;
+            }
           }
         }
+        if (isQuantity) continue;
       }
 
       const num = parseAmountNumber(sTrim);

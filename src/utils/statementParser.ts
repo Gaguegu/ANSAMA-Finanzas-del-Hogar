@@ -406,6 +406,11 @@ export function parseDateString(val: any): string | null {
   let str = String(val).trim();
   if (!str) return null;
 
+  // Un número aislado de cualquier longitud (por ejemplo "2026", "2025", "185", "2475") NUNCA es una fecha completa
+  if (/^\d+$/.test(str)) {
+    return null;
+  }
+
   // 1. Formato DD/MM/YYYY o DD-MM-YYYY o DD.MM.YYYY (incluso si tiene hora como 21/09/2026 17:18:52)
   const dmyMatch = str.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
   if (dmyMatch) {
@@ -429,30 +434,43 @@ export function parseDateString(val: any): string | null {
     }
   }
 
-  // 3. Formato con mes en texto español (ej: 21-sep-2026 o 21 sep 2026)
-  const spanishMonths: Record<string, string> = {
+  // 3. Formato con mes en texto español, inglés o alemán (ej: 21-sep-2026, 19 mar 2026, 06 nov 2025, 01 abr 2026)
+  const textMonthMap: Record<string, string> = {
+    // Español
     ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
-    jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12'
+    jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12',
+    enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06',
+    julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+    // Inglés
+    jan: '01', apr: '04', aug: '08', dec: '12',
+    january: '01', march: '03', april: '04', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+    // Alemán
+    mrz: '03', mai: '05', okt: '10', dez: '12'
   };
-  const textMonthMatch = str.toLowerCase().match(/\b(\d{1,2})[-/\s]([a-z]{3,4})[-/\s](\d{2,4})\b/);
+
+  const textMonthMatch = str.toLowerCase().match(/\b(\d{1,2})[-/\s]([a-z]{3,10})[-/\s](\d{2,4})\b/);
   if (textMonthMatch) {
     const day = parseInt(textMonthMatch[1], 10);
-    const monthStr = textMonthMatch[2].slice(0, 3);
+    const monthRaw = textMonthMatch[2].toLowerCase();
+    const monthNum = textMonthMap[monthRaw] || textMonthMap[monthRaw.slice(0, 3)];
     let year = textMonthMatch[3];
     if (year.length === 2) year = '20' + year;
-    const monthNum = spanishMonths[monthStr];
     if (monthNum && day >= 1 && day <= 31) {
       return `${year}-${monthNum}-${String(day).padStart(2, '0')}`;
     }
   }
 
-  // 4. Intentar con Date nativo
-  const parsed = new Date(str);
-  if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
-    const y = parsed.getFullYear();
-    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  // 4. Intentar con Date nativo SOLO si contiene un año de 4 dígitos (20XX) y separadores válidos
+  // NUNCA admitir strings sin año explícito ni números solos
+  if (/\b(20\d{2})\b/.test(str) && /[-/.\s]/.test(str)) {
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() >= 2000 && parsed.getFullYear() < 2100) {
+      const y = parsed.getFullYear();
+      const m = String(parsed.getMonth() + 1).padStart(2, '0');
+      const d = String(parsed.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
   }
 
   return null;
