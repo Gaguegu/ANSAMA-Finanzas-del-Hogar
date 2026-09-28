@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
+import { normalizeConceptForMatching } from './reconciliation';
 
 export interface ParsedStatementRow {
   id: string;
@@ -44,19 +45,35 @@ export interface ParseResult {
 
 // Palabras clave para categorización inteligente automática en España
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'cat-supermercado': [
+  'cat-alimentacion': [
     'mercadona', 'carrefour', 'lidl', 'dia', 'aldi', 'alcampo', 'eroski', 
     'consum', 'hipercor', 'supercor', 'bonarea', 'masymas', 'ahorramas', 
     'supermercado', 'fruteria', 'carniceria', 'panaderia'
   ],
   'cat-hogar': [
-    'ikea', 'leroy', 'bricomart', 'bricodepot', 'bauhaus', 'zara home',
-    'ferreteria', 'muebles', 'decoracion', 'conforama', 'amazon'
+    'ferreteria', 'san jose', 'ferreteria san jose', 'leroy', 'leroy merlin', 'bricomart', 
+    'bricodepot', 'bauhaus', 'zara home', 'muebles', 'decoracion', 'conforama', 'bricolaje'
+  ],
+  'cat-comunidad': [
+    'parque chapin', 'res. parque chapin', 'chapin ii', 'chapin', 'fase 1', 'fase 2', 'fase ii',
+    'comunidad', 'cuota comunidad', 'comunidad propietarios', 'administracion fincas', 'admon fincas'
+  ],
+  'cat-seguros': [
+    'occident', 'gco s.a.u', 'gco s.a.u.', 'catalana occidente', 'la fe', 'la fe compania',
+    'compania de seguros', 'la fe compania de seguros', 'mapfre', 'allianz', 'axa', 'mutua',
+    'mutua madrilena', 'linea directa', 'santa lucia', 'santalucia', 'pelayo', 'generali',
+    'zurich', 'segurcaixa', 'asisa', 'sanitas', 'adeslas', 'dkv', 'poliza', 'seguro'
+  ],
+  'cat-efectivo': [
+    'ret. efectivo', 'retirada efectivo', 'debito con tarj. en cajero', 'debito con tarj en cajero',
+    'cajero. aut', 'cajero aut', 'cajero autom', 'extraccion efectivo', 'cajero', 'cajero automatico',
+    'reintegro cajero', 'dispensador'
   ],
   'cat-suministros': [
-    'endesa', 'iberdrola', 'naturgy', 'repsol luz', 'totalenergies', 'curenergia',
-    'vodafone', 'movistar', 'orange', 'pepephone', 'o2', 'digi', 'jazztel', 'yoigo',
-    'agua', 'canal de isabel', 'aqualia', 'agas', 'butano', 'luz', 'gas', 'recibo electrico'
+    'visalia', 'visalia-domestica', 'domestica energia', 'aquajerez', 'aguas del puerto',
+    'recursos energet', 'es gest. recursos energet', 'endesa', 'iberdrola', 'naturgy', 'repsol luz',
+    'totalenergies', 'curenergia', 'vodafone', 'movistar', 'orange', 'pepephone', 'o2', 'digi',
+    'jazztel', 'yoigo', 'agua', 'canal de isabel', 'aqualia', 'agas', 'butano', 'luz', 'gas', 'recibo electrico'
   ],
   'cat-transporte': [
     'repsol', 'cepsa', 'bp', 'galp', 'petronor', 'shell', 'plenoil', 'ballenoil',
@@ -64,10 +81,11 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'peaje', 'ap-7', 'ap-6', 'autopista', 'aparcamiento', 'parking', 'itv', 'taller'
   ],
   'cat-ocio': [
-    'restaurante', 'bar', 'cafeteria', 'cerveceria', 'pizzeria', 'mcdonald',
-    'burger king', 'kfc', 'starbucks', 'cine', 'cinesa', 'yelmo', 'teatro',
-    'concierto', 'ticketmaster', 'entradas', 'netflix', 'spotify', 'hbo', 'disney',
-    'amazon prime', 'playstation', 'steam', 'glovo', 'just eat', 'ubereats'
+    '100 montaditos', 'montaditos', 'dona pepa', 'doña pepa', 'cafeteria venezzia', 'venezzia',
+    'restaurante', 'bar', 'cafeteria', 'cerveceria', 'pizzeria', 'mcdonald', 'burger king',
+    'kfc', 'starbucks', 'cine', 'cinesa', 'yelmo', 'teatro', 'concierto', 'ticketmaster',
+    'entradas', 'netflix', 'spotify', 'hbo', 'disney', 'amazon prime', 'playstation', 'steam',
+    'glovo', 'just eat', 'ubereats', 'tapas'
   ],
   'cat-salud': [
     'farmacia', 'optica', 'dentista', 'clinica', 'sanitas', 'adeslas', 'asisa',
@@ -85,9 +103,14 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'broker', 'degiro', 'trade republic', 'myinvestor', 'saveback', 'efectivo al', 'inversion', 'plusvalia'
   ],
   'cat-transferencias-gasto': [
-    'traspaso', 'traspaso interno', 'traspaso entre', 'traspaso a favor', 'transferencia a favor',
-    'transferencia propia', 'transferencia interna', 'entre mis cuentas', 'imposicion plazo',
-    'constitucion deposito', 'cancelacion deposito', 'vencimiento deposito'
+    'transferencia realizada', 'transf. realizada', 'transferencia emitida', 'transferencia enviada',
+    'transferencia ordenada', 'traspaso', 'traspaso interno', 'traspaso entre', 'traspaso a favor',
+    'transferencia a favor', 'transferencia propia', 'transferencia interna', 'entre mis cuentas',
+    'imposicion plazo', 'constitucion deposito', 'cancelacion deposito', 'vencimiento deposito'
+  ],
+  'cat-traspaso-ingreso': [
+    'traspaso recibido', 'traspaso desde', 'traspaso entrante', 'traspaso interno',
+    'transferencia propia', 'transferencia interna'
   ],
   'cat-otros-ingresos': [
     'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso'
@@ -99,12 +122,74 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 };
 
 // Intenta adivinar la categoría a partir del texto
-export function guessCategory(text: string, amount: number, categories: TransactionCategory[]): string {
+export function guessCategory(
+  text: string, 
+  amount: number, 
+  categories: TransactionCategory[],
+  accounts: BankAccount[] = [],
+  existingTransactions: Transaction[] = []
+): string {
   const normText = String(text || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+
+  // A. APRENDIZAJE INTELIGENTE: Si el usuario ya categorizó este concepto en otros meses/movimientos
+  if (existingTransactions && existingTransactions.length > 0) {
+    const cleanPattern = normalizeConceptForMatching(text);
+    if (cleanPattern && cleanPattern.length >= 3) {
+      const isIncome = amount >= 0;
+      const matchedTx = existingTransactions.find((tx) => {
+        if (isIncome ? tx.type !== 'income' : tx.type !== 'expense') return false;
+        if (!tx.categoryId || tx.categoryId === 'cat-otros-gastos' || tx.categoryId === 'cat-otros-ingresos') return false;
+        const otherPattern = normalizeConceptForMatching(tx.title);
+        return otherPattern === cleanPattern;
+      });
+      if (matchedTx && matchedTx.categoryId) {
+        return matchedTx.categoryId;
+      }
+    }
+  }
+
+  // B. TRASPASOS CON OTRAS CUENTAS REGISTRADAS EN LA APLICACIÓN
+  if (accounts && accounts.length > 0) {
+    const isTransferConcept = 
+      normText.includes('transferencia') ||
+      normText.includes('transf') ||
+      normText.includes('traspaso') ||
+      normText.includes('abono') ||
+      normText.includes('cargo') ||
+      normText.includes('envio') ||
+      normText.includes('orden');
+
+    if (isTransferConcept) {
+      for (const acc of accounts) {
+        const bankNameLower = (acc.bankName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const accNameLower = (acc.accountName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const lastDigits = acc.iban ? acc.iban.replace(/\s+/g, '').slice(-4) : '';
+
+        if (
+          (bankNameLower && bankNameLower.length >= 3 && normText.includes(bankNameLower)) ||
+          (accNameLower && accNameLower.length >= 4 && normText.includes(accNameLower)) ||
+          (lastDigits && lastDigits.length >= 4 && normText.includes(lastDigits)) ||
+          normText.includes('a mi nombre') ||
+          normText.includes('entre mis cuentas') ||
+          normText.includes('transferencia propia') ||
+          normText.includes('traspaso propio') ||
+          normText.includes('traspaso entre cuentas')
+        ) {
+          if (amount >= 0) {
+            const inCat = categories.find((c) => c.id === 'cat-traspaso-ingreso' || c.name.toLowerCase().includes('traspaso entre'));
+            if (inCat) return inCat.id;
+          } else {
+            const outCat = categories.find((c) => c.id === 'cat-transferencias-gasto' || c.name.toLowerCase().includes('traspaso entre'));
+            if (outCat) return outCat.id;
+          }
+        }
+      }
+    }
+  }
   
   // 1. Rendimientos bancarios e intereses (Liquidación de cuentas, intereses de ahorro, dividendos, etc.)
   if (
@@ -122,9 +207,86 @@ export function guessCategory(text: string, amount: number, categories: Transact
     if (renCat) return renCat.id;
   }
 
-  // 2. Traspasos entre cuentas propias y transferencias (NO son nóminas ni hipotecas)
+  // 2. Retiradas de efectivo en cajero (NUNCA vivienda ni hipoteca)
+  if (
+    normText.includes('ret. efectivo') ||
+    normText.includes('retirada efectivo') ||
+    normText.includes('debito con tarj. en cajero') ||
+    normText.includes('debito con tarj en cajero') ||
+    normText.includes('cajero. aut') ||
+    normText.includes('cajero aut') ||
+    normText.includes('cajero autom') ||
+    normText.includes('extraccion efectivo') ||
+    normText.includes('reintegro cajero')
+  ) {
+    const efCat = categories.find(c => c.id === 'cat-efectivo' || c.name.toLowerCase().includes('cajero') || c.name.toLowerCase().includes('efectivo'));
+    if (efCat) return efCat.id;
+  }
+
+  // 3. Seguros y Pólizas (Occident, La Fe, Mapfre, etc.)
+  if (
+    normText.includes('occident') ||
+    normText.includes('gco s.a.u') ||
+    normText.includes('catalana occidente') ||
+    normText.includes('la fe compania') ||
+    normText.includes('la fe seguro') ||
+    (normText.includes('compania de seguros') && !normText.includes('hipoteca'))
+  ) {
+    const segCat = categories.find(c => c.id === 'cat-seguros' || c.name.toLowerCase().includes('seguro'));
+    if (segCat) return segCat.id;
+  }
+
+  // 4. Comunidad de Propietarios (Parque Chapín, Residencial Chapín, etc.)
+  if (
+    normText.includes('parque chapin') ||
+    normText.includes('chapin ii') ||
+    normText.includes('chapin') ||
+    normText.includes('comunidad propietarios') ||
+    normText.includes('cuota comunidad')
+  ) {
+    const comCat = categories.find(c => c.id === 'cat-comunidad' || c.name.toLowerCase().includes('comunidad'));
+    if (comCat) return comCat.id;
+  }
+
+  // 5. Suministros específicos de energía y agua (Visalia, Aquajerez, Aguas del Puerto, Recursos Energéticos)
+  if (
+    normText.includes('visalia') ||
+    normText.includes('aquajerez') ||
+    normText.includes('aguas del puerto') ||
+    normText.includes('recursos energet')
+  ) {
+    const sumCat = categories.find(c => c.id === 'cat-suministros' || c.name.toLowerCase().includes('suministro') || c.name.toLowerCase().includes('luz'));
+    if (sumCat) return sumCat.id;
+  }
+
+  // 6. Restaurantes, Cafeterías y Tapas (100 Montaditos, Doña Pepa, Venezzia, etc.)
+  if (
+    normText.includes('100 montaditos') ||
+    normText.includes('montaditos') ||
+    normText.includes('dona pepa') ||
+    normText.includes('venezzia')
+  ) {
+    const ocioCat = categories.find(c => c.id === 'cat-ocio' || c.name.toLowerCase().includes('restaurante') || c.name.toLowerCase().includes('ocio'));
+    if (ocioCat) return ocioCat.id;
+  }
+
+  // 7. Ferretería, Bricolaje y Mantenimiento del Hogar
+  if (
+    normText.includes('ferreteria') ||
+    normText.includes('bricomart') ||
+    normText.includes('leroy')
+  ) {
+    const hogCat = categories.find(c => c.id === 'cat-hogar' || c.name.toLowerCase().includes('ferreteria') || c.name.toLowerCase().includes('bricolaje'));
+    if (hogCat) return hogCat.id;
+    const aliCat = categories.find(c => c.id === 'cat-alimentacion');
+    if (aliCat) return aliCat.id;
+  }
+
+  // 8. Traspasos entre cuentas propias y transferencias (NO son nóminas ni hipotecas)
   if (
     normText.includes('traspaso') ||
+    normText.includes('transferencia realizada') ||
+    normText.includes('transf. realizada') ||
     normText.includes('transferencia propia') ||
     normText.includes('transferencia interna') ||
     normText.includes('entre mis cuentas') ||
@@ -133,21 +295,23 @@ export function guessCategory(text: string, amount: number, categories: Transact
     (normText.includes('transferencia') && !normText.includes('nomina') && !normText.includes('sueldo'))
   ) {
     if (amount >= 0) {
-      // Ingreso: Bizum & Transferencias
+      // Ingreso: Traspaso entre Cuentas o Bizum & Transferencias
+      const traspInCat = categories.find(c => c.id === 'cat-traspaso-ingreso' || c.name.toLowerCase().includes('traspaso entre'));
+      if (traspInCat) return traspInCat.id;
       const inCat = categories.find(c => c.id === 'cat-bizum-ingreso' || (c.type === 'income' && c.name.toLowerCase().includes('transferencia')));
       if (inCat) return inCat.id;
       const otherIn = categories.find(c => c.id === 'cat-otros-ingresos');
       if (otherIn) return otherIn.id;
     } else {
-      // Salida: Transferencias & Traspasos (NUNCA VIVIENDA / HIPOTECA)
-      const outCat = categories.find(c => c.id === 'cat-transferencias-gasto' || (c.type === 'expense' && c.name.toLowerCase().includes('transferencia')));
+      // Salida: Traspaso entre Cuentas (NUNCA VIVIENDA / HIPOTECA)
+      const outCat = categories.find(c => c.id === 'cat-transferencias-gasto' || (c.type === 'expense' && (c.name.toLowerCase().includes('traspaso') || c.name.toLowerCase().includes('transferencia'))));
       if (outCat) return outCat.id;
       const otherExp = categories.find(c => c.id === 'cat-otros-gastos');
       if (otherExp) return otherExp.id;
     }
   }
 
-  // 3. Operaciones de broker / inversión
+  // 9. Operaciones de broker / inversión
   if (normText.includes('operar') || normText.includes('acciones') || normText.includes('etf') || normText.includes('bolsa') || normText.includes('inversion')) {
     if (amount < 0) {
       const expCat = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense');
@@ -158,7 +322,7 @@ export function guessCategory(text: string, amount: number, categories: Transact
     }
   }
 
-  // 4. Nóminas y sueldos REALES (únicamente si contiene nómina/sueldo/pensión explícita)
+  // 10. Nóminas y sueldos REALES (únicamente si contiene nómina/sueldo/pensión explícita)
   if (amount > 0) {
     if (
       (normText.includes('nomina') || normText.includes('sueldo') || normText.includes('haberes') || normText.includes('pension') || normText.includes('sepe')) &&
@@ -170,24 +334,25 @@ export function guessCategory(text: string, amount: number, categories: Transact
     }
   }
 
-  // 5. Hipoteca y vivienda REAL (únicamente hipotecas, comunidad o alquiler; NUNCA transferencias genéricas)
+  // 11. Hipoteca REAL (únicamente hipotecas o préstamo hipotecario; NUNCA transferencias genéricas ni recibos de fincas)
   if (amount < 0) {
     if (
-      (normText.includes('hipoteca') || normText.includes('prestamo') || normText.includes('comunidad') || normText.includes('alquiler') || normText.includes('ibi')) &&
-      !normText.includes('traspaso')
+      (normText.includes('hipoteca') || normText.includes('prestamo hipotecario') || normText.includes('alquiler') || normText.includes('ibi')) &&
+      !normText.includes('traspaso') &&
+      !normText.includes('transferencia')
     ) {
-      const vivCat = categories.find(c => c.id === 'cat-vivienda' || c.name.toLowerCase().includes('hipoteca') || c.name.toLowerCase().includes('vivienda'));
+      const vivCat = categories.find(c => c.id === 'cat-vivienda' || c.name.toLowerCase().includes('hipoteca'));
       if (vivCat) return vivCat.id;
     }
   }
 
-  // 6. Comisiones bancarias -> Otros Gastos
+  // 12. Comisiones bancarias -> Otros Gastos
   if (normText.includes('comision') || normText.includes('comisiones') || normText.includes('mantenimiento') || normText.includes('cuota tarjeta')) {
     const comCat = categories.find(c => c.id === 'cat-otros-gastos') || categories.find(c => c.type === 'expense');
     if (comCat) return comCat.id;
   }
 
-  // 7. Búsqueda por diccionario de palabras clave
+  // 13. Búsqueda por diccionario de palabras clave
   for (const [catId, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     for (const kw of keywords) {
       const normKw = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -200,7 +365,7 @@ export function guessCategory(text: string, amount: number, categories: Transact
     }
   }
 
-  // 8. Por defecto SEGURO (NUNCA asignar a Nómina ni a Vivienda/Hipoteca por descarte)
+  // 14. Por defecto SEGURO (NUNCA asignar a Nómina ni a Vivienda/Hipoteca por descarte)
   if (amount >= 0) {
     const defaultIncome = categories.find(c => c.id === 'cat-otros-ingresos') || categories.find(c => c.type === 'income' && c.id !== 'cat-nomina');
     return defaultIncome ? defaultIncome.id : (categories.find(c => c.type === 'income')?.id || 'cat-otros-ingresos');
@@ -386,7 +551,8 @@ export function extractRowsWithMapping(
   headerRowIndex: number,
   mapping: StatementColumnMapping,
   categories: TransactionCategory[],
-  existingTransactions: Transaction[] = []
+  existingTransactions: Transaction[] = [],
+  existingAccounts: BankAccount[] = []
 ): ParsedStatementRow[] {
   const rows: ParsedStatementRow[] = [];
   const dateIdx = headers.indexOf(mapping.dateCol);
@@ -545,7 +711,13 @@ export function extractRowsWithMapping(
     }
 
     const absAmount = Math.abs(signedAmount);
-    const suggestedCategory = guessCategory(title, type === 'income' ? absAmount : -absAmount, categories);
+    const suggestedCategory = guessCategory(
+      title, 
+      type === 'income' ? absAmount : -absAmount, 
+      categories, 
+      existingAccounts, 
+      existingTransactions
+    );
 
     // Extraer saldo posterior si existe columna de saldo/disponible
     let balanceAfter: number | undefined;
@@ -1136,7 +1308,8 @@ export function parseStatementFile(
     headerRowIndex,
     suggestedMapping,
     categories,
-    existingTransactions
+    existingTransactions,
+    existingAccounts
   );
 
   // Si con la primera fila candidata salieron 0 movimientos y hay más candidatas, probar la siguiente
@@ -1160,7 +1333,8 @@ export function parseStatementFile(
         nextCandidate.r,
         nextMapping,
         categories,
-        existingTransactions
+        existingTransactions,
+        existingAccounts
       );
 
       if (testRows.length > 0) {

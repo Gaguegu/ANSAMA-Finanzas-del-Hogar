@@ -1,6 +1,7 @@
 import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult, YieldRecord, MonthClosure } from '../types';
 import { INITIAL_STATE } from '../data/defaultData';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './yieldDetection';
+import { reconcileAndCategorizeAll } from './reconciliation';
 
 const STORAGE_KEY = 'ansama_finanzas_hogar_v1';
 
@@ -140,23 +141,76 @@ export function loadAppState(): AppState {
         hasRepairedTransactions = true;
       }
 
-      // 4. Asegurar que existe la categoría de gasto Transferencias & Traspasos
+      // 4. Asegurar que existen todas las categorías especializadas necesarias
       if (Array.isArray(parsed.categories)) {
-        const hasTransferExpenseCat = parsed.categories.some((c: TransactionCategory) => c.id === 'cat-transferencias-gasto');
-        if (!hasTransferExpenseCat) {
-          parsed.categories.push({
+        const requiredCategories: TransactionCategory[] = [
+          {
             id: 'cat-transferencias-gasto',
-            name: 'Transferencias & Traspasos',
+            name: 'Traspaso entre Cuentas',
             iconName: 'ArrowUpRight',
             type: 'expense',
             color: '#0d9488',
             bgLight: '#f0fdfa'
-          });
-          hasRepairedTransactions = true;
-        }
+          },
+          {
+            id: 'cat-traspaso-ingreso',
+            name: 'Traspaso entre Cuentas',
+            iconName: 'ArrowDownLeft',
+            type: 'income',
+            color: '#0d9488',
+            bgLight: '#f0fdfa'
+          },
+          {
+            id: 'cat-seguros',
+            name: 'Seguros & Pólizas',
+            iconName: 'ShieldCheck',
+            type: 'expense',
+            color: '#0284c7',
+            bgLight: '#f0f9ff',
+            monthlyBudget: 150
+          },
+          {
+            id: 'cat-comunidad',
+            name: 'Comunidad de Propietarios',
+            iconName: 'Building',
+            type: 'expense',
+            color: '#6366f1',
+            bgLight: '#eef2ff',
+            monthlyBudget: 120
+          },
+          {
+            id: 'cat-efectivo',
+            name: 'Cajero & Retirada Efectivo',
+            iconName: 'Banknote',
+            type: 'expense',
+            color: '#d97706',
+            bgLight: '#fffbeb',
+            monthlyBudget: 250
+          },
+          {
+            id: 'cat-hogar',
+            name: 'Hogar, Bricolaje & Ferretería',
+            iconName: 'Wrench',
+            type: 'expense',
+            color: '#059669',
+            bgLight: '#ecfdf5',
+            monthlyBudget: 100
+          }
+        ];
+
+        requiredCategories.forEach((reqCat) => {
+          const existingIdx = parsed.categories.findIndex((c: TransactionCategory) => c.id === reqCat.id);
+          if (existingIdx === -1) {
+            parsed.categories.push(reqCat);
+            hasRepairedTransactions = true;
+          } else if (reqCat.id === 'cat-transferencias-gasto' && parsed.categories[existingIdx].name === 'Transferencias & Traspasos') {
+            parsed.categories[existingIdx].name = 'Traspaso entre Cuentas';
+            hasRepairedTransactions = true;
+          }
+        });
       }
 
-      // 5. Corregir y afinar categorías de transacciones históricas mal asignadas
+      // 5. Corregir y afinar categorías de transacciones históricas según apuntes y patrones de BBVA/Bancos
       let hasRecategorized = false;
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
         const titleNorm = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -175,34 +229,110 @@ export function loadAppState(): AppState {
           }
         }
 
-        // B. Traspasos entre cuentas (NO son nóminas ni hipotecas)
+        // B. Retirada de efectivo en cajeros automáticos (NUNCA vivienda ni hipoteca)
         if (
-          titleNorm.includes('traspaso') ||
+          titleNorm.includes('ret. efectivo') ||
+          titleNorm.includes('retirada efectivo') ||
+          titleNorm.includes('debito con tarj. en cajero') ||
+          titleNorm.includes('debito con tarj en cajero') ||
+          titleNorm.includes('cajero. aut') ||
+          titleNorm.includes('cajero aut') ||
+          titleNorm.includes('cajero autom') ||
+          titleNorm.includes('extraccion efectivo') ||
+          titleNorm.includes('reintegro cajero')
+        ) {
+          newCategoryId = 'cat-efectivo';
+        }
+
+        // C. Ferretería, bricolaje y mantenimiento
+        else if (
+          titleNorm.includes('ferreteria') ||
+          titleNorm.includes('ferreteria san jose') ||
+          titleNorm.includes('leroy') ||
+          titleNorm.includes('bricomart')
+        ) {
+          newCategoryId = 'cat-hogar';
+        }
+
+        // D. Suministros (Energía y Agua: Visalia, Aquajerez, Aguas del Puerto, Recursos Energéticos, Endesa, etc.)
+        else if (
+          titleNorm.includes('visalia') ||
+          titleNorm.includes('aquajerez') ||
+          titleNorm.includes('aguas del puerto') ||
+          titleNorm.includes('recursos energet') ||
+          titleNorm.includes('endesa') ||
+          titleNorm.includes('iberdrola') ||
+          titleNorm.includes('naturgy')
+        ) {
+          newCategoryId = 'cat-suministros';
+        }
+
+        // E. Seguros y Pólizas (Occident GCO, La Fe Compañía de Seguros, Mapfre, etc.)
+        else if (
+          titleNorm.includes('occident') ||
+          titleNorm.includes('gco s.a.u') ||
+          titleNorm.includes('catalana occidente') ||
+          titleNorm.includes('la fe compania') ||
+          titleNorm.includes('la fe seguro') ||
+          (titleNorm.includes('compania de seguros') && !titleNorm.includes('hipoteca')) ||
+          titleNorm.includes('linea directa') ||
+          titleNorm.includes('santa lucia') ||
+          titleNorm.includes('pelayo')
+        ) {
+          newCategoryId = 'cat-seguros';
+        }
+
+        // F. Comunidad de Propietarios (Parque Chapín, Residencial Chapín, etc.)
+        else if (
+          titleNorm.includes('parque chapin') ||
+          titleNorm.includes('chapin ii') ||
+          titleNorm.includes('chapin') ||
+          titleNorm.includes('comunidad propietarios') ||
+          titleNorm.includes('cuota comunidad')
+        ) {
+          newCategoryId = 'cat-comunidad';
+        }
+
+        // G. Restaurantes, Tapas y Ocio (100 Montaditos, Doña Pepa, Venezzia, etc.)
+        else if (
+          titleNorm.includes('100 montaditos') ||
+          titleNorm.includes('montaditos') ||
+          titleNorm.includes('dona pepa') ||
+          titleNorm.includes('venezzia')
+        ) {
+          newCategoryId = 'cat-ocio';
+        }
+
+        // H. Salidas por transferencia enviada o traspaso a otras cuentas
+        else if (
+          titleNorm.includes('transferencia realizada') ||
+          titleNorm.includes('transf. realizada') ||
+          titleNorm.includes('transferencia emitida') ||
+          titleNorm.includes('transferencia enviada') ||
+          titleNorm.includes('traspaso a') ||
+          titleNorm.includes('traspaso hacia') ||
           titleNorm.includes('transferencia propia') ||
           titleNorm.includes('transferencia interna') ||
-          titleNorm.includes('entre mis cuentas') ||
-          (titleNorm.includes('transferencia') && titleNorm.includes('andres'))
+          titleNorm.includes('entre mis cuentas')
         ) {
-          if (tx.categoryId === 'cat-nomina' || tx.categoryId === 'cat-vivienda') {
-            newCategoryId = tx.type === 'income' ? 'cat-bizum-ingreso' : 'cat-transferencias-gasto';
-          }
+          newCategoryId = 'cat-transferencias-gasto';
         }
 
-        // C. Salidas por transferencia o traspaso erróneamente puestas en Vivienda / Hipoteca
-        if (tx.categoryId === 'cat-vivienda') {
-          const isRealHousing =
+        // I. Si estaba en Vivienda e Hipoteca pero no es hipoteca real, reclasificar
+        if (newCategoryId === 'cat-vivienda') {
+          const isRealMortgage =
             titleNorm.includes('hipoteca') ||
-            titleNorm.includes('prestamo') ||
-            titleNorm.includes('comunidad') ||
-            titleNorm.includes('alquiler') ||
-            titleNorm.includes('ibi');
+            titleNorm.includes('prestamo hipotecario') ||
+            titleNorm.includes('cuota hipoteca') ||
+            titleNorm.includes('amortizacion hipoteca');
 
-          if (!isRealHousing && (titleNorm.includes('transferencia') || titleNorm.includes('traspaso') || titleNorm.includes('bizum'))) {
-            newCategoryId = 'cat-transferencias-gasto';
+          if (!isRealMortgage) {
+            // Si es un recibo general o compra no identificada
+            newCategoryId = 'cat-otros-gastos';
           }
         }
 
-        // D. Ingresos con transferencia o traspaso erróneamente puestos en Nómina
+        // J. Ingresos con transferencia o traspaso erróneamente puestos en Nómina
         if (tx.categoryId === 'cat-nomina') {
           const isRealSalary =
             titleNorm.includes('nomina') ||
@@ -223,7 +353,14 @@ export function loadAppState(): AppState {
         return tx;
       });
 
-      if (hasRecategorized) {
+      // 6. Conciliación automática de Traspasos entre cuentas registradas y propagación inteligente de categorías aprendidas de BBVA y demás entidades
+      const reconResult = reconcileAndCategorizeAll(
+        parsed.transactions,
+        parsed.accounts || [],
+        parsed.categories || []
+      );
+      if (reconResult.stats.totalUpdated > 0) {
+        parsed.transactions = reconResult.updatedTransactions;
         hasRepairedTransactions = true;
       }
     }
@@ -1328,12 +1465,18 @@ export function formatMonthName(monthStr: string): string {
  * Estos movimientos no constituyen ingresos de nómina ni gastos reales del hogar, sino reubicación de capital.
  */
 export function isInternalTransfer(tx: Transaction): boolean {
+  if (tx.categoryId === 'cat-transferencias-gasto' || tx.categoryId === 'cat-traspaso-ingreso') {
+    return true;
+  }
   const t = (tx.title || '').toLowerCase();
   const note = (tx.note || '').toLowerCase();
   const combined = `${t} ${note}`;
   
   return (
     combined.includes('traspaso') ||
+    combined.includes('transferencia realizada') ||
+    combined.includes('transf. realizada') ||
+    combined.includes('transferencia emitida') ||
     combined.includes('imposicion') ||
     combined.includes('imposición') ||
     combined.includes('constitucion') ||

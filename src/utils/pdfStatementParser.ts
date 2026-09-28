@@ -712,7 +712,9 @@ export async function parsePdfStatementFile(
     const suggestedCategory = guessCategory(
       titleText,
       transactionType === 'income' ? transactionAmount : -transactionAmount,
-      categories
+      categories,
+      existingAccounts,
+      existingTransactions
     );
 
     const isDuplicate = existingTransactions.some(tx => {

@@ -17,11 +17,13 @@ import {
   Download,
   ChevronDown,
   FileText,
-  Check
+  Check,
+  Tag
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
+import { normalizeConceptForMatching } from '../utils/reconciliation';
 
 export type PeriodFilterMode = 'all' | 'single' | 'range' | 'multi' | 'custom-dates';
 
@@ -44,6 +46,9 @@ interface TransactionsTableProps {
   onOpenImportModal?: () => void;
   onMoveTransactions?: (transactionIds: string[], targetAccountId: string, adjustBalances: boolean) => void;
   onBatchDeleteTransactions?: (transactionIds: string[], revertBalances: boolean) => void;
+  onUpdateTransactionCategory?: (transactionId: string, newCategoryId: string, applyToSimilar?: boolean) => void;
+  onBatchUpdateCategory?: (transactionIds: string[], newCategoryId: string) => void;
+  onAutoReconcile?: () => { stats: { transfersMatched: number; patternsLearned: number; totalUpdated: number }; details: string[] };
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
@@ -54,7 +59,10 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onOpenNewTransactionModal,
   onOpenImportModal,
   onMoveTransactions,
-  onBatchDeleteTransactions
+  onBatchDeleteTransactions,
+  onUpdateTransactionCategory,
+  onBatchUpdateCategory,
+  onAutoReconcile
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -91,6 +99,12 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+
+  // Estados para auto-reconciliación y propagación de categorías
+  const [reconcileFeedback, setReconcileFeedback] = useState<{ title: string; count: number; details: string[] } | null>(null);
+  const [propagateModalData, setPropagateModalData] = useState<{ tx: Transaction; newCatId: string; similarCount: number } | null>(null);
+  const [isBatchCategoryModalOpen, setIsBatchCategoryModalOpen] = useState(false);
+  const [batchTargetCategoryId, setBatchTargetCategoryId] = useState('');
 
   // Cerrar menús al hacer clic fuera
   useEffect(() => {
@@ -495,6 +509,60 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     }
   };
 
+  // Cambio de categoría individual con detección de movimientos idénticos en otros meses
+  const handleCategoryChange = (tx: Transaction, newCatId: string) => {
+    if (!onUpdateTransactionCategory || tx.categoryId === newCatId) return;
+
+    const cleanPattern = normalizeConceptForMatching(tx.title);
+    const similarTxs = transactions.filter(
+      (t) => t.id !== tx.id && normalizeConceptForMatching(t.title) === cleanPattern && t.type === tx.type
+    );
+
+    if (similarTxs.length > 0) {
+      setPropagateModalData({
+        tx,
+        newCatId,
+        similarCount: similarTxs.length
+      });
+    } else {
+      onUpdateTransactionCategory(tx.id, newCatId, false);
+    }
+  };
+
+  const handleConfirmPropagate = (applyToSimilar: boolean) => {
+    if (!propagateModalData || !onUpdateTransactionCategory) return;
+    onUpdateTransactionCategory(propagateModalData.tx.id, propagateModalData.newCatId, applyToSimilar);
+    setPropagateModalData(null);
+  };
+
+  // Asignar categoría por lotes a los seleccionados
+  const handleApplyBatchCategory = () => {
+    if (!onBatchUpdateCategory || !batchTargetCategoryId || selectedTxIds.size === 0) return;
+    onBatchUpdateCategory(Array.from(selectedTxIds), batchTargetCategoryId);
+    setIsBatchCategoryModalOpen(false);
+    setBatchTargetCategoryId('');
+    setSelectedTxIds(new Set());
+  };
+
+  // Ejecución de auto-reconciliación y corrección de traspasos
+  const handleRunAutoReconcile = () => {
+    if (!onAutoReconcile) return;
+    const result = onAutoReconcile();
+    if (result.stats.totalUpdated > 0) {
+      setReconcileFeedback({
+        title: `¡Reconciliación completada! Se han actualizado ${result.stats.totalUpdated} movimientos (${result.stats.transfersMatched} traspasos emparejados entre cuentas registradas y ${result.stats.patternsLearned} movimientos asignados por aprendizaje recurrente).`,
+        count: result.stats.totalUpdated,
+        details: result.details
+      });
+    } else {
+      setReconcileFeedback({
+        title: 'Todos los movimientos y traspasos entre tus cuentas registradas ya se encuentran perfectamente clasificados.',
+        count: 0,
+        details: []
+      });
+    }
+  };
+
   // Descarga de movimientos en PDF, Excel o CSV
   const handleExportPdfFiltered = () => {
     const filterLabel = periodFilter.mode !== 'all' ? periodLabel : 'Todos los periodos';
@@ -633,6 +701,19 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onAutoReconcile && (
+            <button
+              id="btn-auto-reconcile"
+              type="button"
+              onClick={handleRunAutoReconcile}
+              title="Aprende de los apuntes corregidos en BBVA y demás entidades, propaga las categorías a todos los meses y empareja las transferencias entre cuentas registradas como traspaso"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+            >
+              <Sparkles className="w-4 h-4 text-emerald-200" />
+              <span>Auto-Corregir & Reconciliar</span>
+            </button>
+          )}
+
           {onOpenImportModal && (
             <button
               id="btn-import-statement"
@@ -796,6 +877,47 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
       )}
 
+      {/* Notificación de resultados de Reconciliación */}
+      {reconcileFeedback && (
+        <div className="p-3.5 bg-emerald-50 border-2 border-emerald-500/40 text-emerald-950 rounded-xl text-xs flex flex-col gap-2 animate-in fade-in shadow-xs">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">{reconcileFeedback.title}</p>
+                {reconcileFeedback.count > 0 && (
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Se han aplicado las reglas de Traspaso entre Cuentas y el aprendizaje de apuntes recurrentes para todos los meses.
+                  </p>
+                )}
+              </div>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => setReconcileFeedback(null)}
+              className="text-zinc-500 hover:text-zinc-800 cursor-pointer p-0.5"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {reconcileFeedback.details.length > 0 && (
+            <div className="mt-1 max-h-36 overflow-y-auto space-y-1 bg-white/90 p-2.5 rounded-lg border border-emerald-200 text-[11px] text-zinc-700">
+              {reconcileFeedback.details.slice(0, 8).map((d, idx) => (
+                <div key={idx} className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                  <span className="truncate">{d}</span>
+                </div>
+              ))}
+              {reconcileFeedback.details.length > 8 && (
+                <p className="text-[10px] text-zinc-500 italic pt-1">
+                  ... y {reconcileFeedback.details.length - 8} movimientos más corregidos.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Barra de acciones en lote si hay selección */}
       {selectedTxIds.size > 0 && (
         <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 animate-in fade-in">
@@ -843,6 +965,21 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
                 <span>Mover a otra cuenta...</span>
+              </button>
+            )}
+
+            {onBatchUpdateCategory && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchTargetCategoryId(categories[0]?.id || '');
+                  setIsBatchCategoryModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-950 font-bold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Cambiar la categoría de los movimientos seleccionados"
+              >
+                <Tag className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                <span>Asignar categoría...</span>
               </button>
             )}
 
@@ -1462,7 +1599,40 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     </td>
 
                     <td className="py-3.5 px-3.5 whitespace-nowrap">
-                      {category ? (
+                      {onUpdateTransactionCategory ? (
+                        <div className="relative inline-block">
+                          <select
+                            value={tx.categoryId}
+                            onChange={(e) => handleCategoryChange(tx, e.target.value)}
+                            className="appearance-none inline-flex items-center gap-1.5 pl-2.5 pr-6 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all border border-zinc-200/80 hover:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/40 shadow-2xs"
+                            style={{
+                              backgroundColor: category ? category.bgLight : '#f4f4f5',
+                              color: category ? category.color : '#71717a'
+                            }}
+                            title="Haz clic para cambiar categoría (se ofrecerá aplicarla a los demás meses idénticos)"
+                          >
+                            <optgroup label={tx.type === 'expense' ? 'Categorías de Gastos' : 'Categorías de Ingresos'}>
+                              {categories
+                                .filter((c) => c.type === tx.type)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id} style={{ color: '#09090b', backgroundColor: '#ffffff' }}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Otras categorías">
+                              {categories
+                                .filter((c) => c.type !== tx.type)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id} style={{ color: '#09090b', backgroundColor: '#ffffff' }}>
+                                    {c.name} ({c.type === 'expense' ? 'Gasto' : 'Ingreso'})
+                                  </option>
+                                ))}
+                            </optgroup>
+                          </select>
+                          <ChevronDown className="w-3 h-3 text-zinc-400 pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2" />
+                        </div>
+                      ) : category ? (
                         <span 
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
                           style={{
@@ -1596,7 +1766,39 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     {tx.title}
                   </h4>
 
-                  {category && (
+                  {onUpdateTransactionCategory ? (
+                    <div className="mt-1 relative inline-block">
+                      <select
+                        value={tx.categoryId}
+                        onChange={(e) => handleCategoryChange(tx, e.target.value)}
+                        className="appearance-none inline-flex items-center gap-1 pl-2 pr-5 py-0.5 rounded-md text-[10px] font-bold cursor-pointer transition-all border border-zinc-200/80 shadow-2xs"
+                        style={{
+                          backgroundColor: category ? category.bgLight : '#f4f4f5',
+                          color: category ? category.color : '#71717a'
+                        }}
+                      >
+                        <optgroup label={tx.type === 'expense' ? 'Gastos' : 'Ingresos'}>
+                          {categories
+                            .filter((c) => c.type === tx.type)
+                            .map((c) => (
+                              <option key={c.id} value={c.id} style={{ color: '#09090b', backgroundColor: '#ffffff' }}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="Otras">
+                          {categories
+                            .filter((c) => c.type !== tx.type)
+                            .map((c) => (
+                              <option key={c.id} value={c.id} style={{ color: '#09090b', backgroundColor: '#ffffff' }}>
+                                {c.name} ({c.type === 'expense' ? 'Gasto' : 'Ingreso'})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                      <ChevronDown className="w-2.5 h-2.5 text-zinc-400 pointer-events-none absolute right-1 top-1/2 -translate-y-1/2" />
+                    </div>
+                  ) : category ? (
                     <div className="mt-1">
                       <span 
                         className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold"
@@ -1608,7 +1810,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                         {category.name}
                       </span>
                     </div>
-                  )}
+                  ) : null}
 
                   {tx.note && (
                     <p className="text-[11px] text-zinc-400 mt-1 truncate">
@@ -1740,6 +1942,156 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 className="px-4 py-2 text-xs font-bold bg-[#0E6A3B] hover:bg-[#0a522d] text-white rounded-xl shadow-xs transition-all cursor-pointer"
               >
                 Mover y Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Propagación de Categoría a meses idénticos */}
+      {propagateModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div 
+            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-zinc-950">
+                  ¿Aplicar a todos los meses idénticos?
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Aprendizaje de movimientos recurrentes
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-zinc-50 border border-zinc-200/80 rounded-xl text-xs space-y-2">
+              <p className="text-zinc-700">
+                Has asignado la categoría{' '}
+                <span className="font-extrabold text-emerald-800">
+                  «{categories.find((c) => c.id === propagateModalData.newCatId)?.name || 'Categoría'}»
+                </span>{' '}
+                al movimiento:
+              </p>
+              <div className="bg-white p-2.5 rounded-lg border border-zinc-200 font-semibold text-zinc-900 truncate">
+                {propagateModalData.tx.title}
+              </div>
+              <p className="text-zinc-600 leading-relaxed">
+                Hemos detectado <strong className="text-zinc-900 font-bold">{propagateModalData.similarCount} movimiento(s) adicionales</strong> con este mismo concepto recurrente en los demás meses de tu histórico.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setPropagateModalData(null)}
+                className="w-full sm:w-auto px-3 py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-800 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmPropagate(false)}
+                className="w-full sm:w-auto px-3 py-2 text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all cursor-pointer"
+              >
+                Solo a este apunte
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmPropagate(true)}
+                className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Sí, aplicar a todos ({propagateModalData.similarCount + 1})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Asignación de Categoría por Lotes */}
+      {isBatchCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div 
+            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-md w-full overflow-hidden p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-zinc-950">
+                    Asignar Categoría por Lote
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    {selectedTxIds.size} movimiento(s) seleccionados
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBatchCategoryModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1.5">
+                  Selecciona la nueva categoría a asignar:
+                </label>
+                <select
+                  value={batchTargetCategoryId}
+                  onChange={(e) => setBatchTargetCategoryId(e.target.value)}
+                  className="w-full px-3 py-2.5 text-xs font-bold text-zinc-900 bg-white border border-zinc-300 rounded-xl focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 cursor-pointer"
+                >
+                  <optgroup label="Categorías de Gastos">
+                    {categories
+                      .filter((c) => c.type === 'expense')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  <optgroup label="Categorías de Ingresos">
+                    {categories
+                      .filter((c) => c.type === 'income')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                Esta acción actualizará la categoría de todos los movimientos marcados ({selectedTxIds.size}) a la vez.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setIsBatchCategoryModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyBatchCategory}
+                className="px-4 py-2 text-xs font-bold bg-[#0E6A3B] hover:bg-[#0a522d] text-white rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                Aplicar Categoría
               </button>
             </div>
           </div>

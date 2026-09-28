@@ -145,12 +145,48 @@ export const DEFAULT_CATEGORIES: TransactionCategory[] = [
     monthlyBudget: 150
   },
   {
+    id: 'cat-seguros',
+    name: 'Seguros & Pólizas',
+    iconName: 'ShieldCheck',
+    type: 'expense',
+    color: '#0284c7', // light blue
+    bgLight: '#f0f9ff',
+    monthlyBudget: 150
+  },
+  {
+    id: 'cat-comunidad',
+    name: 'Comunidad de Propietarios',
+    iconName: 'Building',
+    type: 'expense',
+    color: '#6366f1', // indigo
+    bgLight: '#eef2ff',
+    monthlyBudget: 120
+  },
+  {
+    id: 'cat-efectivo',
+    name: 'Cajero & Retirada Efectivo',
+    iconName: 'Banknote',
+    type: 'expense',
+    color: '#d97706', // amber
+    bgLight: '#fffbeb',
+    monthlyBudget: 250
+  },
+  {
+    id: 'cat-hogar',
+    name: 'Hogar, Bricolaje & Ferretería',
+    iconName: 'Wrench',
+    type: 'expense',
+    color: '#059669', // emerald
+    bgLight: '#ecfdf5',
+    monthlyBudget: 100
+  },
+  {
     id: 'cat-transferencias-gasto',
-    name: 'Transferencias & Traspasos',
+    name: 'Traspaso entre Cuentas',
     iconName: 'ArrowUpRight',
     type: 'expense',
     color: '#0d9488', // teal
-    bgLight: '#f0fdfa',
+    bgLight: '#f0fdfa'
   },
   // Incomes
   {
@@ -160,6 +196,14 @@ export const DEFAULT_CATEGORIES: TransactionCategory[] = [
     type: 'income',
     color: '#059669', // emerald
     bgLight: '#ecfdf5',
+  },
+  {
+    id: 'cat-traspaso-ingreso',
+    name: 'Traspaso entre Cuentas',
+    iconName: 'ArrowDownLeft',
+    type: 'income',
+    color: '#0d9488', // teal
+    bgLight: '#f0fdfa'
   },
   {
     id: 'cat-bizum-ingreso',

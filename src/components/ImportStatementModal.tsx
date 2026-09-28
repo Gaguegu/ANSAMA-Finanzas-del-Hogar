@@ -152,7 +152,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
       parseResult.headerRowIndex,
       newMapping,
       categories,
-      existingTransactions
+      existingTransactions,
+      accounts
     );
 
     let newDetBalance: number | undefined;

@@ -13,6 +13,7 @@ import {
   getAccountBalanceForMonth
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
+import { reconcileAndCategorizeAll, normalizeConceptForMatching } from './utils/reconciliation';
 import { Header } from './components/Header';
 import { NetWorthCard } from './components/NetWorthCard';
 import { BankAccountsList } from './components/BankAccountsList';
@@ -185,6 +186,80 @@ export default function App() {
     setAppState(newState);
     saveAppState(newState);
     triggerNotification(`Movimiento "${updatedTx.title}" actualizado con fecha ${formatDate(updatedTx.date)}.`);
+  };
+
+  // Actualizar categoría de movimiento (con opción de propagar a todos los meses idénticos)
+  const handleUpdateTransactionCategory = (transactionId: string, newCategoryId: string, applyToSimilar: boolean = false) => {
+    const targetTx = appState.transactions.find((t) => t.id === transactionId);
+    if (!targetTx) return;
+
+    const cleanPattern = normalizeConceptForMatching(targetTx.title);
+    let updatedCount = 0;
+
+    const updatedTransactions = appState.transactions.map((tx) => {
+      if (tx.id === transactionId) {
+        updatedCount++;
+        return { ...tx, categoryId: newCategoryId };
+      }
+      if (applyToSimilar && normalizeConceptForMatching(tx.title) === cleanPattern && tx.type === targetTx.type) {
+        updatedCount++;
+        return { ...tx, categoryId: newCategoryId };
+      }
+      return tx;
+    });
+
+    const catObj = appState.categories.find((c) => c.id === newCategoryId);
+    const catName = catObj ? catObj.name : 'Categoría';
+
+    const newState: AppState = {
+      ...appState,
+      transactions: updatedTransactions
+    };
+    setAppState(newState);
+    saveAppState(newState);
+
+    triggerNotification(
+      applyToSimilar && updatedCount > 1
+        ? `Categoría «${catName}» aplicada a ${updatedCount} movimientos coincidentes en todos los meses.`
+        : `Categoría «${catName}» asignada correctamente.`
+    );
+  };
+
+  // Actualización masiva de categoría para selección por lotes
+  const handleBatchUpdateCategory = (transactionIds: string[], newCategoryId: string) => {
+    const idSet = new Set(transactionIds);
+    const catObj = appState.categories.find((c) => c.id === newCategoryId);
+    const catName = catObj ? catObj.name : 'Categoría';
+
+    const updatedTransactions = appState.transactions.map((tx) => {
+      if (idSet.has(tx.id)) {
+        return { ...tx, categoryId: newCategoryId };
+      }
+      return tx;
+    });
+
+    const newState: AppState = {
+      ...appState,
+      transactions: updatedTransactions
+    };
+    setAppState(newState);
+    saveAppState(newState);
+
+    triggerNotification(`Categoría «${catName}» aplicada a ${idSet.size} movimiento(s) seleccionados.`);
+  };
+
+  // Reconciliación global inteligente y auto-corrección de traspasos
+  const handleAutoReconcile = () => {
+    const result = reconcileAndCategorizeAll(appState.transactions, appState.accounts, appState.categories);
+    if (result.stats.totalUpdated > 0) {
+      const newState: AppState = {
+        ...appState,
+        transactions: result.updatedTransactions
+      };
+      setAppState(newState);
+      saveAppState(newState);
+    }
+    return result;
   };
 
   // Move transactions between accounts and synchronize balances
@@ -808,6 +883,9 @@ export default function App() {
               onOpenImportModal={() => handleOpenImportModal()}
               onMoveTransactions={handleMoveTransactions}
               onBatchDeleteTransactions={handleBatchDeleteTransactions}
+              onUpdateTransactionCategory={handleUpdateTransactionCategory}
+              onBatchUpdateCategory={handleBatchUpdateCategory}
+              onAutoReconcile={handleAutoReconcile}
             />
           </div>
         )}
@@ -829,6 +907,9 @@ export default function App() {
               onOpenImportModal={() => setIsImportModalOpen(true)}
               onMoveTransactions={handleMoveTransactions}
               onBatchDeleteTransactions={handleBatchDeleteTransactions}
+              onUpdateTransactionCategory={handleUpdateTransactionCategory}
+              onBatchUpdateCategory={handleBatchUpdateCategory}
+              onAutoReconcile={handleAutoReconcile}
             />
           </div>
         )}
@@ -845,6 +926,9 @@ export default function App() {
               onOpenImportModal={() => setIsImportModalOpen(true)}
               onMoveTransactions={handleMoveTransactions}
               onBatchDeleteTransactions={handleBatchDeleteTransactions}
+              onUpdateTransactionCategory={handleUpdateTransactionCategory}
+              onBatchUpdateCategory={handleBatchUpdateCategory}
+              onAutoReconcile={handleAutoReconcile}
             />
           </div>
         )}

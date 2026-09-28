@@ -13,7 +13,12 @@ import {
   TrendingUp, 
   PlusCircle,
   AlertCircle,
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  ShieldCheck,
+  Building,
+  Banknote,
+  Wrench,
+  ArrowUpRight
 } from 'lucide-react';
 import { TransactionCategory, Transaction } from '../types';
 import { formatCurrency } from '../utils/storage';
@@ -82,8 +87,13 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
       case 'Smartphone': return <Smartphone className={className} />;
       case 'Briefcase': return <Briefcase className={className} />;
       case 'ArrowDownLeft': return <ArrowDownLeft className={className} />;
+      case 'ArrowUpRight': return <ArrowUpRight className={className} />;
       case 'TrendingUp': return <TrendingUp className={className} />;
       case 'PlusCircle': return <PlusCircle className={className} />;
+      case 'ShieldCheck': return <ShieldCheck className={className} />;
+      case 'Building': return <Building className={className} />;
+      case 'Banknote': return <Banknote className={className} />;
+      case 'Wrench': return <Wrench className={className} />;
       default: return <Tag className={className} />;
     }
   };
