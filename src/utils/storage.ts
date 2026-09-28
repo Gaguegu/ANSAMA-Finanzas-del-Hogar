@@ -124,9 +124,17 @@ export function loadAppState(): AppState {
         return tx;
       });
 
-      // 3. Purgar automáticamente transacciones espurias generadas por notas legales/fiduciarias de extractos
+      // 3. Purgar automáticamente transacciones espurias generadas por notas legales/fiduciarias o fechas corruptas (< 2020)
       const prevCount = parsed.transactions.length;
       parsed.transactions = parsed.transactions.filter((tx: Transaction) => {
+        // Purgar fechas corruptas o antiguas imposibles (como año 2001)
+        if (tx.date && tx.date.length >= 4) {
+          const y = parseInt(tx.date.substring(0, 4), 10);
+          if (isNaN(y) || y < 2020) {
+            return false;
+          }
+        }
+
         const titleLower = (tx.title || '').toLowerCase();
         const isLegalDisclaimer =
           titleLower.includes('cuentas colectivas') ||
@@ -339,16 +347,44 @@ export function loadAppState(): AppState {
             titleNorm.includes('sueldo') ||
             titleNorm.includes('haberes') ||
             titleNorm.includes('pension') ||
-            titleNorm.includes('sepe');
+            titleNorm.includes('sepe') ||
+            titleNorm.includes('alquiler') ||
+            titleNorm.includes('arrendamiento') ||
+            (Math.abs(tx.amount - 481.80) < 0.05 && tx.type === 'income');
 
           if (!isRealSalary && (titleNorm.includes('transferencia') || titleNorm.includes('traspaso') || titleNorm.includes('bizum'))) {
             newCategoryId = 'cat-bizum-ingreso';
           }
         }
 
-        if (newCategoryId !== tx.categoryId) {
+        // K. Ingresos regulares mensuales de liquidación de alquiler (BBVA u otras cuentas) -> Nómina & Sueldo
+        if (tx.type === 'income') {
+          const noteNorm = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isRentalIncome =
+            titleNorm.includes('alquiler') ||
+            titleNorm.includes('arrendamiento') ||
+            noteNorm.includes('alquiler') ||
+            (Math.abs(tx.amount - 481.80) < 0.05 && (titleNorm.includes('transferencia') || tx.accountId.includes('bbva')));
+
+          if (isRentalIncome) {
+            newCategoryId = 'cat-nomina';
+          }
+        }
+
+        // Enriquecer el título para mostrar claramente el concepto si antes solo decía "Transferencia recibida"
+        let finalTitle = tx.title;
+        if (
+          tx.type === 'income' &&
+          (Math.abs(tx.amount - 481.80) < 0.05 || titleNorm.includes('alquiler')) &&
+          (titleNorm === 'transferencia recibida' || titleNorm === 'transferencia')
+        ) {
+          finalTitle = 'Transferencia recibida - Liquidación alquiler';
+        }
+
+        if (newCategoryId !== tx.categoryId || finalTitle !== tx.title) {
           hasRecategorized = true;
-          return { ...tx, categoryId: newCategoryId };
+          hasRepairedTransactions = true;
+          return { ...tx, categoryId: newCategoryId, title: finalTitle };
         }
         return tx;
       });

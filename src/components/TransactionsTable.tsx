@@ -177,14 +177,18 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     return 'Cuenta seleccionada';
   }, [filterAccount, accountsByBank, accountMap]);
 
-  // Lista ordenada de periodos disponibles (Años completos y Meses específicos)
+  // Lista ordenada de periodos disponibles (Años completos y Meses específicos con movimientos reales)
   const availablePeriods = useMemo(() => {
     const monthSet = new Set<string>();
     const yearSet = new Set<string>();
     transactions.forEach((tx) => {
       if (tx.date && tx.date.length >= 7) {
-        monthSet.add(tx.date.substring(0, 7));
-        yearSet.add(tx.date.substring(0, 4));
+        const y = parseInt(tx.date.substring(0, 4), 10);
+        // Descartar fechas antiguas no válidas (< 2024)
+        if (!isNaN(y) && y >= 2024) {
+          monthSet.add(tx.date.substring(0, 7));
+          yearSet.add(tx.date.substring(0, 4));
+        }
       }
     });
     return {
@@ -193,34 +197,53 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     };
   }, [transactions]);
 
-  // Lista de todos los meses seleccionables (año actual, anterior, siguiente y con movimientos)
+  // Lista de meses seleccionables: año actual (2026), año anterior (2025) y años recientes con movimientos reales (>= 2024)
+  // Se eliminan por completo años antiguos sin movimientos (como 2001 o 2023)
   const selectableMonthsList = useMemo(() => {
-    const yearsSet = new Set<number>();
     const currentYear = new Date().getFullYear();
-    yearsSet.add(currentYear);
-    yearsSet.add(currentYear - 1);
-    yearsSet.add(currentYear + 1);
+    const txCountByYear = new Map<number, number>();
+    const txCountByMonth = new Map<string, number>();
+
     transactions.forEach((tx) => {
-      if (tx.date && tx.date.length >= 4) {
+      if (tx.date && tx.date.length >= 7) {
         const y = parseInt(tx.date.substring(0, 4), 10);
-        if (!isNaN(y)) yearsSet.add(y);
+        if (!isNaN(y) && y >= 2024 && y <= currentYear + 1) {
+          txCountByYear.set(y, (txCountByYear.get(y) || 0) + 1);
+          const ym = tx.date.substring(0, 7);
+          txCountByMonth.set(ym, (txCountByMonth.get(ym) || 0) + 1);
+        }
       }
     });
 
-    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
-    const months: { value: string; label: string; year: number; monthNum: number; shortName: string }[] = [];
+    // Años activos:
+    // Solo año actual (2026) y año anterior (2025).
+    // Y cualquier otro año reciente (>= 2024) SOLO si contiene movimientos reales (count > 0).
+    const activeYears = new Set<number>();
+    activeYears.add(currentYear);
+    activeYears.add(currentYear - 1);
+
+    txCountByYear.forEach((count, y) => {
+      if (count > 0 && y >= 2024) {
+        activeYears.add(y);
+      }
+    });
+
+    const sortedYears = Array.from(activeYears).sort((a, b) => b - a);
+    const months: { value: string; label: string; year: number; monthNum: number; shortName: string; txCount: number }[] = [];
     const monthNamesShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
     sortedYears.forEach((y) => {
       for (let m = 12; m >= 1; m--) {
         const mStr = String(m).padStart(2, '0');
         const val = `${y}-${mStr}`;
+        const count = txCountByMonth.get(val) || 0;
         months.push({
           value: val,
-          label: formatMonthName(val),
+          label: count > 0 ? `${formatMonthName(val)} (${count})` : formatMonthName(val),
           year: y,
           monthNum: m,
-          shortName: monthNamesShort[m - 1]
+          shortName: monthNamesShort[m - 1],
+          txCount: count
         });
       }
     });

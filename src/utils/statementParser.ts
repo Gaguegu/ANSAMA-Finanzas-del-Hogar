@@ -93,7 +93,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   ],
   'cat-nomina': [
     'nomina', 'sueldo', 'haberes', 'transferencia nomina', 'pension', 'prestacion',
-    'sepe', 'seguridad social prestacion'
+    'sepe', 'seguridad social prestacion', 'liquidacion alquiler', 'alquiler', 'arrendamiento', 'renta alquiler'
   ],
   'cat-rendimientos': [
     'liquidacion cuenta', 'liquidacion de cuenta', 'liquidacion intereses', 'liquidacion contrato',
@@ -282,17 +282,19 @@ export function guessCategory(
     if (aliCat) return aliCat.id;
   }
 
-  // 8. Traspasos entre cuentas propias y transferencias (NO son nóminas ni hipotecas)
+  // 8. Traspasos entre cuentas propias y transferencias (NO son nóminas, alquileres ni hipotecas)
   if (
     normText.includes('traspaso') ||
     normText.includes('transferencia realizada') ||
     normText.includes('transf. realizada') ||
+    normText.includes('transferencia emitida') ||
+    normText.includes('transferencia enviada') ||
     normText.includes('transferencia propia') ||
     normText.includes('transferencia interna') ||
     normText.includes('entre mis cuentas') ||
     normText.includes('imposicion') ||
     normText.includes('constitucion') ||
-    (normText.includes('transferencia') && !normText.includes('nomina') && !normText.includes('sueldo'))
+    (normText.includes('transferencia') && !normText.includes('nomina') && !normText.includes('sueldo') && !normText.includes('alquiler') && !normText.includes('arrendamiento'))
   ) {
     if (amount >= 0) {
       // Ingreso: Traspaso entre Cuentas o Bizum & Transferencias
@@ -322,12 +324,18 @@ export function guessCategory(
     }
   }
 
-  // 10. Nóminas y sueldos REALES (únicamente si contiene nómina/sueldo/pensión explícita)
+  // 10. Nóminas, sueldos e ingresos regulares de alquiler (liquidación alquiler)
   if (amount > 0) {
     if (
-      (normText.includes('nomina') || normText.includes('sueldo') || normText.includes('haberes') || normText.includes('pension') || normText.includes('sepe')) &&
-      !normText.includes('traspaso') &&
-      !normText.includes('liquidacion')
+      (normText.includes('nomina') ||
+       normText.includes('sueldo') ||
+       normText.includes('haberes') ||
+       normText.includes('pension') ||
+       normText.includes('sepe') ||
+       normText.includes('alquiler') ||
+       normText.includes('arrendamiento')) &&
+      !normText.includes('traspaso propio') &&
+      (!normText.includes('liquidacion') || normText.includes('liquidacion alquiler'))
     ) {
       const nomCat = categories.find(c => c.id === 'cat-nomina' || c.name.toLowerCase().includes('nomina'));
       if (nomCat) return nomCat.id;
@@ -622,17 +630,37 @@ export function extractRowsWithMapping(
 
       if (hNorm.includes('tipo') || hNorm.includes('transacc') || hNorm.includes('operacion')) {
         foundType = cellVal;
-      } else if (hNorm.includes('descrip') || hNorm.includes('concepto') || hNorm.includes('detalle')) {
-        foundDesc = cellVal;
+      } else if (
+        hNorm.includes('descrip') || 
+        hNorm.includes('concepto') || 
+        hNorm.includes('detalle') ||
+        hNorm.includes('observac') ||
+        hNorm.includes('mas datos') ||
+        hNorm.includes('movimiento') ||
+        hNorm.includes('beneficiario') ||
+        hNorm.includes('ordenante') ||
+        hNorm.includes('informacion')
+      ) {
+        if (!foundDesc) {
+          foundDesc = cellVal;
+        } else if (foundDesc.toLowerCase() !== cellVal.toLowerCase() && !foundDesc.toLowerCase().includes(cellVal.toLowerCase())) {
+          foundDesc = `${foundDesc} - ${cellVal}`;
+        }
       } else if (!foundDesc && cellVal.length > 2) {
         foundDesc = cellVal;
+      } else if (foundDesc && cellVal.length > 2 && !foundDesc.toLowerCase().includes(cellVal.toLowerCase())) {
+        foundDesc = `${foundDesc} - ${cellVal}`;
       }
     }
 
     if (foundType && foundDesc && foundType.toLowerCase() !== foundDesc.toLowerCase()) {
       title = `${foundType} - ${foundDesc}`;
     } else if (foundDesc) {
-      title = foundDesc;
+      if (title && title.toLowerCase() !== foundDesc.toLowerCase() && !title.toLowerCase().includes(foundDesc.toLowerCase())) {
+        title = `${title} - ${foundDesc}`;
+      } else {
+        title = foundDesc;
+      }
     } else if (foundType) {
       title = foundType;
     } else if (isTitleDate || !title) {

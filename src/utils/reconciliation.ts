@@ -286,6 +286,27 @@ export function reconcileAndCategorizeAll(
       }
     }
 
+    // C. REGLA 3: Ingreso regular recurrente de liquidación de alquiler (BBVA / cuentas registradas) -> Nómina & Sueldo
+    if (tx.type === 'income') {
+      const titleClean = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const noteClean = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const isRental =
+        titleClean.includes('alquiler') ||
+        titleClean.includes('arrendamiento') ||
+        noteClean.includes('alquiler') ||
+        (Math.abs(tx.amount - 481.80) < 0.05 && (titleClean.includes('transferencia') || tx.accountId.includes('bbva')));
+
+      if (isRental) {
+        const nomCat = categories.find((c) => c.id === 'cat-nomina' || c.name.toLowerCase().includes('nomina'));
+        if (nomCat && newCategoryId !== nomCat.id) {
+          newCategoryId = nomCat.id;
+          modified = true;
+          patternsLearned++;
+          details.push(`«${tx.title}» (${tx.date}): Asignado a «${nomCat.name}» [Liquidación alquiler recurrente]`);
+        }
+      }
+    }
+
     if (modified) {
       totalUpdated++;
       return {
