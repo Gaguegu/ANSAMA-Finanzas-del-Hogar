@@ -56,6 +56,7 @@ export interface Transaction {
   note?: string;
   isSimulated?: boolean;
   balanceAfter?: number; // Saldo de la cuenta tras el movimiento según extracto bancario
+  isManualCategory?: boolean; // Bloqueo de categoría manual: protege excepciones fijadas por el usuario frente a auto-correcciones
 }
 
 export type YieldType = 'interest' | 'dividend';

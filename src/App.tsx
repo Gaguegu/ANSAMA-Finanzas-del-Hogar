@@ -13,7 +13,7 @@ import {
   getAccountBalanceForMonth
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
-import { reconcileAndCategorizeAll, normalizeConceptForMatching } from './utils/reconciliation';
+import { reconcileAndCategorizeAll, normalizeConceptForMatching, areTransactionsSimilar } from './utils/reconciliation';
 import { Header } from './components/Header';
 import { NetWorthCard } from './components/NetWorthCard';
 import { BankAccountsList } from './components/BankAccountsList';
@@ -178,7 +178,7 @@ export default function App() {
 
   // Update existing transaction (e.g. adjust date to impute payroll to correct month)
   const handleUpdateTransaction = (updatedTx: Transaction) => {
-    const updatedTransactions = appState.transactions.map((t) => (t.id === updatedTx.id ? updatedTx : t));
+    const updatedTransactions = appState.transactions.map((t) => (t.id === updatedTx.id ? { ...updatedTx, isManualCategory: true } : t));
     const newState: AppState = {
       ...appState,
       transactions: updatedTransactions
@@ -193,17 +193,16 @@ export default function App() {
     const targetTx = appState.transactions.find((t) => t.id === transactionId);
     if (!targetTx) return;
 
-    const cleanPattern = normalizeConceptForMatching(targetTx.title);
     let updatedCount = 0;
 
     const updatedTransactions = appState.transactions.map((tx) => {
       if (tx.id === transactionId) {
         updatedCount++;
-        return { ...tx, categoryId: newCategoryId };
+        return { ...tx, categoryId: newCategoryId, isManualCategory: true };
       }
-      if (applyToSimilar && normalizeConceptForMatching(tx.title) === cleanPattern && tx.type === targetTx.type) {
+      if (applyToSimilar && areTransactionsSimilar(tx, targetTx)) {
         updatedCount++;
-        return { ...tx, categoryId: newCategoryId };
+        return { ...tx, categoryId: newCategoryId, isManualCategory: true };
       }
       return tx;
     });
@@ -221,7 +220,7 @@ export default function App() {
     triggerNotification(
       applyToSimilar && updatedCount > 1
         ? `Categoría «${catName}» aplicada a ${updatedCount} movimientos coincidentes en todos los meses.`
-        : `Categoría «${catName}» asignada correctamente.`
+        : `Categoría «${catName}» fijada y protegida para este movimiento.`
     );
   };
 
@@ -233,7 +232,7 @@ export default function App() {
 
     const updatedTransactions = appState.transactions.map((tx) => {
       if (idSet.has(tx.id)) {
-        return { ...tx, categoryId: newCategoryId };
+        return { ...tx, categoryId: newCategoryId, isManualCategory: true };
       }
       return tx;
     });

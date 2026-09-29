@@ -24,7 +24,7 @@ import {
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
-import { normalizeConceptForMatching } from '../utils/reconciliation';
+import { normalizeConceptForMatching, areTransactionsSimilar } from '../utils/reconciliation';
 
 export type PeriodFilterMode = 'all' | 'single' | 'range' | 'multi' | 'custom-dates';
 
@@ -592,20 +592,17 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const handleCategoryChange = (tx: Transaction, newCatId: string) => {
     if (!onUpdateTransactionCategory || tx.categoryId === newCatId) return;
 
-    const cleanPattern = normalizeConceptForMatching(tx.title);
     const similarTxs = transactions.filter(
-      (t) => t.id !== tx.id && normalizeConceptForMatching(t.title) === cleanPattern && t.type === tx.type
+      (t) => t.id !== tx.id && areTransactionsSimilar(tx, t)
     );
 
-    if (similarTxs.length > 0) {
-      setPropagateModalData({
-        tx,
-        newCatId,
-        similarCount: similarTxs.length
-      });
-    } else {
-      onUpdateTransactionCategory(tx.id, newCatId, false);
-    }
+    // Mostramos siempre la ventana de confirmación inteligente para que el usuario pueda decidir
+    // si desea aplicarlo solo a este apunte o a todos los similares
+    setPropagateModalData({
+      tx,
+      newCatId,
+      similarCount: similarTxs.length
+    });
   };
 
   const handleConfirmPropagate = (applyToSimilar: boolean) => {
@@ -2083,9 +2080,15 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               <div className="bg-white p-2.5 rounded-lg border border-zinc-200 font-semibold text-zinc-900 truncate">
                 {propagateModalData.tx.title}
               </div>
-              <p className="text-zinc-600 leading-relaxed">
-                Hemos detectado <strong className="text-zinc-900 font-bold">{propagateModalData.similarCount} movimiento(s) adicionales</strong> con este mismo concepto recurrente en los demás meses de tu histórico.
-              </p>
+              {propagateModalData.similarCount > 0 ? (
+                <p className="text-zinc-600 leading-relaxed">
+                  Hemos detectado <strong className="text-zinc-900 font-bold">{propagateModalData.similarCount} movimiento(s) adicionales</strong> con este mismo concepto recurrente en los demás meses de tu histórico.
+                </p>
+              ) : (
+                <p className="text-zinc-600 leading-relaxed">
+                  ¿Deseas aplicar este cambio solo a este apunte concreto o también guardarlo como regla aprendida para futuros extractos bancarios?
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-zinc-100">
@@ -2109,7 +2112,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Sí, aplicar a todos ({propagateModalData.similarCount + 1})</span>
+                <span>
+                  {propagateModalData.similarCount > 0
+                    ? `Sí, aplicar a todos (${propagateModalData.similarCount + 1})`
+                    : 'Guardar y recordar para el futuro'}
+                </span>
               </button>
             </div>
           </div>

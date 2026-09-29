@@ -113,7 +113,8 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'transferencia propia', 'transferencia interna'
   ],
   'cat-otros-ingresos': [
-    'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso'
+    'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso',
+    'aeat', 'agencia tributaria', 'devolucion irpf', 'devolucion renta', 'hacienda', 'hacienda publica', 'tributaria'
   ],
   'cat-otros-gastos': [
     'operar', 'compra acciones', 'compra etf', 'orden de compra', 'comision', 'custodia',
@@ -282,7 +283,21 @@ export function guessCategory(
     if (aliCat) return aliCat.id;
   }
 
-  // 8. Traspasos entre cuentas propias y transferencias (NO son nóminas, alquileres ni hipotecas)
+  // 7.5. Devolución de Hacienda / AEAT / IRPF -> Otros Ingresos (ingreso extraordinario público)
+  if (
+    amount > 0 &&
+    (normText.includes('aeat') ||
+     normText.includes('hacienda') ||
+     normText.includes('tributaria') ||
+     normText.includes('devolucion irpf') ||
+     normText.includes('devolucion renta') ||
+     normText.includes('devolucion tributaria'))
+  ) {
+    const otrosIngCat = categories.find(c => c.id === 'cat-otros-ingresos' || c.name.toLowerCase().includes('otros ingresos'));
+    if (otrosIngCat) return otrosIngCat.id;
+  }
+
+  // 8. Traspasos entre cuentas propias y transferencias (NO son nóminas, alquileres, hipotecas ni Hacienda)
   if (
     normText.includes('traspaso') ||
     normText.includes('transferencia realizada') ||
@@ -294,7 +309,14 @@ export function guessCategory(
     normText.includes('entre mis cuentas') ||
     normText.includes('imposicion') ||
     normText.includes('constitucion') ||
-    (normText.includes('transferencia') && !normText.includes('nomina') && !normText.includes('sueldo') && !normText.includes('alquiler') && !normText.includes('arrendamiento'))
+    (normText.includes('transferencia') &&
+      !normText.includes('nomina') &&
+      !normText.includes('sueldo') &&
+      !normText.includes('alquiler') &&
+      !normText.includes('arrendamiento') &&
+      !normText.includes('aeat') &&
+      !normText.includes('hacienda') &&
+      !normText.includes('tributaria'))
   ) {
     if (amount >= 0) {
       // Ingreso: Traspaso entre Cuentas o Bizum & Transferencias

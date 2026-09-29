@@ -221,16 +221,24 @@ export function loadAppState(): AppState {
       // 5. Corregir y afinar categorías de transacciones históricas según apuntes y patrones de BBVA/Bancos
       let hasRecategorized = false;
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
+        // Respetar siempre excepciones manuales fijadas por el usuario
+        if (tx.isManualCategory) {
+          return tx;
+        }
+
         const titleNorm = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         let newCategoryId = tx.categoryId;
 
-        // A. Liquidación de cuentas son intereses/rendimientos (NUNCA nóminas ni hipotecas)
+        // A. Liquidación de cuentas son intereses/rendimientos (NUNCA nóminas, alquileres ni hipotecas)
         if (
-          titleNorm.includes('liquidacion') ||
+          titleNorm.includes('liquidacion cuenta') ||
+          titleNorm.includes('liquidacion de cuenta') ||
+          titleNorm.includes('liquidacion contrato') ||
           titleNorm.includes('intereses acreedores') ||
           titleNorm.includes('abono intereses') ||
           titleNorm.includes('rendimiento cuenta') ||
-          titleNorm.includes('retribucion cuenta')
+          titleNorm.includes('retribucion cuenta') ||
+          (titleNorm.includes('liquidacion') && !titleNorm.includes('alquiler') && !titleNorm.includes('arrendamiento'))
         ) {
           if (tx.categoryId === 'cat-nomina' || tx.categoryId === 'cat-vivienda') {
             newCategoryId = 'cat-rendimientos';
@@ -290,11 +298,14 @@ export function loadAppState(): AppState {
           newCategoryId = 'cat-seguros';
         }
 
-        // F. Comunidad de Propietarios (Parque Chapín, Residencial Chapín, etc.)
+        // F. Comunidad de Propietarios (Parque Chapín, Valparaíso, Residencial Chapín, etc.)
         else if (
           titleNorm.includes('parque chapin') ||
           titleNorm.includes('chapin ii') ||
           titleNorm.includes('chapin') ||
+          titleNorm.includes('valparaiso') ||
+          titleNorm.includes('c.p.') ||
+          titleNorm.includes('c p valparaiso') ||
           titleNorm.includes('comunidad propietarios') ||
           titleNorm.includes('cuota comunidad')
         ) {
@@ -340,51 +351,48 @@ export function loadAppState(): AppState {
           }
         }
 
-        // J. Ingresos con transferencia o traspaso erróneamente puestos en Nómina
-        if (tx.categoryId === 'cat-nomina') {
-          const isRealSalary =
-            titleNorm.includes('nomina') ||
-            titleNorm.includes('sueldo') ||
-            titleNorm.includes('haberes') ||
-            titleNorm.includes('pension') ||
-            titleNorm.includes('sepe') ||
-            titleNorm.includes('alquiler') ||
-            titleNorm.includes('arrendamiento') ||
-            (Math.abs(tx.amount - 481.80) < 0.05 && tx.type === 'income');
+        // J. Ingresos de liquidación de alquiler en BBVA (años 2025 y 2026):
+        // En BBVA, las transferencias mensuales recibidas son la liquidación periódica del alquiler
+        // Deben fijarse permanentemente en Nómina & Sueldo con isManualCategory: true
+        const isBBVAAccount = (tx.accountId || '').toLowerCase().includes('bbva');
+        const noteNorm = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-          if (!isRealSalary && (titleNorm.includes('transferencia') || titleNorm.includes('traspaso') || titleNorm.includes('bizum'))) {
-            newCategoryId = 'cat-bizum-ingreso';
-          }
-        }
-
-        // K. Ingresos regulares mensuales de liquidación de alquiler (BBVA u otras cuentas) -> Nómina & Sueldo
-        if (tx.type === 'income') {
-          const noteNorm = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const isRentalIncome =
+        const isRentalIncome =
+          tx.type === 'income' && (
             titleNorm.includes('alquiler') ||
             titleNorm.includes('arrendamiento') ||
             noteNorm.includes('alquiler') ||
-            (Math.abs(tx.amount - 481.80) < 0.05 && (titleNorm.includes('transferencia') || tx.accountId.includes('bbva')));
+            (isBBVAAccount && (
+              titleNorm.includes('transferencia recibida') ||
+              titleNorm.includes('transferencia') ||
+              titleNorm.includes('abono') ||
+              (tx.amount >= 300 && tx.amount <= 750)
+            ))
+          );
 
-          if (isRentalIncome) {
-            newCategoryId = 'cat-nomina';
-          }
+        if (isRentalIncome) {
+          newCategoryId = 'cat-nomina';
         }
 
-        // Enriquecer el título para mostrar claramente el concepto si antes solo decía "Transferencia recibida"
+        // Enriquecer el título para mostrar claramente el concepto de liquidación de alquiler
         let finalTitle = tx.title;
         if (
-          tx.type === 'income' &&
-          (Math.abs(tx.amount - 481.80) < 0.05 || titleNorm.includes('alquiler')) &&
-          (titleNorm === 'transferencia recibida' || titleNorm === 'transferencia')
+          isRentalIncome &&
+          (titleNorm === 'transferencia recibida' || titleNorm === 'transferencia' || !titleNorm.includes('alquiler'))
         ) {
           finalTitle = 'Transferencia recibida - Liquidación alquiler';
         }
 
-        if (newCategoryId !== tx.categoryId || finalTitle !== tx.title) {
+        // Si es liquidación de alquiler, protegerlo como categoría manual fija para que nunca se desconfigure
+        let finalManual = tx.isManualCategory;
+        if (isRentalIncome) {
+          finalManual = true;
+        }
+
+        if (newCategoryId !== tx.categoryId || finalTitle !== tx.title || finalManual !== tx.isManualCategory) {
           hasRecategorized = true;
           hasRepairedTransactions = true;
-          return { ...tx, categoryId: newCategoryId, title: finalTitle };
+          return { ...tx, categoryId: newCategoryId, title: finalTitle, isManualCategory: finalManual };
         }
         return tx;
       });

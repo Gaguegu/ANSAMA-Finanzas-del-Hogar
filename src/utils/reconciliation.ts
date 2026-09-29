@@ -2,8 +2,8 @@ import { Transaction, BankAccount, TransactionCategory } from '../types';
 
 /**
  * Normaliza un concepto eliminando fechas, referencias numéricas variables,
- * asteriscos de tarjetas y espacios redundantes para poder comparar apuntes
- * idénticos entre diferentes meses (ej: "RECIBO SEPA VISALIA DOMESTICA 01/2025" -> "recibo sepa visalia domestica").
+ * identificadores de recibos (Openbank, Santander, BBVA) y espacios redundantes
+ * para poder comparar apuntes idénticos entre diferentes meses (ej: "RECIBO C.P. VALPARAISO Nº RECIBO ...").
  */
 export function normalizeConceptForMatching(title: string): string {
   if (!title) return '';
@@ -15,26 +15,68 @@ export function normalizeConceptForMatching(title: string): string {
     .trim();
 
   // 1. Quitar fechas en formatos DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD o DD.MM.YY
-  norm = norm.replace(/\b\d{1,2}[-/. ]\d{1,2}[-/. ]\d{2,4}\b/g, '');
-  norm = norm.replace(/\b\d{4}[-/. ]\d{1,2}[-/. ]\d{1,2}\b/g, '');
+  norm = norm.replace(/\b\d{1,2}[-/. ]\d{1,2}[-/. ]\d{2,4}\b/g, ' ');
+  norm = norm.replace(/\b\d{4}[-/. ]\d{1,2}[-/. ]\d{1,2}\b/g, ' ');
 
   // 2. Quitar meses con año (ej: "ene 25", "febrero 2025", "marzo 2026", "02/25", "03/2025")
-  norm = norm.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s*(del?)?\s*\d{2,4}\b/g, '');
-  norm = norm.replace(/\b(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[./\s-]*\d{2,4}\b/g, '');
-  norm = norm.replace(/\b\d{1,2}\/\d{2,4}\b/g, '');
+  norm = norm.replace(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s*(del?)?\s*\d{2,4}\b/g, ' ');
+  norm = norm.replace(/\b(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[./\s-]*\d{2,4}\b/g, ' ');
+  norm = norm.replace(/\b\d{1,2}\/\d{2,4}\b/g, ' ');
 
   // 3. Quitar códigos de tarjeta o máscaras (ej: "•••• 1234", "**** 4321", "tarjeta 9942")
-  norm = norm.replace(/[•*]{2,}\s*\d+/g, '');
-  norm = norm.replace(/\b(tarj|tarjeta|card)\s*\d+\b/g, '');
+  norm = norm.replace(/[•*]{2,}\s*\d+/g, ' ');
+  norm = norm.replace(/\b(tarj|tarjeta|card)\s*\d+\b/g, ' ');
 
-  // 4. Quitar referencias o identificadores alfanuméricos largos (ej: "ref: 12345678", "id: 987654")
-  norm = norm.replace(/\b(ref|fra|factura|recibo|nº|num|id|operacion)[:\s#]*[a-z0-9-]{5,}\b/g, '');
+  // 4. Quitar coletilla bancaria de recibos de Openbank/Santander/BBVA (Nº RECIBO ..., REF. MANDATO ...)
+  norm = norm.replace(/\b(n[ºo]|no|num|numero)?\s*recibo\s+[\w\s.-]{6,}(ref\.?\s*mandato.*$|$)/gi, ' ');
+  norm = norm.replace(/\bref\.?\s*mandato\s+[\w\s.-]+/gi, ' ');
+  norm = norm.replace(/\bmandato\s+[\w\s.-]+/gi, ' ');
 
-  // 5. Quitar caracteres especiales residuales y colapsar espacios
+  // 5. Quitar referencias o identificadores alfanuméricos largos (ej: "ref: 12345678", "id: 987654")
+  norm = norm.replace(/\b(ref|fra|factura|recibo|nº|no|num|id|operacion)[:\s#]*[a-z0-9-]{4,}\b/g, ' ');
+
+  // 6. Quitar cadenas puramente numéricas de 3 o más dígitos (ej: "0073 0100 755")
+  norm = norm.replace(/\b\d{3,}\b/g, ' ');
+
+  // 7. Quitar prefijo genérico de operación si queda contenido significativo
+  const strippedPrefix = norm.replace(/^(recibo\s+sepa|recibo|adeudo\s+sepa|adeudo|cargo\s+en\s+cuenta|cargo|abono)\s+/gi, '').trim();
+  if (strippedPrefix.length >= 3) {
+    norm = strippedPrefix;
+  }
+
+  // 8. Quitar caracteres especiales residuales y colapsar espacios
   norm = norm.replace(/[^a-z0-9\s]/g, ' ');
   norm = norm.replace(/\s+/g, ' ').trim();
 
   return norm;
+}
+
+/**
+ * Determina de forma inteligente si dos transacciones corresponden al mismo concepto recurrente,
+ * teniendo en cuenta variaciones mensuales de hashes, números de recibo o referencias bancarias.
+ */
+export function areTransactionsSimilar(t1: Transaction, t2: Transaction): boolean {
+  if (t1.type !== t2.type) return false;
+  const p1 = normalizeConceptForMatching(t1.title);
+  const p2 = normalizeConceptForMatching(t2.title);
+  if (!p1 || !p2) return false;
+  if (p1 === p2) return true;
+
+  // Si uno incluye al otro (ej: "c p valparaiso" vs "c p valparaiso fase 1")
+  if (p1.length >= 4 && p2.length >= 4) {
+    if (p1.includes(p2) || p2.includes(p1)) return true;
+  }
+
+  // Coincidencia por palabras clave identificativas (longitud >= 4)
+  const words1 = p1.split(/\s+/).filter(w => w.length >= 4);
+  const words2 = p2.split(/\s+/).filter(w => w.length >= 4);
+  if (words1.length > 0 && words2.length > 0) {
+    const common = words1.filter(w => words2.includes(w));
+    if (common.length >= Math.min(words1.length, words2.length)) return true;
+    if (common.length >= 2) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -252,6 +294,11 @@ export function reconcileAndCategorizeAll(
 
   // 2. Procesar cada transacción
   const updatedTransactions = transactions.map((tx) => {
+    // Si el usuario fijó manualmente la categoría como excepción personal, RESPETARLA SIEMPRE
+    if (tx.isManualCategory) {
+      return tx;
+    }
+
     let modified = false;
     let newCategoryId = tx.categoryId;
     let noteAddition = '';
@@ -290,11 +337,18 @@ export function reconcileAndCategorizeAll(
     if (tx.type === 'income') {
       const titleClean = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const noteClean = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const isBBVA = (tx.accountId || '').toLowerCase().includes('bbva');
+
       const isRental =
         titleClean.includes('alquiler') ||
         titleClean.includes('arrendamiento') ||
         noteClean.includes('alquiler') ||
-        (Math.abs(tx.amount - 481.80) < 0.05 && (titleClean.includes('transferencia') || tx.accountId.includes('bbva')));
+        (isBBVA && (
+          titleClean.includes('transferencia recibida') ||
+          titleClean.includes('transferencia') ||
+          titleClean.includes('abono') ||
+          (tx.amount >= 300 && tx.amount <= 750)
+        ));
 
       if (isRental) {
         const nomCat = categories.find((c) => c.id === 'cat-nomina' || c.name.toLowerCase().includes('nomina'));
@@ -302,7 +356,7 @@ export function reconcileAndCategorizeAll(
           newCategoryId = nomCat.id;
           modified = true;
           patternsLearned++;
-          details.push(`«${tx.title}» (${tx.date}): Asignado a «${nomCat.name}» [Liquidación alquiler recurrente]`);
+          details.push(`«${tx.title}» (${tx.date}): Asignado a «${nomCat.name}» [Liquidación alquiler recurrente BBVA]`);
         }
       }
     }
