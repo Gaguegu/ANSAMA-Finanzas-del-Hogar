@@ -352,8 +352,8 @@ export function loadAppState(): AppState {
         }
 
         // J. Ingresos de liquidación de alquiler en BBVA (años 2025 y 2026):
-        // En BBVA, las transferencias mensuales recibidas son la liquidación periódica del alquiler
-        // Deben fijarse permanentemente en Nómina & Sueldo con isManualCategory: true
+        // En BBVA, las transferencias mensuales recibidas de ~390€ a ~510€ son la liquidación periódica del alquiler
+        // Los importes grandes de +2.170,00 € son nóminas/traspasos principales y no alquiler
         const isBBVAAccount = (tx.accountId || '').toLowerCase().includes('bbva');
         const noteNorm = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -362,11 +362,9 @@ export function loadAppState(): AppState {
             titleNorm.includes('alquiler') ||
             titleNorm.includes('arrendamiento') ||
             noteNorm.includes('alquiler') ||
-            (isBBVAAccount && (
-              titleNorm.includes('transferencia recibida') ||
+            (isBBVAAccount && tx.amount >= 300 && tx.amount <= 750 && (
               titleNorm.includes('transferencia') ||
-              titleNorm.includes('abono') ||
-              (tx.amount >= 300 && tx.amount <= 750)
+              titleNorm.includes('abono')
             ))
           );
 
@@ -374,16 +372,19 @@ export function loadAppState(): AppState {
           newCategoryId = 'cat-nomina';
         }
 
-        // Enriquecer el título para mostrar claramente el concepto de liquidación de alquiler
+        // Enriquecer el título para mostrar claramente el concepto de liquidación de alquiler solo para los alquileres reales
         let finalTitle = tx.title;
         if (
           isRentalIncome &&
           (titleNorm === 'transferencia recibida' || titleNorm === 'transferencia' || !titleNorm.includes('alquiler'))
         ) {
           finalTitle = 'Transferencia recibida - Liquidación alquiler';
+        } else if (tx.amount > 1000 && (titleNorm.includes('liquidacion alquiler') || titleNorm.includes('alquiler'))) {
+          // Limpiar título de los importes grandes que no son alquiler (ej: 2.170 €)
+          finalTitle = tx.title.replace(/\s*[-–]\s*Liquidaci[oó]n alquiler/gi, '').trim();
         }
 
-        // Si es liquidación de alquiler, protegerlo como categoría manual fija para que nunca se desconfigure
+        // Si es liquidación de alquiler, protegerlo como categoría fija
         let finalManual = tx.isManualCategory;
         if (isRentalIncome) {
           finalManual = true;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { APP_VERSION } from '../version';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -7,9 +8,6 @@ interface BeforeInstallPromptEvent extends Event {
 
 // Global flag to prevent double-reloading loops across hook instances or event listeners
 let isGlobalReloading = false;
-
-// Version information embedded in build
-const CURRENT_APP_VERSION = '2.5.0';
 
 export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -341,9 +339,14 @@ export function usePWA() {
       if (res.ok) {
         const data = await res.json();
         const lastKnownBuildTime = parseInt(localStorage.getItem('ansama_app_build_time') || '0', 10);
-        if (data.buildTime && lastKnownBuildTime && data.buildTime > lastKnownBuildTime) {
+        if (
+          (data.version && data.version !== APP_VERSION) ||
+          (data.buildTime && data.buildTime > lastKnownBuildTime)
+        ) {
           updateDetected = true;
-          localStorage.setItem('ansama_app_build_time', String(data.buildTime));
+          if (data.buildTime) {
+            localStorage.setItem('ansama_app_build_time', String(data.buildTime));
+          }
           notifyUpdateFound();
         }
       }
@@ -351,14 +354,16 @@ export function usePWA() {
       // quiet
     }
 
-    // Finished checking
+    // Finished checking: si el usuario pulsó manualmente "Actualizar", aplicar o recargar
     setTimeout(() => {
       setIsCheckingUpdate(false);
-      if (!updateDetected && !hasNewUpdate) {
-        setUpdateFeedback('Tu aplicación ya está en la versión más reciente (v2.5).');
-        setTimeout(() => setUpdateFeedback(null), 3500);
+      if (updateDetected || hasNewUpdate) {
+        applyUpdate();
+      } else {
+        // Forzar recarga limpia para asegurar la última versión en pantalla
+        window.location.reload();
       }
-    }, 700);
+    }, 500);
   }, [swRegistration, hasNewUpdate, applyUpdate, notifyUpdateFound]);
 
   return {

@@ -343,11 +343,9 @@ export function reconcileAndCategorizeAll(
         titleClean.includes('alquiler') ||
         titleClean.includes('arrendamiento') ||
         noteClean.includes('alquiler') ||
-        (isBBVA && (
-          titleClean.includes('transferencia recibida') ||
+        (isBBVA && tx.amount >= 300 && tx.amount <= 750 && (
           titleClean.includes('transferencia') ||
-          titleClean.includes('abono') ||
-          (tx.amount >= 300 && tx.amount <= 750)
+          titleClean.includes('abono')
         ));
 
       if (isRental) {
