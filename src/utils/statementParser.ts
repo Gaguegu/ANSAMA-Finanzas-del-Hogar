@@ -706,15 +706,22 @@ export function extractRowsWithMapping(
     // Extraer importe
     let signedAmount: number | null = null;
 
-    if (incomeIdx >= 0 || expenseIdx >= 0) {
-      const incVal = incomeIdx >= 0 ? parseAmountNumber(rawRowArray[incomeIdx]) : null;
-      const expVal = expenseIdx >= 0 ? parseAmountNumber(rawRowArray[expenseIdx]) : null;
+    if (incomeIdx >= 0 && expenseIdx >= 0) {
+      const incVal = parseAmountNumber(rawRowArray[incomeIdx]);
+      const expVal = parseAmountNumber(rawRowArray[expenseIdx]);
 
       if (incVal !== null && incVal !== 0) {
         signedAmount = Math.abs(incVal);
       } else if (expVal !== null && expVal !== 0) {
         signedAmount = -Math.abs(expVal);
       }
+    } else if (amountIdx >= 0) {
+      signedAmount = parseAmountNumber(rawRowArray[amountIdx]);
+    } else if (incomeIdx >= 0) {
+      signedAmount = parseAmountNumber(rawRowArray[incomeIdx]);
+    } else if (expenseIdx >= 0) {
+      const expVal = parseAmountNumber(rawRowArray[expenseIdx]);
+      signedAmount = expVal !== null ? -Math.abs(expVal) : null;
     }
 
     if (signedAmount === null && amountIdx >= 0) {
@@ -749,8 +756,8 @@ export function extractRowsWithMapping(
 
     let type: 'income' | 'expense' = signedAmount >= 0 ? 'income' : 'expense';
 
-    // Regla semántica bancaria: Si la columna no traía signo negativo pero el concepto indica compra o gasto
-    // (muy frecuente en extractos de Trade Republic donde 'Operar' es compra pero el número viene sin signo)
+    // Regla semántica bancaria: Si la columna no traía signo negativo pero el concepto indica claramente una salida/gasto
+    // (muy frecuente en extractos de Trade Republic o bancos donde los cargos/transferencias se exportan en valor absoluto)
     if (signedAmount > 0 && !(incomeIdx >= 0 && expenseIdx >= 0)) {
       const lowerTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const isExplicitExpense =
@@ -767,14 +774,62 @@ export function extractRowsWithMapping(
         lowerTitle.includes('transferencia emitida') ||
         lowerTitle.includes('transferencia enviada') ||
         lowerTitle.includes('transferencia ordenada') ||
+        lowerTitle.includes('a favor de') ||
+        lowerTitle.includes('a favor') ||
+        lowerTitle.includes('transferencia a ') ||
+        lowerTitle.includes('transf. a') ||
+        lowerTitle.includes('transferencia inmediata a') ||
+        lowerTitle.includes('transf. inmediata') ||
         lowerTitle.includes('traspaso a ') ||
         lowerTitle.includes('traspaso hacia') ||
+        lowerTitle.includes('traspaso enviado') ||
+        lowerTitle.includes('traspaso emitido') ||
+        lowerTitle.includes('envio bizum') ||
+        lowerTitle.includes('bizum enviado') ||
+        lowerTitle.includes('bizum emitido') ||
+        lowerTitle.includes('pago bizum') ||
         lowerTitle.includes('ret. efectivo') ||
         lowerTitle.includes('cajero') ||
-        lowerTitle.includes('adeudo');
+        lowerTitle.includes('adeudo') ||
+        lowerTitle.includes('recibo') ||
+        lowerTitle.includes('cuota');
 
-      if (isExplicitExpense && !lowerTitle.includes('venta') && !lowerTitle.includes('interes') && !lowerTitle.includes('dividendo')) {
+      if (
+        isExplicitExpense && 
+        !lowerTitle.includes('venta') && 
+        !lowerTitle.includes('interes') && 
+        !lowerTitle.includes('dividendo') &&
+        !lowerTitle.includes('devolucion') &&
+        !lowerTitle.includes('anulacion')
+      ) {
         type = 'expense';
+      }
+    } else if (signedAmount < 0 && !(incomeIdx >= 0 && expenseIdx >= 0)) {
+      // Si la columna traía signo negativo por error pero el concepto es indiscutiblemente un abono / ingreso
+      const lowerTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const isExplicitIncome =
+        lowerTitle.includes('dividendo') ||
+        lowerTitle.includes('dividend') ||
+        lowerTitle.includes('saveback') ||
+        lowerTitle.includes('interes') ||
+        lowerTitle.includes('rendimiento') ||
+        lowerTitle.includes('rentabilidad') ||
+        lowerTitle.includes('abono de nomina') ||
+        lowerTitle.includes('abono nomina') ||
+        lowerTitle.includes('transferencia de ') ||
+        lowerTitle.includes('transferencia recibida') ||
+        lowerTitle.includes('traspaso desde') ||
+        lowerTitle.includes('traspaso entrante') ||
+        lowerTitle.includes('bizum recibido');
+
+      if (
+        isExplicitIncome && 
+        !lowerTitle.includes('cargo') && 
+        !lowerTitle.includes('comision') && 
+        !lowerTitle.includes('retencion') &&
+        !lowerTitle.includes('adeudo')
+      ) {
+        type = 'income';
       }
     }
 

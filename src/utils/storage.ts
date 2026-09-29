@@ -77,7 +77,7 @@ export function loadAppState(): AppState {
           }
         }
 
-        // Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo):
+        // Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo, transferencia a favor):
         if (tx.type === 'income') {
           const isActuallyExpense =
             titleLower.includes('imposicion') ||
@@ -87,20 +87,35 @@ export function loadAppState(): AppState {
             titleLower.includes('deposito a plazo') ||
             titleLower.includes('depósito a plazo') ||
             titleLower.includes('plazo fijo') ||
+            titleLower.includes('a favor de') ||
+            titleLower.includes('a favor') ||
             titleLower.includes('traspaso a ') ||
             titleLower.includes('traspaso hacia') ||
+            titleLower.includes('traspaso enviado') ||
+            titleLower.includes('traspaso emitido') ||
             titleLower.includes('transferencia a ') ||
+            titleLower.includes('transferencia a') ||
+            titleLower.includes('transf. a') ||
+            titleLower.includes('transferencia inmediata a') ||
+            titleLower.includes('transf. inmediata') ||
+            titleLower.includes('transferencia enviada') ||
+            titleLower.includes('transferencia emitida') ||
             titleLower.includes('transferencia realizada') ||
             titleLower.includes('transf. realizada') ||
             titleLower.includes('transferencia ordenada') ||
-            titleLower.includes('transferencia emitida') ||
-            titleLower.includes('transferencia enviada') ||
+            titleLower.includes('envio bizum') ||
+            titleLower.includes('bizum enviado') ||
+            titleLower.includes('bizum emitido') ||
+            titleLower.includes('pago bizum') ||
+            titleLower.includes('pago a favor') ||
+            titleLower.includes('abono a favor') ||
             titleLower.includes('cargo') ||
             titleLower.includes('adeudo') ||
             titleLower.includes('recibo') ||
             titleLower.includes('compra') ||
             titleLower.includes('tarjeta') ||
             titleLower.includes('pago') ||
+            titleLower.includes('cuota') ||
             titleLower.includes('comision') ||
             titleLower.includes('comisión') ||
             titleLower.includes('retencion') ||
@@ -117,7 +132,13 @@ export function loadAppState(): AppState {
             !titleLower.includes('devolución')
           ) {
             hasRepairedTransactions = true;
-            return { ...tx, type: 'expense' };
+            let newCat = tx.categoryId;
+            if (tx.categoryId === 'cat-traspaso-ingreso') {
+              newCat = 'cat-transferencias-gasto';
+            } else if (tx.categoryId === 'cat-otros-ingresos') {
+              newCat = 'cat-otros-gastos';
+            }
+            return { ...tx, type: 'expense', categoryId: newCat };
           }
         }
 

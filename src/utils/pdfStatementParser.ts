@@ -642,11 +642,11 @@ export async function parsePdfStatementFile(
       titleNorm.includes('gutschrift') ||
       titleNorm.includes('pay-in') ||
       titleNorm.includes('pay in') ||
-      (titleNorm.includes('transferencia') && !titleNorm.includes('transferencia enviada') && !titleNorm.includes('transferencia emitida') && !titleNorm.includes('saliente')) ||
-      (titleNorm.includes('transfer') && !titleNorm.includes('transfer out') && !titleNorm.includes('sent')) ||
       titleNorm.includes('transferencia recibida') ||
+      titleNorm.includes('transferencia de ') ||
       titleNorm.includes('traspaso entrante') ||
-      titleNorm.includes('traspaso desde');
+      titleNorm.includes('traspaso desde') ||
+      titleNorm.includes('bizum recibido');
 
     const isExplicitExpense =
       titleNorm.includes('compra') || // Compra de acciones / ETF saca efectivo
@@ -673,7 +673,21 @@ export async function parsePdfStatementFile(
       titleNorm.includes('retencion') ||
       titleNorm.includes('steuer') ||
       titleNorm.includes('transferencia enviada') ||
-      titleNorm.includes('traspaso hacia');
+      titleNorm.includes('transferencia emitida') ||
+      titleNorm.includes('transferencia realizada') ||
+      titleNorm.includes('transferencia ordenada') ||
+      titleNorm.includes('a favor de') ||
+      titleNorm.includes('a favor') ||
+      titleNorm.includes('transferencia a ') ||
+      titleNorm.includes('transf. a') ||
+      titleNorm.includes('transferencia inmediata a') ||
+      titleNorm.includes('transf. inmediata') ||
+      titleNorm.includes('traspaso hacia') ||
+      titleNorm.includes('traspaso a ') ||
+      titleNorm.includes('traspaso enviado') ||
+      titleNorm.includes('traspaso emitido') ||
+      titleNorm.includes('envio bizum') ||
+      titleNorm.includes('bizum enviado');
 
     if (numericItems.length >= 2) {
       // Habitualmente: Penúltimo = Importe de operación, Último = Saldo posterior
