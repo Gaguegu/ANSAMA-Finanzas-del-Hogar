@@ -856,31 +856,25 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                   </th>
                 ))}
                 
-                {tableMetric === 'balance' ? (
-                  <>
-                    <th 
-                      className="px-3.5 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
-                      title="Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)"
-                    >
-                      Saldo Medio
-                    </th>
-                    <th 
-                      className="px-4 py-3 text-right bg-emerald-100 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
-                      title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
-                    >
-                      Var. Anual
-                    </th>
-                  </>
-                ) : (
-                  <th 
-                    colSpan={2}
-                    className="px-4 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
-                  >
-                    {tableMetric === 'income' && `Total Ingresos ${selectedYear}`}
-                    {tableMetric === 'expense' && `Total Gastos ${selectedYear}`}
-                    {tableMetric === 'net' && `Balance Neto Anual ${selectedYear}`}
-                  </th>
-                )}
+                {/* Bloque Resumen Anual: TOTAL, SALDO MEDIO, VAR. ANUAL */}
+                <th 
+                  className="px-3.5 py-3 text-right bg-emerald-100/95 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
+                  title={tableMetric === 'balance' ? `Saldo total al cierre del año ${selectedYear} para cada entidad o banco` : `Total acumulado en el año ${selectedYear}`}
+                >
+                  TOTAL
+                </th>
+                <th 
+                  className="px-3.5 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
+                  title={tableMetric === 'balance' ? "Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)" : "Media mensual generada en el año"}
+                >
+                  {tableMetric === 'balance' ? 'Saldo Medio' : 'Media Mensual'}
+                </th>
+                <th 
+                  className="px-4 py-3 text-right bg-emerald-100 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
+                  title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
+                >
+                  Var. Anual
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
@@ -958,10 +952,13 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                         </td>
                       ))}
 
-                      {/* Summary Columns: Saldo Medio y Var. Anual resaltados */}
+                      {/* Summary Columns: TOTAL, Saldo Medio y Var. Anual */}
                       {tableMetric === 'balance' ? (
                         <>
-                          <td className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-50/70 border-l-2 border-emerald-500/30 font-feature-settings-tnum">
+                          <td className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-100/50 border-l-2 border-emerald-500/30 font-feature-settings-tnum text-[13px]">
+                            {formatCurrency(entity.endBalance)}
+                          </td>
+                          <td className="px-3.5 py-3.5 text-right font-black text-zinc-800 bg-emerald-50/70 border-l border-emerald-100 font-feature-settings-tnum">
                             {formatCurrency(entity.averageBalance)}
                           </td>
                           <td className={`px-4 py-3.5 text-right font-black bg-emerald-50/90 border-l border-emerald-100 font-feature-settings-tnum ${
@@ -976,19 +973,40 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                           </td>
                         </>
                       ) : (
-                        <td colSpan={2} className="px-4 py-3.5 text-right font-black border-l-2 border-emerald-500/30 bg-emerald-50/70 font-feature-settings-tnum text-sm">
-                          {tableMetric === 'income' && (
-                            <span className="text-emerald-800">+{formatCurrency(entity.totalYearAccIncome)}</span>
-                          )}
-                          {tableMetric === 'expense' && (
-                            <span className="text-rose-600">-{formatCurrency(entity.totalYearAccExpense)}</span>
-                          )}
-                          {tableMetric === 'net' && (
-                            <span className={entity.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
-                              {entity.totalYearAccNet >= 0 ? `+${formatCurrency(entity.totalYearAccNet)}` : formatCurrency(entity.totalYearAccNet)}
-                            </span>
-                          )}
-                        </td>
+                        <>
+                          <td className="px-3.5 py-3.5 text-right font-black border-l-2 border-emerald-500/30 bg-emerald-100/50 font-feature-settings-tnum text-[13px]">
+                            {tableMetric === 'income' && (
+                              <span className="text-emerald-800">+{formatCurrency(entity.totalYearAccIncome)}</span>
+                            )}
+                            {tableMetric === 'expense' && (
+                              <span className="text-rose-600">-{formatCurrency(entity.totalYearAccExpense)}</span>
+                            )}
+                            {tableMetric === 'net' && (
+                              <span className={entity.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                                {entity.totalYearAccNet >= 0 ? `+${formatCurrency(entity.totalYearAccNet)}` : formatCurrency(entity.totalYearAccNet)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-3.5 text-right font-bold text-zinc-700 bg-emerald-50/60 border-l border-emerald-100 font-feature-settings-tnum">
+                            {tableMetric === 'income' && `+${formatCurrency(Math.round((entity.totalYearAccIncome / 12) * 100) / 100)}`}
+                            {tableMetric === 'expense' && `-${formatCurrency(Math.round((entity.totalYearAccExpense / 12) * 100) / 100)}`}
+                            {tableMetric === 'net' && (
+                              <span className={entity.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                                {entity.totalYearAccNet >= 0 ? '+' : ''}{formatCurrency(Math.round((entity.totalYearAccNet / 12) * 100) / 100)}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`px-4 py-3.5 text-right font-black bg-emerald-50/90 border-l border-emerald-100 font-feature-settings-tnum ${
+                            entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                          }`}>
+                            <div className="flex flex-col items-end">
+                              <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
+                              <span className={`text-[10px] font-bold ${entity.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-500'}`}>
+                                {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
+                              </span>
+                            </div>
+                          </td>
+                        </>
                       )}
                     </tr>
 
@@ -1056,7 +1074,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
                           {tableMetric === 'balance' ? (
                             <>
-                              <td className="px-3.5 py-2.5 text-right font-bold text-emerald-900 bg-emerald-50/40 border-l-2 border-emerald-500/20 font-feature-settings-tnum">
+                              <td className="px-3.5 py-2.5 text-right font-black text-emerald-950 bg-emerald-50/60 border-l-2 border-emerald-500/20 font-feature-settings-tnum">
+                                {formatCurrency(acc.endBalance)}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right font-bold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
                                 {formatCurrency(acc.averageBalance)}
                               </td>
                               <td className={`px-4 py-2.5 text-right font-bold bg-emerald-50/60 border-l border-emerald-100 font-feature-settings-tnum ${
@@ -1066,19 +1087,35 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                               </td>
                             </>
                           ) : (
-                            <td colSpan={2} className="px-4 py-2.5 text-right font-extrabold border-l-2 border-emerald-500/20 bg-emerald-50/40 font-feature-settings-tnum">
-                              {tableMetric === 'income' && (
-                                <span className="text-emerald-700">+{formatCurrency(acc.totalYearAccIncome)}</span>
-                              )}
-                              {tableMetric === 'expense' && (
-                                <span className="text-rose-600">-{formatCurrency(acc.totalYearAccExpense)}</span>
-                              )}
-                              {tableMetric === 'net' && (
-                                <span className={acc.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
-                                  {acc.totalYearAccNet >= 0 ? `+${formatCurrency(acc.totalYearAccNet)}` : formatCurrency(acc.totalYearAccNet)}
-                                </span>
-                              )}
-                            </td>
+                            <>
+                              <td className="px-3.5 py-2.5 text-right font-extrabold border-l-2 border-emerald-500/20 bg-emerald-50/60 font-feature-settings-tnum">
+                                {tableMetric === 'income' && (
+                                  <span className="text-emerald-700">+{formatCurrency(acc.totalYearAccIncome)}</span>
+                                )}
+                                {tableMetric === 'expense' && (
+                                  <span className="text-rose-600">-{formatCurrency(acc.totalYearAccExpense)}</span>
+                                )}
+                                {tableMetric === 'net' && (
+                                  <span className={acc.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                                    {acc.totalYearAccNet >= 0 ? `+${formatCurrency(acc.totalYearAccNet)}` : formatCurrency(acc.totalYearAccNet)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-right font-semibold text-zinc-500 border-l border-zinc-200 font-feature-settings-tnum">
+                                {tableMetric === 'income' && `+${formatCurrency(Math.round((acc.totalYearAccIncome / 12) * 100) / 100)}`}
+                                {tableMetric === 'expense' && `-${formatCurrency(Math.round((acc.totalYearAccExpense / 12) * 100) / 100)}`}
+                                {tableMetric === 'net' && (
+                                  <span className={acc.totalYearAccNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                                    {acc.totalYearAccNet >= 0 ? '+' : ''}{formatCurrency(Math.round((acc.totalYearAccNet / 12) * 100) / 100)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className={`px-4 py-2.5 text-right font-bold border-l border-emerald-100 font-feature-settings-tnum ${
+                                acc.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+                              }`}>
+                                {acc.yearlyDiff >= 0 ? `+${formatCurrency(acc.yearlyDiff)}` : formatCurrency(acc.yearlyDiff)}
+                              </td>
+                            </>
                           )}
                         </tr>
                       );
@@ -1108,7 +1145,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
                 {tableMetric === 'balance' ? (
                   <>
-                    <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950/80 font-feature-settings-tnum shadow-inner">
+                    <td className="px-3.5 py-3.5 text-right text-emerald-100 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950 font-feature-settings-tnum shadow-inner">
+                      {formatCurrency(totalEndYear)}
+                    </td>
+                    <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-800 bg-emerald-950/80 font-feature-settings-tnum shadow-inner">
                       {formatCurrency(totalAverageBalance)}
                     </td>
                     <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l border-emerald-800 bg-emerald-950/90 shadow-inner ${
@@ -1123,19 +1163,34 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                     </td>
                   </>
                 ) : (
-                  <td colSpan={2} className="px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l-2 border-emerald-400 bg-emerald-950/80">
-                    {tableMetric === 'income' && (
-                      <span className="text-emerald-300 font-black text-base">+{formatCurrency(consolidatedTotalYear)}</span>
-                    )}
-                    {tableMetric === 'expense' && (
-                      <span className="text-rose-400 font-black text-base">-{formatCurrency(consolidatedTotalYear)}</span>
-                    )}
-                    {tableMetric === 'net' && (
-                      <span className={consolidatedTotalYear >= 0 ? 'text-emerald-300 font-black text-base' : 'text-rose-400 font-black text-base'}>
-                        {consolidatedTotalYear >= 0 ? `+${formatCurrency(consolidatedTotalYear)}` : formatCurrency(consolidatedTotalYear)}
-                      </span>
-                    )}
-                  </td>
+                  <>
+                    <td className="px-3.5 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l-2 border-emerald-400 bg-emerald-950">
+                      {tableMetric === 'income' && (
+                        <span className="text-emerald-300 font-black text-base">+{formatCurrency(consolidatedTotalYear)}</span>
+                      )}
+                      {tableMetric === 'expense' && (
+                        <span className="text-rose-400 font-black text-base">-{formatCurrency(consolidatedTotalYear)}</span>
+                      )}
+                      {tableMetric === 'net' && (
+                        <span className={consolidatedTotalYear >= 0 ? 'text-emerald-300 font-black text-base' : 'text-rose-400 font-black text-base'}>
+                          {consolidatedTotalYear >= 0 ? `+${formatCurrency(consolidatedTotalYear)}` : formatCurrency(consolidatedTotalYear)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3.5 py-3.5 text-right font-bold text-xs text-emerald-200 border-l border-emerald-800 bg-emerald-950/80 font-feature-settings-tnum">
+                      {formatCurrency(Math.round((consolidatedTotalYear / 12) * 100) / 100)}
+                    </td>
+                    <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l border-emerald-800 bg-emerald-950/90 shadow-inner ${
+                      totalYearGrowth >= 0 ? 'text-emerald-300' : 'text-rose-400'
+                    }`}>
+                      <div className="flex flex-col items-end">
+                        <span>{totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)}</span>
+                        <span className="text-[10px] font-semibold text-emerald-300/80">
+                          {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
+                        </span>
+                      </div>
+                    </td>
+                  </>
                 )}
               </tr>
             </tfoot>
