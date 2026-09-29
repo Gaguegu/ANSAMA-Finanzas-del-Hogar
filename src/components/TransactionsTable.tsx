@@ -19,7 +19,8 @@ import {
   FileText,
   Check,
   Tag,
-  Building2
+  Building2,
+  Coins
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
@@ -36,6 +37,15 @@ export interface PeriodFilterState {
   selectedMonths: string[]; // e.g. ['2025-02', '2025-03']
   startDate: string;   // 'YYYY-MM-DD'
   endDate: string;     // 'YYYY-MM-DD'
+}
+
+export type AmountFilterOperator = 'all' | 'range' | 'greater' | 'less' | 'exact';
+
+export interface AmountFilterState {
+  operator: AmountFilterOperator;
+  min?: number;
+  max?: number;
+  exact?: number;
 }
 
 interface TransactionsTableProps {
@@ -90,6 +100,15 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'expense' | 'income'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
+  // Estado del Filtro por Importe
+  const [amountFilter, setAmountFilter] = useState<AmountFilterState>({ operator: 'all' });
+  const [isAmountMenuOpen, setIsAmountMenuOpen] = useState(false);
+  const [tempAmountOperator, setTempAmountOperator] = useState<AmountFilterOperator>('range');
+  const [tempAmountMin, setTempAmountMin] = useState<string>('');
+  const [tempAmountMax, setTempAmountMax] = useState<string>('');
+  const [tempAmountExact, setTempAmountExact] = useState<string>('');
+  const amountMenuRef = useRef<HTMLDivElement>(null);
+
   // Selección múltiple para traslados o borrado por lotes
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
@@ -115,6 +134,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       }
       if (periodMenuRef.current && !periodMenuRef.current.contains(event.target as Node)) {
         setIsPeriodMenuOpen(false);
+      }
+      if (amountMenuRef.current && !amountMenuRef.current.contains(event.target as Node)) {
+        setIsAmountMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -376,9 +398,24 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       // Filter by category
       if (filterCategory !== 'all' && tx.categoryId !== filterCategory) return false;
 
+      // Filter by amount
+      if (amountFilter.operator !== 'all') {
+        const val = tx.amount;
+        if (amountFilter.operator === 'range') {
+          if (amountFilter.min !== undefined && val < amountFilter.min) return false;
+          if (amountFilter.max !== undefined && val > amountFilter.max) return false;
+        } else if (amountFilter.operator === 'greater') {
+          if (amountFilter.min !== undefined && val < amountFilter.min) return false;
+        } else if (amountFilter.operator === 'less') {
+          if (amountFilter.max !== undefined && val > amountFilter.max) return false;
+        } else if (amountFilter.operator === 'exact') {
+          if (amountFilter.exact !== undefined && Math.abs(val - amountFilter.exact) > 0.05) return false;
+        }
+      }
+
       return true;
     });
-  }, [transactions, searchQuery, periodFilter, filterType, filterAccount, filterCategory, accountMap]);
+  }, [transactions, searchQuery, periodFilter, filterType, filterAccount, filterCategory, accountMap, amountFilter]);
 
   // Resumen contable de la selección filtrada
   const filteredStats = useMemo(() => {
@@ -397,7 +434,34 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     };
   }, [filteredTransactions]);
 
-  const hasActiveFilters = searchQuery !== '' || periodFilter.mode !== 'all' || filterAccount !== 'all' || filterType !== 'all' || filterCategory !== 'all';
+  const amountLabel = useMemo(() => {
+    if (amountFilter.operator === 'all') return 'Importe: Todos';
+    if (amountFilter.operator === 'range') {
+      if (amountFilter.min !== undefined && amountFilter.max !== undefined) {
+        return `${amountFilter.min}€ - ${amountFilter.max}€`;
+      }
+      if (amountFilter.min !== undefined) return `≥ ${amountFilter.min} €`;
+      if (amountFilter.max !== undefined) return `≤ ${amountFilter.max} €`;
+    }
+    if (amountFilter.operator === 'greater') {
+      return `> ${amountFilter.min} €`;
+    }
+    if (amountFilter.operator === 'less') {
+      return `< ${amountFilter.max} €`;
+    }
+    if (amountFilter.operator === 'exact') {
+      return `= ${amountFilter.exact} €`;
+    }
+    return 'Importe';
+  }, [amountFilter]);
+
+  const hasActiveFilters = 
+    searchQuery !== '' || 
+    periodFilter.mode !== 'all' || 
+    filterAccount !== 'all' || 
+    filterType !== 'all' || 
+    filterCategory !== 'all' ||
+    amountFilter.operator !== 'all';
 
   const resetFilters = () => {
     setSearchQuery('');
@@ -413,6 +477,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     setFilterAccount('all');
     setFilterType('all');
     setFilterCategory('all');
+    setAmountFilter({ operator: 'all' });
   };
 
   // Manejadores para abrir y aplicar periodos
@@ -531,6 +596,84 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       endDate: ''
     });
     setIsPeriodMenuOpen(false);
+  };
+
+  // Manejadores para abrir y aplicar filtro de importe
+  const handleOpenAmountMenu = () => {
+    if (amountFilter.operator === 'range') {
+      setTempAmountOperator('range');
+      setTempAmountMin(amountFilter.min !== undefined ? amountFilter.min.toString() : '');
+      setTempAmountMax(amountFilter.max !== undefined ? amountFilter.max.toString() : '');
+    } else if (amountFilter.operator === 'greater') {
+      setTempAmountOperator('greater');
+      setTempAmountMin(amountFilter.min !== undefined ? amountFilter.min.toString() : '');
+    } else if (amountFilter.operator === 'less') {
+      setTempAmountOperator('less');
+      setTempAmountMax(amountFilter.max !== undefined ? amountFilter.max.toString() : '');
+    } else if (amountFilter.operator === 'exact') {
+      setTempAmountOperator('exact');
+      setTempAmountExact(amountFilter.exact !== undefined ? amountFilter.exact.toString() : '');
+    } else {
+      setTempAmountOperator('range');
+      setTempAmountMin('');
+      setTempAmountMax('');
+    }
+    setIsAmountMenuOpen(true);
+  };
+
+  const handleApplyCustomAmount = () => {
+    if (tempAmountOperator === 'range') {
+      const minNum = tempAmountMin.trim() !== '' ? parseFloat(tempAmountMin.replace(',', '.')) : undefined;
+      const maxNum = tempAmountMax.trim() !== '' ? parseFloat(tempAmountMax.replace(',', '.')) : undefined;
+      if (minNum === undefined && maxNum === undefined) {
+        setAmountFilter({ operator: 'all' });
+      } else {
+        setAmountFilter({
+          operator: 'range',
+          min: minNum !== undefined && !isNaN(minNum) ? minNum : undefined,
+          max: maxNum !== undefined && !isNaN(maxNum) ? maxNum : undefined
+        });
+      }
+    } else if (tempAmountOperator === 'greater') {
+      const minNum = tempAmountMin.trim() !== '' ? parseFloat(tempAmountMin.replace(',', '.')) : undefined;
+      if (minNum === undefined || isNaN(minNum)) {
+        setAmountFilter({ operator: 'all' });
+      } else {
+        setAmountFilter({ operator: 'greater', min: minNum });
+      }
+    } else if (tempAmountOperator === 'less') {
+      const maxNum = tempAmountMax.trim() !== '' ? parseFloat(tempAmountMax.replace(',', '.')) : undefined;
+      if (maxNum === undefined || isNaN(maxNum)) {
+        setAmountFilter({ operator: 'all' });
+      } else {
+        setAmountFilter({ operator: 'less', max: maxNum });
+      }
+    } else if (tempAmountOperator === 'exact') {
+      const exNum = tempAmountExact.trim() !== '' ? parseFloat(tempAmountExact.replace(',', '.')) : undefined;
+      if (exNum === undefined || isNaN(exNum)) {
+        setAmountFilter({ operator: 'all' });
+      } else {
+        setAmountFilter({ operator: 'exact', exact: exNum });
+      }
+    }
+    setIsAmountMenuOpen(false);
+  };
+
+  const handleApplyPresetAmount = (preset: 'less50' | '50-200' | '200-600' | '600-1500' | 'more1500' | 'all') => {
+    if (preset === 'all') {
+      setAmountFilter({ operator: 'all' });
+    } else if (preset === 'less50') {
+      setAmountFilter({ operator: 'less', max: 50 });
+    } else if (preset === '50-200') {
+      setAmountFilter({ operator: 'range', min: 50, max: 200 });
+    } else if (preset === '200-600') {
+      setAmountFilter({ operator: 'range', min: 200, max: 600 });
+    } else if (preset === '600-1500') {
+      setAmountFilter({ operator: 'range', min: 600, max: 1500 });
+    } else if (preset === 'more1500') {
+      setAmountFilter({ operator: 'greater', min: 1500 });
+    }
+    setIsAmountMenuOpen(false);
   };
 
   // Manejadores de selección
@@ -1081,7 +1224,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       )}
 
       {/* Filter Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
         
         {/* Search input */}
         <div className="relative">
@@ -1556,6 +1699,241 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           </select>
         </div>
 
+        {/* Amount Filter Popover */}
+        <div className="relative" ref={amountMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAmountMenuOpen) handleOpenAmountMenu();
+              else setIsAmountMenuOpen(false);
+            }}
+            className={`w-full px-3 py-2 text-xs rounded-xl border flex items-center justify-between gap-1.5 transition-all cursor-pointer font-bold shadow-2xs ${
+              amountFilter.operator !== 'all'
+                ? 'bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-500/20'
+                : 'bg-zinc-50 border-zinc-200 text-zinc-800 hover:bg-zinc-100'
+            }`}
+            title="Filtrar por rango de importe, mayor/menor que, o importe exacto"
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <Coins className={`w-4 h-4 shrink-0 ${amountFilter.operator !== 'all' ? 'text-amber-700' : 'text-zinc-500'}`} />
+              <span className="truncate">{amountLabel}</span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-zinc-500 shrink-0 transition-transform ${isAmountMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Menú Desplegable de Configuración de Importe */}
+          {isAmountMenuOpen && (
+            <div 
+              className="absolute right-0 sm:left-0 lg:right-auto mt-2 w-[320px] sm:w-[360px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border-2 border-amber-500/35 p-4 z-50 animate-in fade-in zoom-in-95 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Cabecera */}
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                <div className="flex items-center gap-1.5">
+                  <Coins className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-black text-zinc-900 uppercase tracking-wide">
+                    Filtrar por Importe (€)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAmountMenuOpen(false)}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Botones de Selección Rápida */}
+              <div>
+                <label className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5">
+                  Rangos Frecuentes
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetAmount('less50')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-left ${
+                      amountFilter.operator === 'less' && amountFilter.max === 50
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border border-zinc-200/80'
+                    }`}
+                  >
+                    Hasta 50 €
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetAmount('50-200')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-left ${
+                      amountFilter.operator === 'range' && amountFilter.min === 50 && amountFilter.max === 200
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border border-zinc-200/80'
+                    }`}
+                  >
+                    50 € - 200 €
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetAmount('200-600')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-left ${
+                      amountFilter.operator === 'range' && amountFilter.min === 200 && amountFilter.max === 600
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border border-zinc-200/80'
+                    }`}
+                  >
+                    200 € - 600 € <span className="text-[10px] font-normal text-zinc-500">(alquiler)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetAmount('600-1500')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-left ${
+                      amountFilter.operator === 'range' && amountFilter.min === 600 && amountFilter.max === 1500
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border border-zinc-200/80'
+                    }`}
+                  >
+                    600 € - 1.500 €
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetAmount('more1500')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-left col-span-2 ${
+                      amountFilter.operator === 'greater' && amountFilter.min === 1500
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border border-zinc-200/80'
+                    }`}
+                  >
+                    Más de 1.500 € <span className="text-[10px] font-normal text-zinc-500">(nóminas y sueldos)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Personalizado */}
+              <div className="pt-2 border-t border-zinc-100 space-y-2">
+                <label className="block text-[10px] font-black uppercase text-zinc-400">
+                  Importe Personalizado
+                </label>
+
+                {/* Tipo de condición */}
+                <select
+                  value={tempAmountOperator}
+                  onChange={(e) => setTempAmountOperator(e.target.value as AmountFilterOperator)}
+                  className="w-full px-2.5 py-1.5 text-xs font-bold rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-800"
+                >
+                  <option value="range">Entre Mínimo y Máximo</option>
+                  <option value="greater">Mayor o igual que ( ≥ )</option>
+                  <option value="less">Menor o igual que ( ≤ )</option>
+                  <option value="exact">Importe exacto ( = )</option>
+                </select>
+
+                {tempAmountOperator === 'range' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="block text-[10px] text-zinc-500 font-semibold mb-0.5">Desde:</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="Min €"
+                          value={tempAmountMin}
+                          onChange={(e) => setTempAmountMin(e.target.value)}
+                          className="w-full pl-2.5 pr-6 py-1.5 text-xs font-bold rounded-lg border border-zinc-300 bg-white"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">€</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-zinc-500 font-semibold mb-0.5">Hasta:</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="Max €"
+                          value={tempAmountMax}
+                          onChange={(e) => setTempAmountMax(e.target.value)}
+                          className="w-full pl-2.5 pr-6 py-1.5 text-xs font-bold rounded-lg border border-zinc-300 bg-white"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">€</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {tempAmountOperator === 'greater' && (
+                  <div>
+                    <span className="block text-[10px] text-zinc-500 font-semibold mb-0.5">Importe Mínimo:</span>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Ej: 500"
+                        value={tempAmountMin}
+                        onChange={(e) => setTempAmountMin(e.target.value)}
+                        className="w-full pl-2.5 pr-6 py-1.5 text-xs font-bold rounded-lg border border-zinc-300 bg-white"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">€</span>
+                    </div>
+                  </div>
+                )}
+
+                {tempAmountOperator === 'less' && (
+                  <div>
+                    <span className="block text-[10px] text-zinc-500 font-semibold mb-0.5">Importe Máximo:</span>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Ej: 100"
+                        value={tempAmountMax}
+                        onChange={(e) => setTempAmountMax(e.target.value)}
+                        className="w-full pl-2.5 pr-6 py-1.5 text-xs font-bold rounded-lg border border-zinc-300 bg-white"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">€</span>
+                    </div>
+                  </div>
+                )}
+
+                {tempAmountOperator === 'exact' && (
+                  <div>
+                    <span className="block text-[10px] text-zinc-500 font-semibold mb-0.5">Importe Exacto:</span>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Ej: 499.55"
+                        value={tempAmountExact}
+                        onChange={(e) => setTempAmountExact(e.target.value)}
+                        className="w-full pl-2.5 pr-6 py-1.5 text-xs font-bold rounded-lg border border-zinc-300 bg-white"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 font-bold">€</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleApplyCustomAmount}
+                    className="flex-1 py-1.5 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-black rounded-lg transition-all cursor-pointer shadow-xs active:scale-98 flex items-center justify-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Aplicar Filtro</span>
+                  </button>
+                  {amountFilter.operator !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPresetAmount('all')}
+                      className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg transition-all cursor-pointer"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
 
       {hasActiveFilters && (
@@ -1593,6 +1971,23 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     onClick={() => setFilterAccount('all')}
                     className="hover:text-rose-700 ml-0.5 cursor-pointer"
                     title="Quitar filtro de cuenta"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              </>
+            )}
+            {amountFilter.operator !== 'all' && (
+              <>
+                <span className="text-zinc-300">|</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 font-bold text-[11px] border border-amber-300">
+                  <Coins className="w-3 h-3 text-amber-700" />
+                  <span>Importe: {amountLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAmountFilter({ operator: 'all' })}
+                    className="hover:text-rose-700 ml-0.5 cursor-pointer"
+                    title="Quitar filtro de importe"
                   >
                     <X className="w-3 h-3" />
                   </button>
