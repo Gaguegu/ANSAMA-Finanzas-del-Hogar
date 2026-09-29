@@ -375,7 +375,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const renderMetricValue = (val: number, isLastMonth: boolean = false, isBold: boolean = false) => {
     if (tableMetric === 'balance') {
       return (
-        <span className={isLastMonth ? 'font-bold text-emerald-950' : 'text-zinc-700'}>
+        <span className={isBold ? 'font-bold text-zinc-900' : 'text-zinc-700'}>
           {formatCurrency(val)}
         </span>
       );
@@ -847,36 +847,25 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
                   Entidad / Cuenta
                 </th>
-                {MONTH_NAMES_SHORT.map((m, idx) => (
+                {MONTH_NAMES_SHORT.map((m) => (
                   <th 
                     key={m} 
-                    className={`px-3 py-3 text-right ${
-                      idx === 11 
-                        ? 'bg-emerald-100/70 text-emerald-950 font-black border-l-2 border-emerald-600/50' 
-                        : ''
-                    }`}
-                    title={idx === 11 ? `Cierre de Diciembre (${selectedYear})` : undefined}
+                    className="px-3 py-3 text-right text-zinc-600 font-bold"
                   >
-                    {idx === 11 ? (
-                      <span className="inline-flex items-center gap-1 font-black">
-                        Dic <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-800 text-white font-extrabold uppercase">Cierre</span>
-                      </span>
-                    ) : (
-                      m
-                    )}
+                    {m}
                   </th>
                 ))}
                 
                 {tableMetric === 'balance' ? (
                   <>
                     <th 
-                      className="px-3.5 py-3 text-right bg-emerald-50 text-emerald-950 font-black border-l border-emerald-200"
+                      className="px-3.5 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
                       title="Promedio aritmético de los saldos de los 12 meses (utilizado para Declaración de Renta e Impuesto sobre el Patrimonio)"
                     >
                       Saldo Medio
                     </th>
                     <th 
-                      className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black"
+                      className="px-4 py-3 text-right bg-emerald-100 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
                       title={`Variación patrimonial entre el Cierre del año (${selectedYear}) y el Inicio (${selectedYear})`}
                     >
                       Var. Anual
@@ -885,7 +874,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 ) : (
                   <th 
                     colSpan={2}
-                    className="px-4 py-3 text-right bg-emerald-50/90 text-emerald-950 font-black border-l border-emerald-200"
+                    className="px-4 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
                   >
                     {tableMetric === 'income' && `Total Ingresos ${selectedYear}`}
                     {tableMetric === 'expense' && `Total Gastos ${selectedYear}`}
@@ -963,35 +952,31 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                       {metricValues.map((val, idx) => (
                         <td 
                           key={idx} 
-                          className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
-                            idx === 11
-                              ? 'bg-emerald-50/40 border-l-2 border-emerald-600/30 font-black'
-                              : 'font-medium'
-                          }`}
+                          className="px-3 py-3.5 text-right font-feature-settings-tnum font-medium"
                         >
-                          {renderMetricValue(val, idx === 11, true)}
+                          {renderMetricValue(val, false, true)}
                         </td>
                       ))}
 
-                      {/* Summary Columns */}
+                      {/* Summary Columns: Saldo Medio y Var. Anual resaltados */}
                       {tableMetric === 'balance' ? (
                         <>
-                          <td className="px-3.5 py-3.5 text-right font-bold text-zinc-800 bg-zinc-50/70 border-l border-emerald-100 font-feature-settings-tnum">
+                          <td className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-50/70 border-l-2 border-emerald-500/30 font-feature-settings-tnum">
                             {formatCurrency(entity.averageBalance)}
                           </td>
-                          <td className={`px-4 py-3.5 text-right font-extrabold bg-emerald-50/30 font-feature-settings-tnum ${
+                          <td className={`px-4 py-3.5 text-right font-black bg-emerald-50/90 border-l border-emerald-100 font-feature-settings-tnum ${
                             entity.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
                           }`}>
                             <div className="flex flex-col items-end">
                               <span>{entity.yearlyDiff >= 0 ? `+${formatCurrency(entity.yearlyDiff)}` : formatCurrency(entity.yearlyDiff)}</span>
-                              <span className="text-[10px] font-semibold text-zinc-400">
+                              <span className={`text-[10px] font-bold ${entity.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-500'}`}>
                                 {entity.yearlyDiff >= 0 ? `+${entity.yearlyDiffPercent}%` : `${entity.yearlyDiffPercent}%`}
                               </span>
                             </div>
                           </td>
                         </>
                       ) : (
-                        <td colSpan={2} className="px-4 py-3.5 text-right font-black border-l border-emerald-100 bg-emerald-50/20 font-feature-settings-tnum text-sm">
+                        <td colSpan={2} className="px-4 py-3.5 text-right font-black border-l-2 border-emerald-500/30 bg-emerald-50/70 font-feature-settings-tnum text-sm">
                           {tableMetric === 'income' && (
                             <span className="text-emerald-800">+{formatCurrency(entity.totalYearAccIncome)}</span>
                           )}
@@ -1063,27 +1048,25 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                           {accMetricValues.map((val, idx) => (
                             <td 
                               key={idx} 
-                              className={`px-3 py-2.5 text-right font-feature-settings-tnum ${
-                                idx === 11 ? 'bg-emerald-50/20 border-l-2 border-emerald-600/20 font-bold' : ''
-                              }`}
+                              className="px-3 py-2.5 text-right font-feature-settings-tnum text-zinc-700"
                             >
-                              {renderMetricValue(val, idx === 11, false)}
+                              {renderMetricValue(val, false, false)}
                             </td>
                           ))}
 
                           {tableMetric === 'balance' ? (
                             <>
-                              <td className="px-3.5 py-2.5 text-right font-semibold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
+                              <td className="px-3.5 py-2.5 text-right font-bold text-emerald-900 bg-emerald-50/40 border-l-2 border-emerald-500/20 font-feature-settings-tnum">
                                 {formatCurrency(acc.averageBalance)}
                               </td>
-                              <td className={`px-4 py-2.5 text-right font-bold font-feature-settings-tnum ${
-                                acc.yearlyDiff >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                              <td className={`px-4 py-2.5 text-right font-bold bg-emerald-50/60 border-l border-emerald-100 font-feature-settings-tnum ${
+                                acc.yearlyDiff >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
                               }`}>
                                 {acc.yearlyDiff >= 0 ? `+${formatCurrency(acc.yearlyDiff)}` : formatCurrency(acc.yearlyDiff)}
                               </td>
                             </>
                           ) : (
-                            <td colSpan={2} className="px-4 py-2.5 text-right font-extrabold border-l border-zinc-200 font-feature-settings-tnum">
+                            <td colSpan={2} className="px-4 py-2.5 text-right font-extrabold border-l-2 border-emerald-500/20 bg-emerald-50/40 font-feature-settings-tnum">
                               {tableMetric === 'income' && (
                                 <span className="text-emerald-700">+{formatCurrency(acc.totalYearAccIncome)}</span>
                               )}
@@ -1114,11 +1097,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 {consolidatedMonthlyValues.map((val, idx) => (
                   <td 
                     key={idx} 
-                    className={`px-3 py-3.5 text-right font-feature-settings-tnum ${
-                      idx === 11
-                        ? 'text-emerald-300 font-black border-l-2 border-emerald-500 bg-emerald-950/70'
-                        : 'text-white font-black'
-                    }`}
+                    className="px-3 py-3.5 text-right font-feature-settings-tnum text-white font-black"
                   >
                     {tableMetric === 'balance' && formatCurrency(val)}
                     {tableMetric === 'income' && `+${formatCurrency(val)}`}
@@ -1129,10 +1108,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
                 {tableMetric === 'balance' ? (
                   <>
-                    <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-700 font-feature-settings-tnum">
+                    <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950/80 font-feature-settings-tnum shadow-inner">
                       {formatCurrency(totalAverageBalance)}
                     </td>
-                    <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum ${
+                    <td className={`px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l border-emerald-800 bg-emerald-950/90 shadow-inner ${
                       totalYearGrowth >= 0 ? 'text-emerald-300' : 'text-rose-400'
                     }`}>
                       <div className="flex flex-col items-end">
@@ -1144,15 +1123,15 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                     </td>
                   </>
                 ) : (
-                  <td colSpan={2} className="px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l border-emerald-700">
+                  <td colSpan={2} className="px-4 py-3.5 text-right font-black text-sm font-feature-settings-tnum border-l-2 border-emerald-400 bg-emerald-950/80">
                     {tableMetric === 'income' && (
                       <span className="text-emerald-300 font-black text-base">+{formatCurrency(consolidatedTotalYear)}</span>
                     )}
                     {tableMetric === 'expense' && (
-                      <span className="text-rose-300 font-black text-base">-{formatCurrency(consolidatedTotalYear)}</span>
+                      <span className="text-rose-400 font-black text-base">-{formatCurrency(consolidatedTotalYear)}</span>
                     )}
                     {tableMetric === 'net' && (
-                      <span className={`font-black text-base ${consolidatedTotalYear >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      <span className={consolidatedTotalYear >= 0 ? 'text-emerald-300 font-black text-base' : 'text-rose-400 font-black text-base'}>
                         {consolidatedTotalYear >= 0 ? `+${formatCurrency(consolidatedTotalYear)}` : formatCurrency(consolidatedTotalYear)}
                       </span>
                     )}
