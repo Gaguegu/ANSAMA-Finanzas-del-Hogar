@@ -20,7 +20,8 @@ import {
   Check,
   Tag,
   Building2,
-  Coins
+  Coins,
+  Filter
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
@@ -122,7 +123,12 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
   // Estados para auto-reconciliación y propagación de categorías
   const [reconcileFeedback, setReconcileFeedback] = useState<{ title: string; count: number; details: string[] } | null>(null);
-  const [propagateModalData, setPropagateModalData] = useState<{ tx: Transaction; newCatId: string; similarCount: number } | null>(null);
+  const [propagateModalData, setPropagateModalData] = useState<{ 
+    tx: Transaction; 
+    newCatId: string; 
+    similarCount: number;
+    filteredMatchingIds?: string[];
+  } | null>(null);
   const [isBatchCategoryModalOpen, setIsBatchCategoryModalOpen] = useState(false);
   const [batchTargetCategoryId, setBatchTargetCategoryId] = useState('');
 
@@ -739,12 +745,19 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       (t) => t.id !== tx.id && areTransactionsSimilar(tx, t)
     );
 
+    // Movimientos que coinciden y que están actualmente en el filtro visible de la pantalla
+    const filteredMatching = filteredTransactions.filter(
+      (t) => t.id === tx.id || areTransactionsSimilar(tx, t)
+    );
+    const filteredMatchingIds = filteredMatching.map((t) => t.id);
+
     // Mostramos siempre la ventana de confirmación inteligente para que el usuario pueda decidir
-    // si desea aplicarlo solo a este apunte o a todos los similares
+    // si desea aplicarlo solo a este apunte, solo a los filtrados, o a todos los similares
     setPropagateModalData({
       tx,
       newCatId,
-      similarCount: similarTxs.length
+      similarCount: similarTxs.length,
+      filteredMatchingIds: (filteredMatchingIds.length > 1 && filteredMatchingIds.length < similarTxs.length + 1) ? filteredMatchingIds : undefined
     });
   };
 
@@ -2475,7 +2488,17 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               <div className="bg-white p-2.5 rounded-lg border border-zinc-200 font-semibold text-zinc-900 truncate">
                 {propagateModalData.tx.title}
               </div>
-              {propagateModalData.similarCount > 0 ? (
+              {propagateModalData.filteredMatchingIds && propagateModalData.filteredMatchingIds.length > 1 ? (
+                <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                    <Filter className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                    <span>Tienes un filtro activo en pantalla</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Hay <strong className="font-extrabold">{propagateModalData.filteredMatchingIds.length} apuntes coincidentes en tu filtro actual</strong> (y un total de {propagateModalData.similarCount + 1} en todo el histórico). Puedes elegir cambiar solo los que ves filtrados o todo el histórico.
+                  </p>
+                </div>
+              ) : propagateModalData.similarCount > 0 ? (
                 <p className="text-zinc-600 leading-relaxed">
                   Hemos detectado <strong className="text-zinc-900 font-bold">{propagateModalData.similarCount} movimiento(s) adicionales</strong> con este mismo concepto recurrente en los demás meses de tu histórico.
                 </p>
@@ -2486,7 +2509,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-zinc-100">
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-zinc-100 flex-wrap">
               <button
                 type="button"
                 onClick={() => setPropagateModalData(null)}
@@ -2499,8 +2522,23 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 onClick={() => handleConfirmPropagate(false)}
                 className="w-full sm:w-auto px-3 py-2 text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-all cursor-pointer"
               >
-                Solo a este apunte
+                Solo a este apunte (1)
               </button>
+              {propagateModalData.filteredMatchingIds && propagateModalData.filteredMatchingIds.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onBatchUpdateCategory && propagateModalData.filteredMatchingIds) {
+                      onBatchUpdateCategory(propagateModalData.filteredMatchingIds, propagateModalData.newCatId);
+                    }
+                    setPropagateModalData(null);
+                  }}
+                  className="w-full sm:w-auto px-3.5 py-2 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Filter className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                  <span>Solo a los {propagateModalData.filteredMatchingIds.length} filtrados</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleConfirmPropagate(true)}
@@ -2509,7 +2547,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>
                   {propagateModalData.similarCount > 0
-                    ? `Sí, aplicar a todos (${propagateModalData.similarCount + 1})`
+                    ? `A todos los del histórico (${propagateModalData.similarCount + 1})`
                     : 'Guardar y recordar para el futuro'}
                 </span>
               </button>
