@@ -1534,8 +1534,8 @@ export function isInternalTransfer(tx: Transaction): boolean {
   if (tx.categoryId === 'cat-transferencias-gasto' || tx.categoryId === 'cat-traspaso-ingreso') {
     return true;
   }
-  const t = (tx.title || '').toLowerCase();
-  const note = (tx.note || '').toLowerCase();
+  const t = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const note = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const combined = `${t} ${note}`;
   
   return (
@@ -1543,26 +1543,28 @@ export function isInternalTransfer(tx: Transaction): boolean {
     combined.includes('transferencia realizada') ||
     combined.includes('transf. realizada') ||
     combined.includes('transferencia emitida') ||
-    combined.includes('imposicion') ||
-    combined.includes('imposición') ||
-    combined.includes('constitucion') ||
-    combined.includes('constitución') ||
-    combined.includes('vencimiento deposito') ||
-    combined.includes('vencimiento depósito') ||
-    combined.includes('cancelacion deposito') ||
-    combined.includes('cancelación depósito') ||
-    combined.includes('deposito a plazo') ||
-    combined.includes('depósito a plazo') ||
-    combined.includes('plazo fijo') ||
-    combined.includes('entre mis cuentas') ||
-    combined.includes('entre cuentas') ||
+    combined.includes('transferencia enviada') ||
+    combined.includes('transferencia ordenada') ||
     combined.includes('transferencia propia') ||
     combined.includes('transferencia interna') ||
+    combined.includes('transferencia entre') ||
+    combined.includes('entre mis cuentas') ||
+    combined.includes('entre cuentas') ||
+    combined.includes('a mi nombre') ||
+    combined.includes('mismo titular') ||
+    combined.includes('cuenta propia') ||
+    combined.includes('a favor de andres') ||
+    combined.includes('de andres sanchez') ||
+    combined.includes('sanchez marin') ||
+    combined.includes('imposicion') ||
+    combined.includes('constitucion') ||
+    combined.includes('vencimiento deposito') ||
+    combined.includes('cancelacion deposito') ||
+    combined.includes('deposito a plazo') ||
+    combined.includes('plazo fijo') ||
     combined.includes('aportacion cartera') ||
-    combined.includes('aportación cartera') ||
     combined.includes('retirada broker') ||
     combined.includes('suscripcion fondo') ||
-    combined.includes('suscripción fondo') ||
     combined.includes('reembolso fondo')
   );
 }

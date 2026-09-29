@@ -135,9 +135,11 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       monthlyBalances.push(Math.round(rolledBalance * 100) / 100);
     }
 
-    const startBalance = monthlyBalances[0] || 0;
+    // Saldo inicial real a 1 de Enero (antes de los movimientos de Enero):
+    // Saldo a 31 de Enero menos el flujo neto registrado en Enero
+    const startBalance = Math.round(((monthlyBalances[0] || 0) - (monthlyNets[0] || 0)) * 100) / 100;
     const endBalance = monthlyBalances[11] || 0;
-    const yearlyDiff = endBalance - startBalance;
+    const yearlyDiff = Math.round((endBalance - startBalance) * 100) / 100;
     const yearlyDiffPercent = startBalance !== 0 
       ? Math.round((yearlyDiff / Math.abs(startBalance)) * 100) 
       : 0;
@@ -361,9 +363,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return Math.round(consolidatedMonthlyValues.reduce((sum, v) => sum + v, 0) * 100) / 100;
   }, [consolidatedMonthlyValues]);
 
-  const totalStartYear = consolidatedMonthlyBalances[0] || 0;
+  // Saldo inicial consolidado a 1 de Enero (antes de los movimientos de Enero)
+  const totalStartYear = Math.round(
+    bankEntities.reduce((sum, e) => sum + e.startBalance, 0) * 100
+  ) / 100;
   const totalEndYear = consolidatedMonthlyBalances[11] || 0;
-  const totalYearGrowth = totalEndYear - totalStartYear;
+  const totalYearGrowth = Math.round((totalEndYear - totalStartYear) * 100) / 100;
   const totalGrowthPercent = totalStartYear !== 0 
     ? Math.round((totalYearGrowth / Math.abs(totalStartYear)) * 100) 
     : 0;
@@ -682,7 +687,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
             </div>
             <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
-              {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)} (Cierre Dic vs Inicio Ene)
+              {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)} (Saldo 31 Dic vs 1 Ene)
             </span>
           </div>
         </div>
