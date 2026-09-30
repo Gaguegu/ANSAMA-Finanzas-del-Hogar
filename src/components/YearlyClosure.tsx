@@ -96,10 +96,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
       );
       const inc = txsInMonth
-        .filter((t) => t.type === 'income')
+        .filter((t) => t.type === 'income' && !isInternalTransfer(t))
         .reduce((sum, t) => sum + t.amount, 0);
       const exp = txsInMonth
-        .filter((t) => t.type === 'expense')
+        .filter((t) => t.type === 'expense' && !isInternalTransfer(t))
         .reduce((sum, t) => sum + t.amount, 0);
 
       monthlyIncomes.push(Math.round(inc * 100) / 100);
@@ -437,8 +437,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const monthNum = String(idx + 1).padStart(2, '0');
         const prefix = `${selectedYear}-${monthNum}`;
         const txs = yearTransactions.filter((t) => t.accountId === acc.id && t.date.startsWith(prefix));
-        const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
         const net = income - expense;
         return {
           month: name,
@@ -492,8 +492,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const txs = yearTransactions.filter(
           (t) => bankAccs.some((a) => a.id === t.accountId) && t.date.startsWith(prefix)
         );
-        const income = txs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((s, t) => s + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((s, t) => s + t.amount, 0);
         return {
           month: name,
           fullMonth: MONTH_NAMES_FULL[idx],

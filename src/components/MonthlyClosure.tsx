@@ -314,16 +314,16 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return groups.map((g) => {
       const accIds = g.accounts.map((a) => a.id);
       const txs = monthTransactions.filter((tx) => accIds.includes(tx.accountId));
-      const income = txs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
-      const expense = txs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
+      const income = txs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+      const expense = txs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
       const net = income - expense;
       const currentBalance = g.accounts.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
 
       // Desglose individual de cada cuenta de este grupo
       const accountsDetailed = g.accounts.map((a) => {
         const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
-        const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
-        const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
+        const aIncome = aTxs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+        const aExpense = aTxs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
         const aNet = aIncome - aExpense;
         const info = getAccountBalanceInfo(a);
         return {
@@ -355,8 +355,8 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const allAccountsDetailed = useMemo(() => {
     return appState.accounts.map((a) => {
       const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
-      const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
-      const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
+      const aIncome = aTxs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+      const aExpense = aTxs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
       const aNet = aIncome - aExpense;
       const info = getAccountBalanceInfo(a);
       return {

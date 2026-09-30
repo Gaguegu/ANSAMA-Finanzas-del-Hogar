@@ -57,9 +57,23 @@ export function loadAppState(): AppState {
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
         const titleLower = (tx.title || '').toLowerCase();
 
-        // A. RETENCIONES FISCALES (Hacienda, IRPF sobre intereses/rendimientos):
+        // A. RETENCIONES FISCALES (Hacienda, IRPF sobre intereses/rendimientos en todos los bancos):
         // SIEMPRE son gasto / cargo fiscal, aunque el concepto contenga "devolución" o "abono"
-        if (titleLower.includes('retencion') || titleLower.includes('retención')) {
+        if (
+          titleLower.includes('retencion') || 
+          titleLower.includes('retención') ||
+          titleLower.includes('ret. fiscal') ||
+          titleLower.includes('ret fiscal') ||
+          titleLower.includes('ret. irpf') ||
+          titleLower.includes('ret irpf') ||
+          titleLower.includes('ret. hda') ||
+          titleLower.includes('ret hda') ||
+          titleLower.includes('retencio') ||
+          titleLower.includes('withholding tax') ||
+          titleLower.includes('tax withheld') ||
+          titleLower.includes('quellensteuer') ||
+          titleLower.includes('kapitalertragsteuer')
+        ) {
           if (tx.type === 'income') {
             hasRepairedTransactions = true;
             return {
@@ -70,14 +84,20 @@ export function loadAppState(): AppState {
           }
         }
 
-        // B. BONIFICACIONES, INTERESES Y DIVIDENDOS:
+        // B. BONIFICACIONES, INTERESES, LIQUIDACIONES Y DIVIDENDOS:
         // SIEMPRE son ingreso / abono positivo (rendimientos de cuentas/recibos), aunque contengan la palabra "recibos"
         if (
           titleLower.includes('bonificacion') ||
           titleLower.includes('bonificación') ||
           titleLower.includes('abono intereses') ||
           titleLower.includes('abono de intereses') ||
+          titleLower.includes('abono int.') ||
+          titleLower.includes('liq. propia cta') ||
+          titleLower.includes('liq propia cta') ||
+          titleLower.includes('liq. cta') ||
+          titleLower.includes('liq cta') ||
           titleLower.includes('intereses acreedores') ||
+          titleLower.includes('remuneracion') ||
           titleLower.includes('saveback') ||
           titleLower.includes('dividendo') ||
           titleLower.includes('dividend')
@@ -92,9 +112,9 @@ export function loadAppState(): AppState {
           }
         }
 
-        // C. VENCIMIENTOS Y CANCELACIONES DE DEPÓSITOS A PLAZO FIJO:
-        // El principal devuelto al vencimiento es un traspaso interno de capital hacia la cuenta corriente.
-        // NO es un beneficio ni un incremento patrimonial (el incremento ya son los intereses).
+        // C. VENCIMIENTOS, CANCELACIONES Y TRASPASOS ENTRE CUENTAS PROPIAS:
+        // El principal devuelto al vencimiento o transferencias propias son traspasos internos de capital.
+        // NO son ingresos familiares ni beneficio.
         if (
           titleLower.includes('vencimiento') ||
           titleLower.includes('vto. deposito') ||
@@ -108,11 +128,12 @@ export function loadAppState(): AppState {
           titleLower.includes('devolución principal') ||
           titleLower.includes('principal deposito') ||
           titleLower.includes('principal depósito') ||
-          titleLower.includes('abono vencimiento')
+          titleLower.includes('abono vencimiento') ||
+          ((titleLower.includes('sanchez marin') || titleLower.includes('andres sanchez')) && (titleLower.includes('trans') || titleLower.includes('traspas')))
         ) {
-          // Si el concepto NO es expresamente liquidación de intereses, es la devolución del capital
-          if (!titleLower.includes('interes') && !titleLower.includes('interés') && !titleLower.includes('liquidacion') && !titleLower.includes('liquidación')) {
-            if (tx.categoryId !== 'cat-traspaso-ingreso') {
+          // Si el concepto NO es expresamente liquidación de intereses, es movimiento interno de capital
+          if (!titleLower.includes('interes') && !titleLower.includes('interés') && !titleLower.includes('liq.') && !titleLower.includes('liquidacion') && !titleLower.includes('liquidación')) {
+            if (tx.categoryId !== 'cat-traspaso-ingreso' && tx.type === 'income') {
               hasRepairedTransactions = true;
               return {
                 ...tx,
