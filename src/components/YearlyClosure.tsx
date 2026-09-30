@@ -834,7 +834,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
             <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
             <span>
               <strong>Modo activo:</strong>{' '}
-              {tableMetric === 'balance' && 'Saldos al final de cada mes para cada entidad y cuenta bancaria.'}
+              {tableMetric === 'balance' && 'Saldos al final de cada mes. El bloque de resumen muestra el Saldo a Cierre de Ejercicio (31-Dic), el Saldo Medio (oficial IRPF) y la Variación Anual.'}
               {tableMetric === 'income' && 'Entradas y cobros netos registrados mes por mes en cada una de tus cuentas.'}
               {tableMetric === 'expense' && 'Pagos y consumos registrados mes por mes en cada una de tus cuentas.'}
               {tableMetric === 'net' && 'Diferencia mensual (Ingresos − Gastos) generada en cada cuenta.'}
@@ -861,12 +861,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                   </th>
                 ))}
                 
-                {/* Bloque Resumen Anual: TOTAL, SALDO MEDIO, VAR. ANUAL */}
+                {/* Bloque Resumen Anual: CIERRE (31-DIC) / TOTAL ANUAL, SALDO MEDIO, VAR. ANUAL */}
                 <th 
                   className="px-3.5 py-3 text-right bg-emerald-100/95 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
-                  title={tableMetric === 'balance' ? `Saldo total al cierre del año ${selectedYear} para cada entidad o banco` : `Total acumulado en el año ${selectedYear}`}
+                  title={
+                    tableMetric === 'balance' 
+                      ? `Saldo patrimonial al cierre del ejercicio (a 31 de Diciembre de ${selectedYear}). Los saldos no se suman entre meses porque son una foto patrimonial a fin de año.` 
+                      : `Total acumulado en los 12 meses del año ${selectedYear}`
+                  }
                 >
-                  TOTAL
+                  {tableMetric === 'balance' ? 'CIERRE (31-DIC)' : 'TOTAL ANUAL'}
                 </th>
                 <th 
                   className="px-3.5 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
@@ -960,7 +964,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                       {/* Summary Columns: TOTAL, Saldo Medio y Var. Anual */}
                       {tableMetric === 'balance' ? (
                         <>
-                          <td className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-100/50 border-l-2 border-emerald-500/30 font-feature-settings-tnum text-[13px]">
+                          <td 
+                            className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-100/50 border-l-2 border-emerald-500/30 font-feature-settings-tnum text-[13px]"
+                            title={`Saldo al cierre de ejercicio (31 de Diciembre): ${formatCurrency(entity.endBalance)}`}
+                          >
                             {formatCurrency(entity.endBalance)}
                           </td>
                           <td className="px-3.5 py-3.5 text-right font-black text-zinc-800 bg-emerald-50/70 border-l border-emerald-100 font-feature-settings-tnum">
@@ -1079,7 +1086,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
                           {tableMetric === 'balance' ? (
                             <>
-                              <td className="px-3.5 py-2.5 text-right font-black text-emerald-950 bg-emerald-50/60 border-l-2 border-emerald-500/20 font-feature-settings-tnum">
+                              <td 
+                                className="px-3.5 py-2.5 text-right font-black text-emerald-950 bg-emerald-50/60 border-l-2 border-emerald-500/20 font-feature-settings-tnum"
+                                title={`Saldo de la cuenta al cierre de ejercicio (31-Dic): ${formatCurrency(acc.endBalance)}`}
+                              >
                                 {formatCurrency(acc.endBalance)}
                               </td>
                               <td className="px-3.5 py-2.5 text-right font-bold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
@@ -1150,7 +1160,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
                 {tableMetric === 'balance' ? (
                   <>
-                    <td className="px-3.5 py-3.5 text-right text-emerald-100 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950 font-feature-settings-tnum shadow-inner">
+                    <td 
+                      className="px-3.5 py-3.5 text-right text-emerald-100 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950 font-feature-settings-tnum shadow-inner"
+                      title={`Patrimonio total consolidado al cierre de ejercicio (31 de Diciembre): ${formatCurrency(totalEndYear)}`}
+                    >
                       {formatCurrency(totalEndYear)}
                     </td>
                     <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-800 bg-emerald-950/80 font-feature-settings-tnum shadow-inner">
