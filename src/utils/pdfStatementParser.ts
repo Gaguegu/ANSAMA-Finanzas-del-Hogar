@@ -642,6 +642,10 @@ export async function parsePdfStatementFile(
       titleNorm.includes('gutschrift') ||
       titleNorm.includes('pay-in') ||
       titleNorm.includes('pay in') ||
+      titleNorm.includes('bonificacion') ||
+      titleNorm.includes('bonificación') ||
+      titleNorm.includes('abono intereses') ||
+      titleNorm.includes('abono de intereses') ||
       titleNorm.includes('transferencia recibida') ||
       titleNorm.includes('transferencia de ') ||
       titleNorm.includes('traspaso entrante') ||

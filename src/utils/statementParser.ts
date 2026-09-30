@@ -99,18 +99,24 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'liquidacion cuenta', 'liquidacion de cuenta', 'liquidacion intereses', 'liquidacion contrato',
     'liquidacion ahorro', 'liquidacion', 'abono intereses', 'abono de intereses', 'intereses acreedores',
     'interes cuenta', 'intereses cuenta', 'rendimiento cuenta', 'retribucion cuenta', 'retribucion mensual',
-    'dividendo', 'interes', 'intereses', 'retribucion', 'cupon', 'rendimiento', 'deposito',
+    'bonificacion', 'bonificacion recibos', 'bonif. recibos', 'abono recibos',
+    'dividendo', 'interes', 'intereses', 'retribucion', 'cupon', 'rendimiento',
+    'intereses deposito', 'interes deposito', 'rendimiento deposito', 'liquidacion deposito',
     'broker', 'degiro', 'trade republic', 'myinvestor', 'saveback', 'efectivo al', 'inversion', 'plusvalia'
   ],
   'cat-transferencias-gasto': [
     'transferencia realizada', 'transf. realizada', 'transferencia emitida', 'transferencia enviada',
     'transferencia ordenada', 'traspaso', 'traspaso interno', 'traspaso entre', 'traspaso a favor',
     'transferencia a favor', 'transferencia propia', 'transferencia interna', 'entre mis cuentas',
-    'imposicion plazo', 'constitucion deposito', 'cancelacion deposito', 'vencimiento deposito'
+    'imposicion plazo', 'constitucion deposito', 'apertura deposito', 'imposicion deposito'
   ],
   'cat-traspaso-ingreso': [
     'traspaso recibido', 'traspaso desde', 'traspaso entrante', 'traspaso interno',
-    'transferencia propia', 'transferencia interna'
+    'transferencia propia', 'transferencia interna',
+    'vencimiento deposito', 'vencimiento imposicion', 'vencimiento plazo',
+    'vto. deposito', 'vto deposito', 'vto. imposicion', 'vto imposicion',
+    'cancelacion deposito', 'cancelacion imposicion', 'cancelacion plazo',
+    'devolucion principal', 'devolucion deposito', 'principal deposito', 'abono vencimiento'
   ],
   'cat-otros-ingresos': [
     'bizum recibido', 'devolucion', 'abono', 'ingreso', 'reembolso',
@@ -192,11 +198,46 @@ export function guessCategory(
     }
   }
   
-  // 1. Rendimientos bancarios e intereses (Liquidación de cuentas, intereses de ahorro, dividendos, etc.)
+  // 0. Retenciones fiscales (Hacienda, IRPF sobre intereses/rendimientos): SIEMPRE gasto
+  if (
+    normText.includes('retencion') ||
+    normText.includes('retencion hacienda') ||
+    normText.includes('retencion irpf') ||
+    normText.includes('retencion fiscal')
+  ) {
+    const taxCat = categories.find(c => c.id === 'cat-impuestos' || c.id === 'cat-otros-gastos');
+    if (taxCat) return taxCat.id;
+  }
+
+  // 0.1 Vencimientos y cancelaciones de depósitos a plazo fijo (Devolución de principal = Traspaso entrante)
+  if (
+    normText.includes('vencimiento') ||
+    normText.includes('vto. deposito') ||
+    normText.includes('vto deposito') ||
+    normText.includes('vto. imposicion') ||
+    normText.includes('vto imposicion') ||
+    normText.includes('cancelacion deposito') ||
+    normText.includes('cancelacion imposicion') ||
+    normText.includes('cancelacion plazo') ||
+    normText.includes('devolucion principal') ||
+    normText.includes('devolucion deposito') ||
+    normText.includes('principal deposito') ||
+    normText.includes('abono vencimiento')
+  ) {
+    if (!normText.includes('interes') && !normText.includes('liquidacion')) {
+      const traspasoIn = categories.find(c => c.id === 'cat-traspaso-ingreso' || c.id === 'cat-transferencias-gasto');
+      if (traspasoIn) return traspasoIn.id;
+    }
+  }
+
+  // 1. Rendimientos bancarios e intereses (Liquidación de cuentas, bonificaciones, intereses de ahorro, dividendos, etc.)
   if (
     normText.includes('liquidacion') ||
     normText.includes('interes') ||
     normText.includes('dividendo') ||
+    normText.includes('bonificacion') ||
+    normText.includes('bonif. recibos') ||
+    normText.includes('abono recibos') ||
     normText.includes('saveback') ||
     normText.includes('cupon') ||
     normText.includes('rendimiento') ||
@@ -799,6 +840,9 @@ export function extractRowsWithMapping(
         !lowerTitle.includes('venta') && 
         !lowerTitle.includes('interes') && 
         !lowerTitle.includes('dividendo') &&
+        !lowerTitle.includes('bonificacion') &&
+        !lowerTitle.includes('bonif.') &&
+        !lowerTitle.includes('abono') &&
         !lowerTitle.includes('devolucion') &&
         !lowerTitle.includes('anulacion')
       ) {
@@ -810,6 +854,7 @@ export function extractRowsWithMapping(
       const isExplicitIncome =
         lowerTitle.includes('dividendo') ||
         lowerTitle.includes('dividend') ||
+        lowerTitle.includes('bonificacion') ||
         lowerTitle.includes('saveback') ||
         lowerTitle.includes('interes') ||
         lowerTitle.includes('rendimiento') ||
@@ -831,6 +876,14 @@ export function extractRowsWithMapping(
       ) {
         type = 'income';
       }
+    }
+
+    // Regla de máxima prioridad para retenciones e intereses:
+    const finalLowerTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (finalLowerTitle.includes('retencion') || finalLowerTitle.includes('retencion hacienda') || finalLowerTitle.includes('retencion irpf')) {
+      type = 'expense';
+    } else if (finalLowerTitle.includes('bonificacion') || finalLowerTitle.includes('abono de intereses') || finalLowerTitle.includes('abono intereses')) {
+      type = 'income';
     }
 
     const absAmount = Math.abs(signedAmount);

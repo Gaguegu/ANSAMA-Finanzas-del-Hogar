@@ -57,7 +57,73 @@ export function loadAppState(): AppState {
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
         const titleLower = (tx.title || '').toLowerCase();
 
-        // Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
+        // A. RETENCIONES FISCALES (Hacienda, IRPF sobre intereses/rendimientos):
+        // SIEMPRE son gasto / cargo fiscal, aunque el concepto contenga "devolución" o "abono"
+        if (titleLower.includes('retencion') || titleLower.includes('retención')) {
+          if (tx.type === 'income') {
+            hasRepairedTransactions = true;
+            return {
+              ...tx,
+              type: 'expense',
+              categoryId: tx.categoryId === 'cat-otros-ingresos' || tx.categoryId === 'cat-rendimientos' || !tx.categoryId ? 'cat-otros-gastos' : tx.categoryId
+            };
+          }
+        }
+
+        // B. BONIFICACIONES, INTERESES Y DIVIDENDOS:
+        // SIEMPRE son ingreso / abono positivo (rendimientos de cuentas/recibos), aunque contengan la palabra "recibos"
+        if (
+          titleLower.includes('bonificacion') ||
+          titleLower.includes('bonificación') ||
+          titleLower.includes('abono intereses') ||
+          titleLower.includes('abono de intereses') ||
+          titleLower.includes('intereses acreedores') ||
+          titleLower.includes('saveback') ||
+          titleLower.includes('dividendo') ||
+          titleLower.includes('dividend')
+        ) {
+          if (tx.type === 'expense' || tx.categoryId === 'cat-nomina') {
+            hasRepairedTransactions = true;
+            return {
+              ...tx,
+              type: 'income',
+              categoryId: 'cat-rendimientos'
+            };
+          }
+        }
+
+        // C. VENCIMIENTOS Y CANCELACIONES DE DEPÓSITOS A PLAZO FIJO:
+        // El principal devuelto al vencimiento es un traspaso interno de capital hacia la cuenta corriente.
+        // NO es un beneficio ni un incremento patrimonial (el incremento ya son los intereses).
+        if (
+          titleLower.includes('vencimiento') ||
+          titleLower.includes('vto. deposito') ||
+          titleLower.includes('vto deposito') ||
+          titleLower.includes('vto. imposicion') ||
+          titleLower.includes('vto imposicion') ||
+          titleLower.includes('cancelacion deposito') ||
+          titleLower.includes('cancelación depósito') ||
+          titleLower.includes('cancelacion imposicion') ||
+          titleLower.includes('devolucion principal') ||
+          titleLower.includes('devolución principal') ||
+          titleLower.includes('principal deposito') ||
+          titleLower.includes('principal depósito') ||
+          titleLower.includes('abono vencimiento')
+        ) {
+          // Si el concepto NO es expresamente liquidación de intereses, es la devolución del capital
+          if (!titleLower.includes('interes') && !titleLower.includes('interés') && !titleLower.includes('liquidacion') && !titleLower.includes('liquidación')) {
+            if (tx.categoryId !== 'cat-traspaso-ingreso') {
+              hasRepairedTransactions = true;
+              return {
+                ...tx,
+                type: 'income',
+                categoryId: 'cat-traspaso-ingreso'
+              };
+            }
+          }
+        }
+
+        // D. Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
         if (tx.type === 'expense') {
           if (
             titleLower.includes('dividendo') ||
@@ -73,11 +139,11 @@ export function loadAppState(): AppState {
             titleLower.includes('einzahlung')
           ) {
             hasRepairedTransactions = true;
-            return { ...tx, type: 'income' };
+            return { ...tx, type: 'income', categoryId: 'cat-rendimientos' };
           }
         }
 
-        // Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo, transferencia a favor):
+        // E. Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo, transferencia a favor):
         if (tx.type === 'income') {
           const isActuallyExpense =
             titleLower.includes('imposicion') ||
@@ -118,14 +184,15 @@ export function loadAppState(): AppState {
             titleLower.includes('cuota') ||
             titleLower.includes('comision') ||
             titleLower.includes('comisión') ||
-            titleLower.includes('retencion') ||
-            titleLower.includes('retención') ||
             titleLower.includes('reintegro') ||
             titleLower.includes('extraccion') ||
             titleLower.includes('extracción');
 
           if (
             isActuallyExpense &&
+            !titleLower.includes('bonificacion') &&
+            !titleLower.includes('bonificación') &&
+            !titleLower.includes('abono de intereses') &&
             !titleLower.includes('anulacion') &&
             !titleLower.includes('anulación') &&
             !titleLower.includes('devolucion') &&
@@ -1558,8 +1625,18 @@ export function isInternalTransfer(tx: Transaction): boolean {
     combined.includes('sanchez marin') ||
     combined.includes('imposicion') ||
     combined.includes('constitucion') ||
-    combined.includes('vencimiento deposito') ||
+    combined.includes('vencimiento') ||
+    combined.includes('vto. deposito') ||
+    combined.includes('vto deposito') ||
+    combined.includes('vto. imposicion') ||
+    combined.includes('vto imposicion') ||
     combined.includes('cancelacion deposito') ||
+    combined.includes('cancelacion imposicion') ||
+    combined.includes('cancelacion plazo') ||
+    combined.includes('devolucion principal') ||
+    combined.includes('devolucion deposito') ||
+    combined.includes('principal deposito') ||
+    combined.includes('abono vencimiento') ||
     combined.includes('deposito a plazo') ||
     combined.includes('plazo fijo') ||
     combined.includes('aportacion cartera') ||
