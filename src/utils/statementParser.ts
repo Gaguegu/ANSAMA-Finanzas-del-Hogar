@@ -180,16 +180,11 @@ export function guessCategory(
           (bankNameLower && bankNameLower.length >= 3 && normText.includes(bankNameLower)) ||
           (accNameLower && accNameLower.length >= 4 && normText.includes(accNameLower)) ||
           (lastDigits && lastDigits.length >= 4 && normText.includes(lastDigits)) ||
-          normText.includes('sanchez marin') ||
-          normText.includes('andres sanchez') ||
-          normText.includes('a mi favor') ||
           normText.includes('a mi nombre') ||
           normText.includes('entre mis cuentas') ||
           normText.includes('transferencia propia') ||
           normText.includes('traspaso propio') ||
-          normText.includes('traspaso entre cuentas') ||
-          normText.includes('cuenta propia') ||
-          normText.includes('mismo titular')
+          normText.includes('traspaso entre cuentas')
         ) {
           if (amount >= 0) {
             const inCat = categories.find((c) => c.id === 'cat-traspaso-ingreso' || c.name.toLowerCase().includes('traspaso entre'));
@@ -206,16 +201,9 @@ export function guessCategory(
   // 0. Retenciones fiscales (Hacienda, IRPF sobre intereses/rendimientos): SIEMPRE gasto
   if (
     normText.includes('retencion') ||
-    normText.includes('ret. fiscal') ||
-    normText.includes('ret fiscal') ||
-    normText.includes('ret. irpf') ||
-    normText.includes('ret irpf') ||
-    normText.includes('ret. hda') ||
-    normText.includes('ret hda') ||
-    normText.includes('retencio') ||
-    normText.includes('withholding tax') ||
-    normText.includes('tax withheld') ||
-    normText.includes('quellensteuer')
+    normText.includes('retencion hacienda') ||
+    normText.includes('retencion irpf') ||
+    normText.includes('retencion fiscal')
   ) {
     const taxCat = categories.find(c => c.id === 'cat-impuestos' || c.id === 'cat-otros-gastos');
     if (taxCat) return taxCat.id;
@@ -244,21 +232,9 @@ export function guessCategory(
 
   // 1. Rendimientos bancarios e intereses (Liquidación de cuentas, bonificaciones, intereses de ahorro, dividendos, etc.)
   if (
-    normText.includes('liq. propia cta') ||
-    normText.includes('liq propia cta') ||
-    normText.includes('liq. cta') ||
-    normText.includes('liq cta') ||
-    normText.includes('liq. intereses') ||
-    normText.includes('liq intereses') ||
-    normText.includes('remuneracion cuenta') ||
-    normText.includes('remuneracion cta') ||
-    normText.includes('remuneracio') ||
     normText.includes('liquidacion') ||
-    normText.includes('liquidacio') ||
     normText.includes('interes') ||
-    normText.includes('interessos') ||
     normText.includes('dividendo') ||
-    normText.includes('dividend') ||
     normText.includes('bonificacion') ||
     normText.includes('bonif. recibos') ||
     normText.includes('abono recibos') ||
@@ -902,39 +878,11 @@ export function extractRowsWithMapping(
       }
     }
 
-    // Regla de máxima prioridad para retenciones e intereses en todos los bancos:
+    // Regla de máxima prioridad para retenciones e intereses:
     const finalLowerTitle = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const isTaxWithholding = 
-      finalLowerTitle.includes('retencion') ||
-      finalLowerTitle.includes('ret. fiscal') ||
-      finalLowerTitle.includes('ret fiscal') ||
-      finalLowerTitle.includes('ret. irpf') ||
-      finalLowerTitle.includes('ret irpf') ||
-      finalLowerTitle.includes('ret. hda') ||
-      finalLowerTitle.includes('ret hda') ||
-      finalLowerTitle.includes('retencio') ||
-      finalLowerTitle.includes('withholding tax') ||
-      finalLowerTitle.includes('tax withheld') ||
-      finalLowerTitle.includes('quellensteuer') ||
-      finalLowerTitle.includes('kapitalertragsteuer');
-
-    const isInterestOrYieldCredit =
-      !isTaxWithholding && (
-        finalLowerTitle.includes('bonificacion') ||
-        finalLowerTitle.includes('abono de intereses') ||
-        finalLowerTitle.includes('abono intereses') ||
-        finalLowerTitle.includes('abono int.') ||
-        finalLowerTitle.includes('liq. propia cta') ||
-        finalLowerTitle.includes('liq propia cta') ||
-        finalLowerTitle.includes('intereses acreedores') ||
-        finalLowerTitle.includes('remuneracion cuenta') ||
-        finalLowerTitle.includes('remuneracion cta') ||
-        finalLowerTitle.includes('saveback')
-      );
-
-    if (isTaxWithholding) {
+    if (finalLowerTitle.includes('retencion') || finalLowerTitle.includes('retencion hacienda') || finalLowerTitle.includes('retencion irpf')) {
       type = 'expense';
-    } else if (isInterestOrYieldCredit) {
+    } else if (finalLowerTitle.includes('bonificacion') || finalLowerTitle.includes('abono de intereses') || finalLowerTitle.includes('abono intereses')) {
       type = 'income';
     }
 

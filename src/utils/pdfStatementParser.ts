@@ -631,6 +631,8 @@ export async function parsePdfStatementFile(
       titleNorm.includes('saveback') ||
       titleNorm.includes('abono') ||
       titleNorm.includes('ingreso') ||
+      titleNorm.includes('deposito') ||
+      titleNorm.includes('deposit') ||
       titleNorm.includes('rendimiento') ||
       titleNorm.includes('cashback') ||
       titleNorm.includes('recompensa') ||
@@ -644,8 +646,6 @@ export async function parsePdfStatementFile(
       titleNorm.includes('bonificación') ||
       titleNorm.includes('abono intereses') ||
       titleNorm.includes('abono de intereses') ||
-      titleNorm.includes('liq. propia cta') ||
-      titleNorm.includes('remuneracion') ||
       titleNorm.includes('transferencia recibida') ||
       titleNorm.includes('transferencia de ') ||
       titleNorm.includes('traspaso entrante') ||
@@ -701,37 +701,8 @@ export async function parsePdfStatementFile(
       transactionAmount = Math.abs(amountCandidate.val);
       balanceAfter = balanceCandidate.val;
 
-      const isTax = 
-        titleNorm.includes('retencion') ||
-        titleNorm.includes('ret. fiscal') ||
-        titleNorm.includes('ret fiscal') ||
-        titleNorm.includes('ret. irpf') ||
-        titleNorm.includes('ret irpf') ||
-        titleNorm.includes('ret. hda') ||
-        titleNorm.includes('ret hda') ||
-        titleNorm.includes('retencio') ||
-        titleNorm.includes('withholding tax') ||
-        titleNorm.includes('tax withheld') ||
-        titleNorm.includes('quellensteuer') ||
-        titleNorm.includes('kapitalertragsteuer');
-
-      const isInterest =
-        !isTax && (
-          titleNorm.includes('bonificacion') ||
-          titleNorm.includes('abono de intereses') ||
-          titleNorm.includes('abono intereses') ||
-          titleNorm.includes('intereses acreedores') ||
-          titleNorm.includes('liq. propia cta') ||
-          titleNorm.includes('remuneracion') ||
-          titleNorm.includes('saveback')
-        );
-
-      // 1. Prioridad semántica inequívoca (las retenciones fiscales son SIEMPRE gastos; liquidaciones de intereses SIEMPRE ingresos)
-      if (isTax) {
-        transactionType = 'expense';
-      } else if (isInterest) {
-        transactionType = 'income';
-      } else if (isExplicitIncome && !isExplicitExpense) {
+      // 1. Prioridad semántica inequívoca (las ventas de acciones, dividendos, intereses son siempre ingresos; compras y cargos siempre gastos)
+      if (isExplicitIncome && !isExplicitExpense) {
         transactionType = 'income';
       } else if (isExplicitExpense && !isExplicitIncome) {
         transactionType = 'expense';
@@ -763,36 +734,7 @@ export async function parsePdfStatementFile(
       const singleNum = numericItems[0];
       transactionAmount = Math.abs(singleNum.val);
 
-      const isTax = 
-        titleNorm.includes('retencion') ||
-        titleNorm.includes('ret. fiscal') ||
-        titleNorm.includes('ret fiscal') ||
-        titleNorm.includes('ret. irpf') ||
-        titleNorm.includes('ret irpf') ||
-        titleNorm.includes('ret. hda') ||
-        titleNorm.includes('ret hda') ||
-        titleNorm.includes('retencio') ||
-        titleNorm.includes('withholding tax') ||
-        titleNorm.includes('tax withheld') ||
-        titleNorm.includes('quellensteuer') ||
-        titleNorm.includes('kapitalertragsteuer');
-
-      const isInterest =
-        !isTax && (
-          titleNorm.includes('bonificacion') ||
-          titleNorm.includes('abono de intereses') ||
-          titleNorm.includes('abono intereses') ||
-          titleNorm.includes('intereses acreedores') ||
-          titleNorm.includes('liq. propia cta') ||
-          titleNorm.includes('remuneracion') ||
-          titleNorm.includes('saveback')
-        );
-
-      if (isTax) {
-        transactionType = 'expense';
-      } else if (isInterest) {
-        transactionType = 'income';
-      } else if (isExplicitIncome && !isExplicitExpense) {
+      if (isExplicitIncome && !isExplicitExpense) {
         transactionType = 'income';
       } else if (isExplicitExpense && !isExplicitIncome) {
         transactionType = 'expense';
