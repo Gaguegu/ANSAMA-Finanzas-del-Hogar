@@ -18,7 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
-import { formatCurrency, isInternalTransfer } from '../utils/storage';
+import { formatCurrency } from '../utils/storage';
 
 interface YearlyClosureProps {
   appState: AppState;
@@ -55,22 +55,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return appState.transactions.filter((tx) => tx.date.startsWith(yearPrefix));
   }, [appState.transactions, selectedYear]);
 
-  // Total real income and expenses for the year (excluding internal transfers between own accounts)
+  // Total real income and expenses for the year
   const totalYearIncome = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'income' && !isInternalTransfer(t))
+      .filter((t) => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
 
   const totalYearExpense = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'expense' && !isInternalTransfer(t))
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions]);
-
-  const totalYearTransfers = useMemo(() => {
-    return yearTransactions
-      .filter((t) => isInternalTransfer(t))
+      .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
 
@@ -96,10 +90,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
       );
       const inc = txsInMonth
-        .filter((t) => t.type === 'income' && !isInternalTransfer(t))
+        .filter((t) => t.type === 'income')
         .reduce((sum, t) => sum + t.amount, 0);
       const exp = txsInMonth
-        .filter((t) => t.type === 'expense' && !isInternalTransfer(t))
+        .filter((t) => t.type === 'expense')
         .reduce((sum, t) => sum + t.amount, 0);
 
       monthlyIncomes.push(Math.round(inc * 100) / 100);
@@ -416,8 +410,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthNum = String(idx + 1).padStart(2, '0');
       const prefix = `${selectedYear}-${monthNum}`;
       const txs = yearTransactions.filter((t) => t.date.startsWith(prefix));
-      const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
-      const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
+      const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+      const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
       const net = income - expense;
       return {
         month: name,
@@ -437,8 +431,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const monthNum = String(idx + 1).padStart(2, '0');
         const prefix = `${selectedYear}-${monthNum}`;
         const txs = yearTransactions.filter((t) => t.accountId === acc.id && t.date.startsWith(prefix));
-        const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((sum, t) => sum + t.amount, 0);
+        const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
         const net = income - expense;
         return {
           month: name,
@@ -470,7 +464,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     if (cashflowAccountFilter === 'all') {
       return {
         title: 'Hogar Consolidado (Todas las Cuentas)',
-        subtitle: 'Flujo de ahorro familiar real neto (excluye traspasos internos)',
+        subtitle: 'Flujo de ahorro familiar real neto',
         bankColor: '#0E6A3B',
         months: monthlyCashflow,
         yearIncome: totalYearIncome,
@@ -492,8 +486,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const txs = yearTransactions.filter(
           (t) => bankAccs.some((a) => a.id === t.accountId) && t.date.startsWith(prefix)
         );
-        const income = txs.filter((t) => t.type === 'income' && !isInternalTransfer(t)).reduce((s, t) => s + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense' && !isInternalTransfer(t)).reduce((s, t) => s + t.amount, 0);
+        const income = txs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const expense = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
         return {
           month: name,
           fullMonth: MONTH_NAMES_FULL[idx],
@@ -690,14 +684,6 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)} (Saldo 31 Dic vs 1 Ene)
             </span>
           </div>
-        </div>
-
-        {/* Nota aclaratoria sobre exclusión de traspasos internos */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 font-medium">
-          <Info className="w-4 h-4 text-emerald-700 shrink-0" />
-          <span>
-            Los ingresos y gastos anuales excluyen automáticamente los traspasos internos y depósitos a plazo fijo movilizados entre tus cuentas ({formatCurrency(totalYearTransfers)}) para reflejar el flujo de ahorro familiar real sin distorsiones ni duplicidades.
-          </span>
         </div>
       </div>
 

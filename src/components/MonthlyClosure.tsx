@@ -24,7 +24,7 @@ import {
   ListFilter
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput, isInternalTransfer } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput } from '../utils/storage';
 
 interface MonthlyClosureProps {
   appState: AppState;
@@ -236,22 +236,16 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return appState.transactions.filter((tx) => tx.date.startsWith(selectedMonth));
   }, [appState.transactions, selectedMonth]);
 
-  // Compute real income and expenses for the month (excluding internal transfers between own accounts)
+  // Compute real income and expenses for the month
   const monthIncome = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'income' && !isInternalTransfer(tx))
+      .filter((tx) => tx.type === 'income')
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [monthTransactions]);
 
   const monthExpense = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx))
-      .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions]);
-
-  const monthTransfers = useMemo(() => {
-    return monthTransactions
-      .filter((tx) => isInternalTransfer(tx))
+      .filter((tx) => tx.type === 'expense')
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [monthTransactions]);
 
@@ -314,16 +308,16 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return groups.map((g) => {
       const accIds = g.accounts.map((a) => a.id);
       const txs = monthTransactions.filter((tx) => accIds.includes(tx.accountId));
-      const income = txs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
-      const expense = txs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+      const income = txs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+      const expense = txs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
       const net = income - expense;
       const currentBalance = g.accounts.reduce((sum, a) => sum + getAccountBalanceForMonth(a), 0);
 
       // Desglose individual de cada cuenta de este grupo
       const accountsDetailed = g.accounts.map((a) => {
         const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
-        const aIncome = aTxs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
-        const aExpense = aTxs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+        const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+        const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
         const aNet = aIncome - aExpense;
         const info = getAccountBalanceInfo(a);
         return {
@@ -355,8 +349,8 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const allAccountsDetailed = useMemo(() => {
     return appState.accounts.map((a) => {
       const aTxs = monthTransactions.filter((tx) => tx.accountId === a.id);
-      const aIncome = aTxs.filter((tx) => tx.type === 'income' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
-      const aExpense = aTxs.filter((tx) => tx.type === 'expense' && !isInternalTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0);
+      const aIncome = aTxs.filter((tx) => tx.type === 'income').reduce((sum, tx) => sum + tx.amount, 0);
+      const aExpense = aTxs.filter((tx) => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
       const aNet = aIncome - aExpense;
       const info = getAccountBalanceInfo(a);
       return {

@@ -9,7 +9,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { BankAccount, Transaction } from '../types';
-import { formatCurrency, isInternalTransfer } from '../utils/storage';
+import { formatCurrency } from '../utils/storage';
 
 interface NetWorthCardProps {
   accounts: BankAccount[];
@@ -47,11 +47,11 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({
   const monthlyTransactions = transactions.filter((t) => t.date.startsWith(activeMonth));
   
   const monthlyIncome = monthlyTransactions
-    .filter((t) => t.type === 'income' && !isInternalTransfer(t))
+    .filter((t) => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const monthlyExpense = monthlyTransactions
-    .filter((t) => t.type === 'expense' && !isInternalTransfer(t))
+    .filter((t) => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
   const monthlySavings = monthlyIncome - monthlyExpense;

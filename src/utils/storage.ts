@@ -92,38 +92,7 @@ export function loadAppState(): AppState {
           }
         }
 
-        // C. VENCIMIENTOS Y CANCELACIONES DE DEPÓSITOS A PLAZO FIJO:
-        // El principal devuelto al vencimiento es un traspaso interno de capital hacia la cuenta corriente.
-        // NO es un beneficio ni un incremento patrimonial (el incremento ya son los intereses).
-        if (
-          titleLower.includes('vencimiento') ||
-          titleLower.includes('vto. deposito') ||
-          titleLower.includes('vto deposito') ||
-          titleLower.includes('vto. imposicion') ||
-          titleLower.includes('vto imposicion') ||
-          titleLower.includes('cancelacion deposito') ||
-          titleLower.includes('cancelación depósito') ||
-          titleLower.includes('cancelacion imposicion') ||
-          titleLower.includes('devolucion principal') ||
-          titleLower.includes('devolución principal') ||
-          titleLower.includes('principal deposito') ||
-          titleLower.includes('principal depósito') ||
-          titleLower.includes('abono vencimiento')
-        ) {
-          // Si el concepto NO es expresamente liquidación de intereses, es la devolución del capital
-          if (!titleLower.includes('interes') && !titleLower.includes('interés') && !titleLower.includes('liquidacion') && !titleLower.includes('liquidación')) {
-            if (tx.categoryId !== 'cat-traspaso-ingreso') {
-              hasRepairedTransactions = true;
-              return {
-                ...tx,
-                type: 'income',
-                categoryId: 'cat-traspaso-ingreso'
-              };
-            }
-          }
-        }
-
-        // D. Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
+        // C. Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
         if (tx.type === 'expense') {
           if (
             titleLower.includes('dividendo') ||
@@ -1590,60 +1559,6 @@ export function formatMonthName(monthStr: string): string {
   } catch {
     return monthStr;
   }
-}
-
-/**
- * Determina si una transacción es un traspaso interno o movimiento entre cuentas propias
- * (imposiciones/cancelaciones a plazo fijo, transferencias entre cuentas bancarias, traspasos a valores).
- * Estos movimientos no constituyen ingresos de nómina ni gastos reales del hogar, sino reubicación de capital.
- */
-export function isInternalTransfer(tx: Transaction): boolean {
-  if (tx.categoryId === 'cat-transferencias-gasto' || tx.categoryId === 'cat-traspaso-ingreso') {
-    return true;
-  }
-  const t = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const note = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const combined = `${t} ${note}`;
-  
-  return (
-    combined.includes('traspaso') ||
-    combined.includes('transferencia realizada') ||
-    combined.includes('transf. realizada') ||
-    combined.includes('transferencia emitida') ||
-    combined.includes('transferencia enviada') ||
-    combined.includes('transferencia ordenada') ||
-    combined.includes('transferencia propia') ||
-    combined.includes('transferencia interna') ||
-    combined.includes('transferencia entre') ||
-    combined.includes('entre mis cuentas') ||
-    combined.includes('entre cuentas') ||
-    combined.includes('a mi nombre') ||
-    combined.includes('mismo titular') ||
-    combined.includes('cuenta propia') ||
-    combined.includes('a favor de andres') ||
-    combined.includes('de andres sanchez') ||
-    combined.includes('sanchez marin') ||
-    combined.includes('imposicion') ||
-    combined.includes('constitucion') ||
-    combined.includes('vencimiento') ||
-    combined.includes('vto. deposito') ||
-    combined.includes('vto deposito') ||
-    combined.includes('vto. imposicion') ||
-    combined.includes('vto imposicion') ||
-    combined.includes('cancelacion deposito') ||
-    combined.includes('cancelacion imposicion') ||
-    combined.includes('cancelacion plazo') ||
-    combined.includes('devolucion principal') ||
-    combined.includes('devolucion deposito') ||
-    combined.includes('principal deposito') ||
-    combined.includes('abono vencimiento') ||
-    combined.includes('deposito a plazo') ||
-    combined.includes('plazo fijo') ||
-    combined.includes('aportacion cartera') ||
-    combined.includes('retirada broker') ||
-    combined.includes('suscripcion fondo') ||
-    combined.includes('reembolso fondo')
-  );
 }
 
 

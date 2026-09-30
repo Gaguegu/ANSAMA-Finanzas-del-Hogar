@@ -24,7 +24,7 @@ import {
   Filter
 } from 'lucide-react';
 import { Transaction, BankAccount, TransactionCategory } from '../types';
-import { formatCurrency, formatDate, formatMonthName, isInternalTransfer } from '../utils/storage';
+import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
 import { normalizeConceptForMatching, areTransactionsSimilar } from '../utils/reconciliation';
 
@@ -425,28 +425,21 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
   // Resumen contable de la selección filtrada
   const filteredStats = useMemo(() => {
-    const isExplicitTransferFilter = filterCategory === 'cat-traspaso-ingreso' || filterCategory === 'cat-transferencias-gasto';
-
     const inc = filteredTransactions
-      .filter((t) => t.type === 'income' && (isExplicitTransferFilter || !isInternalTransfer(t)))
+      .filter((t) => t.type === 'income')
       .reduce((s, t) => s + t.amount, 0);
     const exp = filteredTransactions
-      .filter((t) => t.type === 'expense' && (isExplicitTransferFilter || !isInternalTransfer(t)))
-      .reduce((s, t) => s + t.amount, 0);
-    const transfers = filteredTransactions
-      .filter((t) => isInternalTransfer(t))
+      .filter((t) => t.type === 'expense')
       .reduce((s, t) => s + t.amount, 0);
 
     return {
       income: Math.round(inc * 100) / 100,
       expense: Math.round(exp * 100) / 100,
       net: Math.round((inc - exp) * 100) / 100,
-      transfers: Math.round(transfers * 100) / 100,
-      incomeCount: filteredTransactions.filter((t) => t.type === 'income' && (isExplicitTransferFilter || !isInternalTransfer(t))).length,
-      expenseCount: filteredTransactions.filter((t) => t.type === 'expense' && (isExplicitTransferFilter || !isInternalTransfer(t))).length,
-      transfersCount: filteredTransactions.filter((t) => isInternalTransfer(t)).length
+      incomeCount: filteredTransactions.filter((t) => t.type === 'income').length,
+      expenseCount: filteredTransactions.filter((t) => t.type === 'expense').length
     };
-  }, [filteredTransactions, filterCategory]);
+  }, [filteredTransactions]);
 
   const amountLabel = useMemo(() => {
     if (amountFilter.operator === 'all') return 'Importe: Todos';
@@ -2027,14 +2020,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             <span className={`font-black ${filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}`}>
               Neto: {filteredStats.net >= 0 ? `+${formatCurrency(filteredStats.net)}` : formatCurrency(filteredStats.net)}
             </span>
-            {filteredStats.transfersCount > 0 && filterCategory !== 'cat-traspaso-ingreso' && filterCategory !== 'cat-transferencias-gasto' && (
-              <>
-                <span className="text-zinc-300">|</span>
-                <span className="text-sky-700 font-bold" title="Traspasos y movimientos entre cuentas propias (excluidos de ingresos y gastos familiares)">
-                  Traspasos: {formatCurrency(filteredStats.transfers)} ({filteredStats.transfersCount})
-                </span>
-              </>
-            )}
           </div>
 
           <button
