@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
 import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer } from '../utils/storage';
-import { EXCEL_2025_BENCHMARK } from '../data/excel2025Benchmark';
+import { getBenchmarkForYear } from '../data/excel2025Benchmark';
 
 interface MonthlyClosureProps {
   appState: AppState;
@@ -238,30 +238,32 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return appState.transactions.filter((tx) => tx.date.startsWith(selectedMonth));
   }, [appState.transactions, selectedMonth]);
 
+  const monthBenchmark = useMemo(() => {
+    const y = parseInt(selectedMonth.split('-')[0], 10);
+    const mIdx = parseInt(selectedMonth.split('-')[1], 10) - 1;
+    const yearBench = getBenchmarkForYear(y);
+    if (!yearBench) return null;
+    return yearBench.months.find((m) => m.monthIndex === mIdx) ?? null;
+  }, [selectedMonth]);
+
   // Compute real income and expenses for the month according to savingsViewMode
   const monthIncome = useMemo(() => {
-    if (selectedMonth.startsWith('2025-') && savingsViewMode === 'real') {
-      const mIdx = parseInt(selectedMonth.split('-')[1], 10) - 1;
-      if (mIdx >= 0 && mIdx < 12) {
-        return EXCEL_2025_BENCHMARK.months[mIdx].income;
-      }
+    if (monthBenchmark && savingsViewMode === 'real') {
+      return monthBenchmark.income;
     }
     return monthTransactions
       .filter((tx) => tx.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
       .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions, savingsViewMode, selectedMonth]);
+  }, [monthTransactions, savingsViewMode, monthBenchmark]);
 
   const monthExpense = useMemo(() => {
-    if (selectedMonth.startsWith('2025-') && savingsViewMode === 'real') {
-      const mIdx = parseInt(selectedMonth.split('-')[1], 10) - 1;
-      if (mIdx >= 0 && mIdx < 12) {
-        return EXCEL_2025_BENCHMARK.months[mIdx].expense;
-      }
+    if (monthBenchmark && savingsViewMode === 'real') {
+      return monthBenchmark.expense;
     }
     return monthTransactions
       .filter((tx) => tx.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
       .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions, savingsViewMode, selectedMonth]);
+  }, [monthTransactions, savingsViewMode, monthBenchmark]);
 
   const monthTransfers = useMemo(() => {
     return monthTransactions
@@ -270,14 +272,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   }, [monthTransactions]);
 
   const monthNet = useMemo(() => {
-    if (selectedMonth.startsWith('2025-') && savingsViewMode === 'real') {
-      const mIdx = parseInt(selectedMonth.split('-')[1], 10) - 1;
-      if (mIdx >= 0 && mIdx < 12) {
-        return EXCEL_2025_BENCHMARK.months[mIdx].net;
-      }
+    if (monthBenchmark && savingsViewMode === 'real') {
+      return monthBenchmark.net;
     }
     return monthIncome - monthExpense;
-  }, [monthIncome, monthExpense, selectedMonth, savingsViewMode]);
+  }, [monthIncome, monthExpense, monthBenchmark, savingsViewMode]);
 
   const savingsRate = monthIncome > 0 ? Math.round((monthNet / monthIncome) * 100) : 0;
 

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
 import { formatCurrency, isCapitalTransfer } from '../utils/storage';
-import { EXCEL_2025_BENCHMARK, matchAccountToBenchmarkKey } from '../data/excel2025Benchmark';
+import { getBenchmarkForYear, matchAccountToBenchmarkKey } from '../data/excel2025Benchmark';
 
 interface YearlyClosureProps {
   appState: AppState;
@@ -57,24 +57,28 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return appState.transactions.filter((tx) => tx.date.startsWith(yearPrefix));
   }, [appState.transactions, selectedYear]);
 
+  const currentBenchmark = useMemo(() => {
+    return getBenchmarkForYear(selectedYear);
+  }, [selectedYear]);
+
   // Total real income and expenses for the year according to savingsViewMode
   const totalYearIncome = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'real') {
-      return EXCEL_2025_BENCHMARK.yearIncome;
+    if (currentBenchmark && savingsViewMode === 'real') {
+      return currentBenchmark.yearIncome;
     }
     return yearTransactions
       .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions, savingsViewMode, selectedYear]);
+  }, [yearTransactions, savingsViewMode, currentBenchmark]);
 
   const totalYearExpense = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'real') {
-      return EXCEL_2025_BENCHMARK.yearExpense;
+    if (currentBenchmark && savingsViewMode === 'real') {
+      return currentBenchmark.yearExpense;
     }
     return yearTransactions
       .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions, savingsViewMode, selectedYear]);
+  }, [yearTransactions, savingsViewMode, currentBenchmark]);
 
   const totalYearTransfers = useMemo(() => {
     return yearTransactions
@@ -83,11 +87,11 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   }, [yearTransactions]);
 
   const totalYearNet = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'real') {
-      return EXCEL_2025_BENCHMARK.yearNet;
+    if (currentBenchmark && savingsViewMode === 'real') {
+      return currentBenchmark.yearNet;
     }
     return totalYearIncome - totalYearExpense;
-  }, [totalYearIncome, totalYearExpense, selectedYear, savingsViewMode]);
+  }, [totalYearIncome, totalYearExpense, currentBenchmark, savingsViewMode]);
 
   const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
@@ -106,33 +110,35 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthKey = `${selectedYear}-${monthNum}`;
       const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
 
-      // Si estamos en modo de ahorro real y ejercicio 2025, cargamos los datos auditados exactos
-      if (savingsViewMode === 'real' && selectedYear === 2025) {
-        const benchMonth = EXCEL_2025_BENCHMARK.months[m];
-        let bInc = 0;
-        let bExp = 0;
-        let bNet = 0;
-        let bBal = 0;
-        let hasMatched = false;
+      // Si estamos en modo de ahorro real y el ejercicio tiene benchmark auditado, cargamos los datos auditados exactos
+      if (savingsViewMode === 'real' && currentBenchmark) {
+        const benchMonth = currentBenchmark.months.find((bm) => bm.monthIndex === m);
+        if (benchMonth) {
+          let bInc = 0;
+          let bExp = 0;
+          let bNet = 0;
+          let bBal = 0;
+          let hasMatched = false;
 
-        for (const a of accounts) {
-          const key = matchAccountToBenchmarkKey(a);
-          if (key && benchMonth.byBank[key]) {
-            bInc += benchMonth.byBank[key].income;
-            bExp += benchMonth.byBank[key].expense;
-            bNet += benchMonth.byBank[key].net;
-            bBal += benchMonth.byBank[key].balance ?? a.balance;
-            hasMatched = true;
+          for (const a of accounts) {
+            const key = matchAccountToBenchmarkKey(a);
+            if (key && benchMonth.byBank[key]) {
+              bInc += benchMonth.byBank[key].income;
+              bExp += benchMonth.byBank[key].expense;
+              bNet += benchMonth.byBank[key].net;
+              bBal += benchMonth.byBank[key].balance ?? a.balance;
+              hasMatched = true;
+            }
           }
-        }
 
-        if (hasMatched) {
-          monthlyIncomes.push(Math.round(bInc * 100) / 100);
-          monthlyExpenses.push(Math.round(bExp * 100) / 100);
-          monthlyNets.push(Math.round(bNet * 100) / 100);
-          monthlyBalances.push(Math.round(bBal * 100) / 100);
-          grossNets.push(Math.round(bNet * 100) / 100);
-          continue;
+          if (hasMatched) {
+            monthlyIncomes.push(Math.round(bInc * 100) / 100);
+            monthlyExpenses.push(Math.round(bExp * 100) / 100);
+            monthlyNets.push(Math.round(bNet * 100) / 100);
+            monthlyBalances.push(Math.round(bBal * 100) / 100);
+            grossNets.push(Math.round(bNet * 100) / 100);
+            continue;
+          }
         }
       }
 
@@ -463,15 +469,28 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
   // Monthly cashflow: Real Income vs Real Expense per month for the year
   const monthlyCashflow = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'real') {
-      return EXCEL_2025_BENCHMARK.months.map((m) => ({
-        month: m.monthName,
-        fullMonth: m.fullMonthName,
-        income: m.income,
-        expense: m.expense,
-        net: m.net,
-        hasActivity: true
-      }));
+    if (currentBenchmark && savingsViewMode === 'real') {
+      return MONTH_NAMES_SHORT.map((name, idx) => {
+        const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
+        if (bMonth) {
+          return {
+            month: bMonth.monthName,
+            fullMonth: bMonth.fullMonthName,
+            income: bMonth.income,
+            expense: bMonth.expense,
+            net: bMonth.net,
+            hasActivity: true
+          };
+        }
+        return {
+          month: name,
+          fullMonth: MONTH_NAMES_FULL[idx],
+          income: 0,
+          expense: 0,
+          net: 0,
+          hasActivity: false
+        };
+      });
     }
     return MONTH_NAMES_SHORT.map((name, idx) => {
       const monthNum = String(idx + 1).padStart(2, '0');
@@ -493,7 +512,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         hasActivity: txs.length > 0
       };
     });
-  }, [yearTransactions, selectedYear, savingsViewMode]);
+  }, [yearTransactions, selectedYear, savingsViewMode, currentBenchmark]);
 
   // Cashflow desglosado para cada una de las cuentas individuales
   const allAccountsMonthlyCashflow = useMemo(() => {
@@ -501,15 +520,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const benchKey = matchAccountToBenchmarkKey(acc);
 
       const months = MONTH_NAMES_SHORT.map((name, idx) => {
-        if (selectedYear === 2025 && savingsViewMode === 'real' && benchKey) {
-          const bData = EXCEL_2025_BENCHMARK.months[idx].byBank[benchKey] || { income: 0, expense: 0, net: 0 };
+        if (currentBenchmark && savingsViewMode === 'real' && benchKey) {
+          const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
+          const bData = bMonth?.byBank[benchKey] || { income: 0, expense: 0, net: 0 };
           return {
             month: name,
             fullMonth: MONTH_NAMES_FULL[idx],
             income: bData.income,
             expense: bData.expense,
             net: bData.net,
-            hasActivity: true
+            hasActivity: bMonth !== undefined
           };
         }
 
@@ -546,7 +566,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         hasYearActivity: months.some((m) => m.hasActivity)
       };
     });
-  }, [appState.accounts, yearTransactions, selectedYear, savingsViewMode]);
+  }, [appState.accounts, yearTransactions, selectedYear, savingsViewMode, currentBenchmark]);
 
   // Datos activos del flujo según el filtro seleccionado
   const activeCashflowData = useMemo(() => {
@@ -572,22 +592,33 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const bankName = bankAccs[0]?.bankName || bankKey.toUpperCase();
       const bankColor = bankAccs[0]?.color || '#004481';
 
-      if (selectedYear === 2025 && savingsViewMode === 'real') {
-        const months = EXCEL_2025_BENCHMARK.months.map((m) => {
+      if (currentBenchmark && savingsViewMode === 'real') {
+        const months = MONTH_NAMES_SHORT.map((name, idx) => {
+          const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
+          if (!bMonth) {
+            return {
+              month: name,
+              fullMonth: MONTH_NAMES_FULL[idx],
+              income: 0,
+              expense: 0,
+              net: 0,
+              hasActivity: false
+            };
+          }
           let bInc = 0;
           let bExp = 0;
           let bNet = 0;
           for (const acc of bankAccs) {
             const key = matchAccountToBenchmarkKey(acc);
-            if (key && m.byBank[key]) {
-              bInc += m.byBank[key].income;
-              bExp += m.byBank[key].expense;
-              bNet += m.byBank[key].net;
+            if (key && bMonth.byBank[key]) {
+              bInc += bMonth.byBank[key].income;
+              bExp += bMonth.byBank[key].expense;
+              bNet += bMonth.byBank[key].net;
             }
           }
           return {
-            month: m.monthName,
-            fullMonth: m.fullMonthName,
+            month: bMonth.monthName,
+            fullMonth: bMonth.fullMonthName,
             income: Math.round(bInc * 100) / 100,
             expense: Math.round(bExp * 100) / 100,
             net: Math.round(bNet * 100) / 100,
@@ -1593,10 +1624,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 </div>
 
                 <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-600 font-semibold flex justify-between">
-                  <span>{savingsViewMode === 'real' && selectedYear === 2025 ? 'Promedio mensual' : 'Balance consolidado'}</span>
+                  <span>{savingsViewMode === 'real' && currentBenchmark ? 'Promedio mensual' : 'Balance consolidado'}</span>
                   <span className="font-bold text-[#0E6A3B]">
-                    {savingsViewMode === 'real' && selectedYear === 2025 
-                      ? '+1.381,38 €/mes' 
+                    {savingsViewMode === 'real' && currentBenchmark 
+                      ? `+${formatCurrency(currentBenchmark.averageMonthNet)}/mes` 
                       : (activeCashflowData.yearIncome > 0 ? `${Math.round((activeCashflowData.yearNet / activeCashflowData.yearIncome) * 100)}% ahorro` : '')}
                   </span>
                 </div>
