@@ -1561,4 +1561,70 @@ export function formatMonthName(monthStr: string): string {
   }
 }
 
+/**
+ * Determina si una transacción es un movimiento interno de capital o tesorería
+ * (traspasos entre cuentas propias, devoluciones/vencimientos de depósitos a plazo fijo,
+ * aportaciones a brokers o compra/venta bruta de títulos).
+ * Estos movimientos reubican liquidez entre bolsillos, pero NO constituyen sueldos/nóminas ni gastos de vida familiar.
+ */
+export function isCapitalTransfer(tx: Transaction): boolean {
+  if (
+    tx.categoryId === 'cat-traspaso-ingreso' ||
+    tx.categoryId === 'cat-transferencias-gasto'
+  ) {
+    return true;
+  }
+
+  const title = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const note = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const combined = `${title} ${note}`;
+
+  // Los rendimientos reales, dividendos, intereses bancarios y liquidaciones de cuentas
+  // son SIEMPRE beneficio / ingreso real familiar, NUNCA se excluyen
+  if (
+    combined.includes('interes') ||
+    combined.includes('interest') ||
+    combined.includes('dividendo') ||
+    combined.includes('dividend') ||
+    combined.includes('saveback') ||
+    combined.includes('liq. propia') ||
+    combined.includes('liquidacion') ||
+    combined.includes('abono intereses') ||
+    combined.includes('bonificacion')
+  ) {
+    return false;
+  }
+
+  return (
+    combined.includes('traspaso') ||
+    combined.includes('transferencia realizada') ||
+    combined.includes('transf. realizada') ||
+    combined.includes('transferencia emitida') ||
+    combined.includes('transferencia enviada') ||
+    combined.includes('transferencia propia') ||
+    combined.includes('transferencia interna') ||
+    combined.includes('entre mis cuentas') ||
+    combined.includes('entre cuentas') ||
+    combined.includes('mismo titular') ||
+    combined.includes('a mi nombre') ||
+    combined.includes('vencimiento') ||
+    combined.includes('vto. deposito') ||
+    combined.includes('vto deposito') ||
+    combined.includes('vto. imposicion') ||
+    combined.includes('cancelacion deposito') ||
+    combined.includes('devolucion principal') ||
+    combined.includes('principal deposito') ||
+    combined.includes('abono vencimiento') ||
+    combined.includes('imposicion') ||
+    combined.includes('compra de valores') ||
+    combined.includes('venta de valores') ||
+    combined.includes('compra acciones') ||
+    combined.includes('venta acciones') ||
+    combined.includes('aportacion cartera') ||
+    combined.includes('retirada broker') ||
+    combined.includes('suscripcion fondo') ||
+    combined.includes('reembolso fondo')
+  );
+}
+
 

@@ -18,7 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
-import { formatCurrency } from '../utils/storage';
+import { formatCurrency, isCapitalTransfer } from '../utils/storage';
 
 interface YearlyClosureProps {
   appState: AppState;
@@ -38,6 +38,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const [tableMetric, setTableMetric] = useState<'balance' | 'income' | 'expense' | 'net'>('balance');
   const [cashflowAccountFilter, setCashflowAccountFilter] = useState<string>('all');
   const [cashflowViewMode, setCashflowViewMode] = useState<'selected' | 'all-accounts'>('selected');
+  const [savingsViewMode, setSavingsViewMode] = useState<'real' | 'gross'>('real');
 
   const toggleExpand = (id: string) => {
     setExpandedEntities(prev => ({
@@ -55,16 +56,22 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     return appState.transactions.filter((tx) => tx.date.startsWith(yearPrefix));
   }, [appState.transactions, selectedYear]);
 
-  // Total real income and expenses for the year
+  // Total real income and expenses for the year according to savingsViewMode
   const totalYearIncome = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'income')
+      .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions]);
+  }, [yearTransactions, savingsViewMode]);
 
   const totalYearExpense = useMemo(() => {
     return yearTransactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [yearTransactions, savingsViewMode]);
+
+  const totalYearTransfers = useMemo(() => {
+    return yearTransactions
+      .filter((t) => isCapitalTransfer(t))
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
 
@@ -79,6 +86,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     const monthlyIncomes: number[] = [];
     const monthlyExpenses: number[] = [];
     const monthlyNets: number[] = [];
+    const grossNets: number[] = [];
 
     for (let m = 0; m < 12; m++) {
       const monthNum = String(m + 1).padStart(2, '0');
@@ -89,11 +97,18 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const txsInMonth = yearTransactions.filter(
         (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
       );
+
+      // Flujo bancario bruto del mes (para conciliar saldos bancarios y retrocesión exacta)
+      const grossInc = txsInMonth.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+      const grossExp = txsInMonth.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      grossNets.push(grossInc - grossExp);
+
+      // Flujo operativo / ahorro según el modo activo
       const inc = txsInMonth
-        .filter((t) => t.type === 'income')
+        .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
         .reduce((sum, t) => sum + t.amount, 0);
       const exp = txsInMonth
-        .filter((t) => t.type === 'expense')
+        .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
         .reduce((sum, t) => sum + t.amount, 0);
 
       monthlyIncomes.push(Math.round(inc * 100) / 100);
@@ -129,9 +144,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       monthlyBalances.push(Math.round(rolledBalance * 100) / 100);
     }
 
-    // Saldo inicial real a 1 de Enero (antes de los movimientos de Enero):
-    // Saldo a 31 de Enero menos el flujo neto registrado en Enero
-    const startBalance = Math.round(((monthlyBalances[0] || 0) - (monthlyNets[0] || 0)) * 100) / 100;
+    // Saldo inicial real a 1 de Enero (usando siempre el flujo bancario bruto de Enero para no distorsionar el saldo):
+    const startBalance = Math.round(((monthlyBalances[0] || 0) - (grossNets[0] || 0)) * 100) / 100;
     const endBalance = monthlyBalances[11] || 0;
     const yearlyDiff = Math.round((endBalance - startBalance) * 100) / 100;
     const yearlyDiffPercent = startBalance !== 0 
@@ -410,8 +424,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthNum = String(idx + 1).padStart(2, '0');
       const prefix = `${selectedYear}-${monthNum}`;
       const txs = yearTransactions.filter((t) => t.date.startsWith(prefix));
-      const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      const income = txs
+        .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+        .reduce((sum, t) => sum + t.amount, 0);
+      const expense = txs
+        .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+        .reduce((sum, t) => sum + t.amount, 0);
       const net = income - expense;
       return {
         month: name,
@@ -422,7 +440,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         hasActivity: txs.length > 0
       };
     });
-  }, [yearTransactions, selectedYear]);
+  }, [yearTransactions, selectedYear, savingsViewMode]);
 
   // Cashflow desglosado para cada una de las cuentas individuales
   const allAccountsMonthlyCashflow = useMemo(() => {
@@ -431,8 +449,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const monthNum = String(idx + 1).padStart(2, '0');
         const prefix = `${selectedYear}-${monthNum}`;
         const txs = yearTransactions.filter((t) => t.accountId === acc.id && t.date.startsWith(prefix));
-        const income = txs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        const income = txs
+          .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((sum, t) => sum + t.amount, 0);
+        const expense = txs
+          .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((sum, t) => sum + t.amount, 0);
         const net = income - expense;
         return {
           month: name,
@@ -457,14 +479,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         hasYearActivity: months.some((m) => m.hasActivity)
       };
     });
-  }, [appState.accounts, yearTransactions, selectedYear]);
+  }, [appState.accounts, yearTransactions, selectedYear, savingsViewMode]);
 
   // Datos activos del flujo según el filtro seleccionado
   const activeCashflowData = useMemo(() => {
     if (cashflowAccountFilter === 'all') {
       return {
         title: 'Hogar Consolidado (Todas las Cuentas)',
-        subtitle: 'Flujo de ahorro familiar real neto',
+        subtitle: savingsViewMode === 'real'
+          ? 'Flujo de ahorro familiar real neto (coincide con tu contabilidad)'
+          : 'Flujo bruto de tesorería de todas las cuentas',
         bankColor: '#0E6A3B',
         months: monthlyCashflow,
         yearIncome: totalYearIncome,
@@ -486,8 +510,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const txs = yearTransactions.filter(
           (t) => bankAccs.some((a) => a.id === t.accountId) && t.date.startsWith(prefix)
         );
-        const income = txs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-        const expense = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        const income = txs
+          .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((s, t) => s + t.amount, 0);
+        const expense = txs
+          .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((s, t) => s + t.amount, 0);
         return {
           month: name,
           fullMonth: MONTH_NAMES_FULL[idx],
@@ -501,7 +529,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const yearExpense = Math.round(months.reduce((s, m) => s + m.expense, 0) * 100) / 100;
       return {
         title: `Banco: ${bankName}`,
-        subtitle: `Todas las cuentas y productos de ${bankName}`,
+        subtitle: savingsViewMode === 'real' 
+          ? `Flujo operativo y ahorro en ${bankName}` 
+          : `Todas las entradas y salidas brutas en ${bankName}`,
         bankColor,
         months,
         yearIncome,
@@ -611,6 +641,54 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               Imprimir
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Selector de Perspectiva Contable: Ahorro Familiar Real vs Tesorería Bruta */}
+      <div className="bg-white rounded-2xl border border-emerald-600/30 p-3 sm:p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-zinc-900 block">
+              Perspectiva de Beneficios & Ahorro
+            </span>
+            <span className="text-[11px] text-zinc-500 block">
+              {savingsViewMode === 'real'
+                ? 'Ahorro Familiar Real (excluye traspasos internos de capital y vencimientos de depósitos, coincide con tu Excel)'
+                : 'Flujo Bruto de Cuentas (suma todas las entradas y salidas registradas en los extractos bancarios)'}
+            </span>
+          </div>
+        </div>
+
+        <div className="inline-flex bg-zinc-100 p-1 rounded-xl border border-zinc-200 text-xs shadow-2xs shrink-0 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => setSavingsViewMode('real')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              savingsViewMode === 'real'
+                ? 'bg-[#0E6A3B] text-white shadow-xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+            title="Ahorro familiar real limpio (excluye traspasos internos y depósitos devueltos)"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>💎 Ahorro Familiar Real</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSavingsViewMode('gross')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              savingsViewMode === 'gross'
+                ? 'bg-zinc-800 text-white shadow-xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+            title="Ver la suma bruta de entradas y salidas de todos los extractos bancarios"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>🏦 Flujo Bruto de Cuentas</span>
+          </button>
         </div>
       </div>
 

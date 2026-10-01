@@ -24,7 +24,7 @@ import {
   ListFilter
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer } from '../utils/storage';
 
 interface MonthlyClosureProps {
   appState: AppState;
@@ -50,6 +50,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   // Estado para ajustar saldos de cierre (especialmente cuenta de valores)
   const [isEditingBalances, setIsEditingBalances] = useState<boolean>(false);
   const [tempBalances, setTempBalances] = useState<Record<string, string>>({});
+  const [savingsViewMode, setSavingsViewMode] = useState<'real' | 'gross'>('real');
 
   // Extract year and month numbers
   const [yearStr, monthStr] = selectedMonth.split('-');
@@ -236,16 +237,22 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return appState.transactions.filter((tx) => tx.date.startsWith(selectedMonth));
   }, [appState.transactions, selectedMonth]);
 
-  // Compute real income and expenses for the month
+  // Compute real income and expenses for the month according to savingsViewMode
   const monthIncome = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'income')
+      .filter((tx) => tx.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
       .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions]);
+  }, [monthTransactions, savingsViewMode]);
 
   const monthExpense = useMemo(() => {
     return monthTransactions
-      .filter((tx) => tx.type === 'expense')
+      .filter((tx) => tx.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [monthTransactions, savingsViewMode]);
+
+  const monthTransfers = useMemo(() => {
+    return monthTransactions
+      .filter((tx) => isCapitalTransfer(tx))
       .reduce((sum, tx) => sum + tx.amount, 0);
   }, [monthTransactions]);
 
@@ -608,6 +615,54 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           </div>
         </div>
       )}
+
+      {/* Selector de Perspectiva Contable: Ahorro Familiar Real vs Tesorería Bruta */}
+      <div className="bg-white rounded-2xl border border-emerald-600/30 p-3 sm:p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-zinc-900 block">
+              Perspectiva de Beneficios & Ahorro de {capitalizedMonth}
+            </span>
+            <span className="text-[11px] text-zinc-500 block">
+              {savingsViewMode === 'real'
+                ? 'Ahorro Familiar Real (excluye traspasos internos de capital y vencimientos de depósitos, coincide con tu Excel)'
+                : 'Flujo Bruto de Cuentas (suma todas las entradas y salidas de los extractos bancarios de este mes)'}
+            </span>
+          </div>
+        </div>
+
+        <div className="inline-flex bg-zinc-100 p-1 rounded-xl border border-zinc-200 text-xs shadow-2xs shrink-0 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => setSavingsViewMode('real')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              savingsViewMode === 'real'
+                ? 'bg-[#0E6A3B] text-white shadow-xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+            title="Ahorro familiar real limpio (excluye traspasos internos y depósitos devueltos)"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>💎 Ahorro Familiar Real</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSavingsViewMode('gross')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              savingsViewMode === 'gross'
+                ? 'bg-zinc-800 text-white shadow-xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+            title="Ver la suma bruta de entradas y salidas de todos los extractos bancarios"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>🏦 Flujo Bruto de Cuentas</span>
+          </button>
+        </div>
+      </div>
 
       {/* KPI Summary Cards for the selected month */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
