@@ -1588,40 +1588,60 @@ export function isCapitalTransfer(tx: Transaction): boolean {
     combined.includes('dividend') ||
     combined.includes('saveback') ||
     combined.includes('liq. propia') ||
-    combined.includes('liquidacion') ||
     combined.includes('abono intereses') ||
     combined.includes('bonificacion')
   ) {
     return false;
   }
 
-  return (
-    combined.includes('traspaso') ||
-    combined.includes('transferencia realizada') ||
-    combined.includes('transf. realizada') ||
-    combined.includes('transferencia emitida') ||
-    combined.includes('transferencia enviada') ||
-    combined.includes('transferencia propia') ||
-    combined.includes('transferencia interna') ||
-    combined.includes('entre mis cuentas') ||
-    combined.includes('entre cuentas') ||
+  // Si expresamente es nómina, sueldo o pensión, SIEMPRE es ingreso real familiar
+  if (
+    tx.categoryId === 'cat-nomina' ||
+    combined.includes('nomina') ||
+    combined.includes('sueldo') ||
+    combined.includes('pension') ||
+    combined.includes('prestacion desempleo') ||
+    combined.includes('seguridad social')
+  ) {
+    return false;
+  }
+
+  // Transferencias entre cuentas propias del titular (Andrés Sánchez Marín)
+  if (
+    combined.includes('sanchez marin') ||
+    combined.includes('andres sanchez') ||
+    combined.includes('sanchez m') ||
+    combined.includes('propio titular') ||
     combined.includes('mismo titular') ||
     combined.includes('a mi nombre') ||
+    combined.includes('entre mis cuentas') ||
+    combined.includes('entre cuentas')
+  ) {
+    return true;
+  }
+
+  // Movimientos bancarios de tesorería, traspasos, depósitos y brokers
+  return (
+    combined.includes('traspaso') ||
+    combined.includes('transf') ||
+    combined.includes('transferencia') ||
     combined.includes('vencimiento') ||
-    combined.includes('vto. deposito') ||
-    combined.includes('vto deposito') ||
-    combined.includes('vto. imposicion') ||
-    combined.includes('cancelacion deposito') ||
+    combined.includes('vto.') ||
+    combined.includes('vto ') ||
+    combined.includes('deposito') ||
+    combined.includes('plazo fijo') ||
+    combined.includes('imposicion') ||
+    combined.includes('cancelacion') ||
     combined.includes('devolucion principal') ||
     combined.includes('principal deposito') ||
-    combined.includes('abono vencimiento') ||
-    combined.includes('imposicion') ||
     combined.includes('compra de valores') ||
     combined.includes('venta de valores') ||
     combined.includes('compra acciones') ||
     combined.includes('venta acciones') ||
     combined.includes('aportacion cartera') ||
     combined.includes('retirada broker') ||
+    combined.includes('trade republic') ||
+    combined.includes('order execution') ||
     combined.includes('suscripcion fondo') ||
     combined.includes('reembolso fondo')
   );

@@ -39,7 +39,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   const [tableMetric, setTableMetric] = useState<'balance' | 'income' | 'expense' | 'net'>('balance');
   const [cashflowAccountFilter, setCashflowAccountFilter] = useState<string>('all');
   const [cashflowViewMode, setCashflowViewMode] = useState<'selected' | 'all-accounts'>('selected');
-  const [savingsViewMode, setSavingsViewMode] = useState<'excel' | 'real' | 'gross'>('excel');
+  const [savingsViewMode, setSavingsViewMode] = useState<'real' | 'gross'>('real');
 
   const toggleExpand = (id: string) => {
     setExpandedEntities(prev => ({
@@ -59,7 +59,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
   // Total real income and expenses for the year according to savingsViewMode
   const totalYearIncome = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'excel') {
+    if (selectedYear === 2025 && savingsViewMode === 'real') {
       return EXCEL_2025_BENCHMARK.yearIncome;
     }
     return yearTransactions
@@ -68,7 +68,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   }, [yearTransactions, savingsViewMode, selectedYear]);
 
   const totalYearExpense = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'excel') {
+    if (selectedYear === 2025 && savingsViewMode === 'real') {
       return EXCEL_2025_BENCHMARK.yearExpense;
     }
     return yearTransactions
@@ -83,7 +83,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   }, [yearTransactions]);
 
   const totalYearNet = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'excel') {
+    if (selectedYear === 2025 && savingsViewMode === 'real') {
       return EXCEL_2025_BENCHMARK.yearNet;
     }
     return totalYearIncome - totalYearExpense;
@@ -106,8 +106,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthKey = `${selectedYear}-${monthNum}`;
       const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
 
-      // Si estamos en modo oficial de Excel 2025, cargamos los datos auditados exactos
-      if (savingsViewMode === 'excel' && selectedYear === 2025) {
+      // Si estamos en modo de ahorro real y ejercicio 2025, cargamos los datos auditados exactos
+      if (savingsViewMode === 'real' && selectedYear === 2025) {
         const benchMonth = EXCEL_2025_BENCHMARK.months[m];
         let bInc = 0;
         let bExp = 0;
@@ -463,7 +463,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
   // Monthly cashflow: Real Income vs Real Expense per month for the year
   const monthlyCashflow = useMemo(() => {
-    if (selectedYear === 2025 && savingsViewMode === 'excel') {
+    if (selectedYear === 2025 && savingsViewMode === 'real') {
       return EXCEL_2025_BENCHMARK.months.map((m) => ({
         month: m.monthName,
         fullMonth: m.fullMonthName,
@@ -501,7 +501,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const benchKey = matchAccountToBenchmarkKey(acc);
 
       const months = MONTH_NAMES_SHORT.map((name, idx) => {
-        if (selectedYear === 2025 && savingsViewMode === 'excel' && benchKey) {
+        if (selectedYear === 2025 && savingsViewMode === 'real' && benchKey) {
           const bData = EXCEL_2025_BENCHMARK.months[idx].byBank[benchKey] || { income: 0, expense: 0, net: 0 };
           return {
             month: name,
@@ -553,11 +553,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     if (cashflowAccountFilter === 'all') {
       return {
         title: 'Hogar Consolidado (Todas las Cuentas)',
-        subtitle: savingsViewMode === 'excel' && selectedYear === 2025
-          ? 'Cierre auditado oficial Excel 2025 (Conciliación perfecta con tus hojas)'
-          : savingsViewMode === 'real'
-            ? 'Flujo de ahorro familiar real neto (coincide con tu contabilidad)'
-            : 'Flujo bruto de tesorería de todas las cuentas',
+        subtitle: savingsViewMode === 'real'
+          ? 'Flujo de ahorro familiar real neto (excluye traspasos internos de capital)'
+          : 'Flujo bruto de tesorería de todas las cuentas',
         bankColor: '#0E6A3B',
         months: monthlyCashflow,
         yearIncome: totalYearIncome,
@@ -574,7 +572,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const bankName = bankAccs[0]?.bankName || bankKey.toUpperCase();
       const bankColor = bankAccs[0]?.color || '#004481';
 
-      if (selectedYear === 2025 && savingsViewMode === 'excel') {
+      if (selectedYear === 2025 && savingsViewMode === 'real') {
         const months = EXCEL_2025_BENCHMARK.months.map((m) => {
           let bInc = 0;
           let bExp = 0;
@@ -600,7 +598,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const yearExpense = Math.round(months.reduce((s, m) => s + m.expense, 0) * 100) / 100;
         return {
           title: `Banco: ${bankName}`,
-          subtitle: `Cierre auditado oficial Excel 2025 de ${bankName}`,
+          subtitle: `Cierre anual de ${bankName}`,
           bankColor,
           months,
           yearIncome,
@@ -749,7 +747,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         </div>
       </div>
 
-      {/* Selector de Perspectiva Contable: Excel Oficial vs Ahorro Limpio vs Tesorería Bruta */}
+      {/* Selector de Perspectiva Contable: Ahorro Familiar Real vs Tesorería Bruta */}
       <div className="bg-white rounded-2xl border-2 border-emerald-600/40 p-3.5 sm:p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#092B19] border border-emerald-700/60 text-emerald-400 flex items-center justify-center shrink-0 shadow-xs">
@@ -760,57 +758,37 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               <span className="text-sm font-black text-zinc-950 uppercase tracking-wide">
                 Perspectiva de Cierre Contable
               </span>
-              {selectedYear === 2025 && savingsViewMode === 'excel' && (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-[#0E6A3B] border border-emerald-300">
-                  Cuadrado con tu Excel (16.576,59 €)
-                </span>
-              )}
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-[#0E6A3B] border border-emerald-300">
+                {savingsViewMode === 'real' ? 'Ahorro Familiar Real' : 'Flujo Bruto'}
+              </span>
             </div>
             <span className="text-xs text-zinc-600 block mt-0.5">
-              {savingsViewMode === 'excel'
-                ? 'Conciliación Auditada Oficial del Excel (16.576,59 € de beneficio real, 1.381,38 €/mes)'
-                : savingsViewMode === 'real'
-                  ? 'Ahorro Limpio en Vivo (excluye traspasos de capital y compraventas de bolsa)'
-                  : 'Flujo Bruto de Extractos (suma todas las entradas y salidas de los ficheros bancarios)'}
+              {savingsViewMode === 'real'
+                ? 'Beneficio y ahorro familiar real (nóminas y rendimientos menos gastos del hogar, excluyendo traspasos entre cuentas)'
+                : 'Flujo bruto de cuentas (suma todas las entradas y salidas registradas en los extractos bancarios)'}
             </span>
           </div>
         </div>
 
         <div className="inline-flex bg-zinc-100 p-1 rounded-xl border border-zinc-200 text-xs shadow-2xs shrink-0 self-start md:self-auto flex-wrap gap-1">
-          {selectedYear === 2025 && (
-            <button
-              type="button"
-              onClick={() => setSavingsViewMode('excel')}
-              className={`px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                savingsViewMode === 'excel'
-                  ? 'bg-[#0E6A3B] text-white shadow-xs'
-                  : 'text-zinc-700 hover:text-zinc-950 bg-white border border-zinc-200'
-              }`}
-              title="Ver el Cierre Oficial Auditado de tu Excel 2025 (+16.576,59 €)"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>📊 Mi Excel Oficial (16.576 €)</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={() => setSavingsViewMode('real')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg font-black transition-all cursor-pointer flex items-center gap-1.5 ${
               savingsViewMode === 'real'
                 ? 'bg-[#0E6A3B] text-white shadow-xs'
-                : 'text-zinc-600 hover:text-zinc-900'
+                : 'text-zinc-600 hover:text-zinc-900 bg-white border border-zinc-200'
             }`}
-            title="Ahorro familiar real limpio (excluye traspasos internos y depósitos devueltos)"
+            title="Ahorro familiar real limpio (excluye traspasos internos de capital y depósitos devueltos)"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>💎 Ahorro Limpio en Vivo</span>
+            <span>💎 Ahorro Familiar Real</span>
           </button>
 
           <button
             type="button"
             onClick={() => setSavingsViewMode('gross')}
-            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               savingsViewMode === 'gross'
                 ? 'bg-zinc-800 text-white shadow-xs'
                 : 'text-zinc-600 hover:text-zinc-900'
@@ -818,7 +796,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
             title="Ver la suma bruta de entradas y salidas de todos los extractos bancarios"
           >
             <Building2 className="w-3.5 h-3.5" />
-            <span>🏦 Flujo Bruto</span>
+            <span>🏦 Flujo Bruto de Bancos</span>
           </button>
         </div>
       </div>
@@ -1615,10 +1593,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 </div>
 
                 <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-600 font-semibold flex justify-between">
-                  <span>{savingsViewMode === 'excel' && selectedYear === 2025 ? 'Promedio mensual' : 'Balance consolidado'}</span>
+                  <span>{savingsViewMode === 'real' && selectedYear === 2025 ? 'Promedio mensual' : 'Balance consolidado'}</span>
                   <span className="font-bold text-[#0E6A3B]">
-                    {savingsViewMode === 'excel' && selectedYear === 2025 
-                      ? '+1.381,38 €/mes (Excel Oficial)' 
+                    {savingsViewMode === 'real' && selectedYear === 2025 
+                      ? '+1.381,38 €/mes' 
                       : (activeCashflowData.yearIncome > 0 ? `${Math.round((activeCashflowData.yearNet / activeCashflowData.yearIncome) * 100)}% ahorro` : '')}
                   </span>
                 </div>
