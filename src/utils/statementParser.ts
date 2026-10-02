@@ -676,7 +676,7 @@ export function extractRowsWithMapping(
 
     // Extraer concepto de forma inteligente
     let title = titleIdx >= 0 ? String(rawRowArray[titleIdx] || '').trim() : '';
-    const isTitleDate = parseDateString(title) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title);
+    const isTitleDate = (title.length <= 15 && parseDateString(title) !== null) || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title);
 
     // Buscar componentes de tipo y descripción en las columnas de la fila
     let foundType = '';
@@ -687,7 +687,7 @@ export function extractRowsWithMapping(
       const hNorm = headers[c] ? headers[c].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
       const cellVal = String(rawRowArray[c] || '').trim();
       if (!cellVal) continue;
-      if (parseDateString(cellVal) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(cellVal) || parseAmountNumber(cellVal) !== null) {
+      if ((cellVal.length <= 15 && parseDateString(cellVal) !== null) || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(cellVal) || parseAmountNumber(cellVal) !== null) {
         continue;
       }
 
@@ -740,7 +740,8 @@ export function extractRowsWithMapping(
       title = fallbackText || 'Movimiento bancario';
     }
 
-    if (!title || parseDateString(title) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title)) {
+    // Solo usar fallback genérico si el título está vacío o si la celda es EXCLUSIVAMENTE una fecha sin texto
+    if (!title || (title.length <= 15 && parseDateString(title) !== null) || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(title)) {
       title = 'Movimiento bancario';
     }
 
@@ -971,8 +972,21 @@ export function parseStatementFile(
   existingAccounts: BankAccount[] = [],
   existingTransactions: Transaction[] = []
 ): ParseResult {
+  // Detectar si el contenido es texto plano (como CSV con separador de punto y coma, muy habitual en Openbank aunque el archivo tenga extensión .xls)
+  let isTextCsv = false;
+  try {
+    const sample = new Uint8Array(fileData.slice(0, 2048));
+    const sampleStr = new TextDecoder('utf-8', { fatal: false }).decode(sample);
+    if (sampleStr.includes(';') || (sampleStr.includes(',') && !sampleStr.includes('PK\x03\x04'))) {
+      isTextCsv = true;
+    }
+  } catch (e) {
+    // binary
+  }
+
   // Leer libro con cellDates: true para que XLSX parsee fechas nativas de Excel
-  const workbook = XLSX.read(fileData, { type: 'array', cellDates: true });
+  // Si es archivo texto/CSV, usamos raw: true para que XLSX no convierta decimales con comas ("-7,2", "4.421,67") en números truncados
+  const workbook = XLSX.read(fileData, { type: 'array', cellDates: true, raw: isTextCsv });
   
   if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
     throw new Error('El archivo no contiene hojas de cálculo válidas.');
@@ -1183,7 +1197,9 @@ export function parseStatementFile(
       if (val !== undefined && val !== null && String(val).trim() !== '') {
         validCells++;
         const sVal = String(val).trim();
-        if (parseDateString(val) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(sVal)) {
+        // Una celda de fecha bancaria es corta (ej: "30/09/2026", "2026-09-30").
+        // Si tiene más de 25 caracteres, es una descripción o narrativa de compra, NUNCA una columna de fecha
+        if (sVal.length <= 25 && (parseDateString(val) !== null || /^\d{1,2}\s+[a-z]{3}\s*\d{2,4}$/i.test(sVal))) {
           dateHits++;
         }
       }
@@ -1324,13 +1340,29 @@ export function parseStatementFile(
   // 5. IMPORTE ÚNICO:
   // Si no se encontraron ambas columnas de ingreso y gasto, buscar la columna de importe único
   if (!incomeCol || !expenseCol) {
-    const amountKeywords = ['importe', 'monto', 'cantidad', 'transaccion', 'valor', 'cuantia', 'amount'];
+    // A. Palabras clave prioritarias (importe, monto, cantidad, cuantia, amount)
+    const primaryAmountKeywords = ['importe', 'monto', 'cantidad', 'cuantia', 'amount'];
     for (let i = 0; i < lowerHeaders.length; i++) {
       const h = lowerHeaders[i];
       if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
-      if (amountKeywords.some(kw => h.includes(kw))) {
+      if (h.includes('fecha') || h.includes('date') || isColumnMostlyDates(i)) continue;
+      if (primaryAmountKeywords.some(kw => h.includes(kw))) {
         amountCol = headers[i];
         break;
+      }
+    }
+
+    // B. Palabras secundarias (transaccion, valor, total, etc.) - NUNCA si es una fecha como "fecha valor"
+    if (!amountCol) {
+      const secondaryAmountKeywords = ['transaccion', 'valor', 'preis', 'total'];
+      for (let i = 0; i < lowerHeaders.length; i++) {
+        const h = lowerHeaders[i];
+        if (headers[i] === dateCol || headers[i] === titleCol || headers[i] === balanceCol) continue;
+        if (h.includes('fecha') || h.includes('date') || isColumnMostlyDates(i)) continue;
+        if (secondaryAmountKeywords.some(kw => h.includes(kw))) {
+          amountCol = headers[i];
+          break;
+        }
       }
     }
 
@@ -1412,7 +1444,7 @@ export function parseStatementFile(
     bankinter: ['bankinter', 'coinc'],
     unicaja: ['unicaja', 'liberbank'],
     abanca: ['abanca'],
-    openbank: ['openbank', 'banco openbank'],
+    openbank: ['openbank', 'openbanck', 'banco openbank', '0073', 'cuenta open', 'nomina open', 'open'],
     myinvestor: ['myinvestor', 'andbank'],
     traderepublic: ['trade republic', 'traderepublic'],
     degiro: ['degiro', 'flatex'],
@@ -1424,10 +1456,10 @@ export function parseStatementFile(
 
   for (const acc of existingAccounts) {
     let score = 0;
-    const bName = acc.bankName.trim().toLowerCase();
-    const accName = acc.accountName.trim().toLowerCase();
+    const bName = (acc.bankName || '').trim().toLowerCase();
+    const accName = (acc.accountName || (acc as any).name || '').trim().toLowerCase();
     const rawIban = acc.iban ? acc.iban.toLowerCase().replace(/[\s\-_.]+/g, '') : '';
-    const lastDigits = acc.accountNumberMasked.replace(/\D/g, '');
+    const lastDigits = (acc.accountNumberMasked || acc.iban || '').replace(/\D/g, '').slice(-4);
 
     // 1. Coincidencia de nombre de banco en el nombre del archivo (MÁXIMA PRIORIDAD)
     // Ej: "extracto Imagin.xls" con banco "Imagin" -> 400 puntos
@@ -1542,9 +1574,77 @@ export function parseStatementFile(
     }
   }
 
-  // Como rows está ordenado cronológicamente descendente, la primera fila es la más reciente
-  if (rows.length > 0) {
-    latestTransactionDate = rows[0].date;
+  // 1. Escanear metadatos de cabecera (filas 0 hasta headerRowIndex) para extraer:
+  // a) Saldo oficial descargado (ej: "Saldo: 5.101,33 EUR" o celda "Saldo:" seguida de "5.101,33 EUR")
+  // b) Fecha de descarga del extracto (ej: "Fecha de descarga: 02/10/2026 10:36h")
+  let headerMetaBalance: number | undefined;
+  let headerMetaBalanceDate: string | undefined;
+
+  for (let r = 0; r < headerRowIndex; r++) {
+    const row = rawData[r];
+    if (!row) continue;
+
+    // Buscar fecha de descarga / emisión
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || '').trim();
+      const cellLower = norm(cell);
+      if (
+        cellLower.includes('fecha de descarga') ||
+        cellLower.includes('descargado') ||
+        cellLower.includes('fecha emision') ||
+        cellLower.includes('fecha extracto') ||
+        cellLower.includes('fecha informe')
+      ) {
+        const d = parseDateString(cell);
+        if (d) {
+          headerMetaBalanceDate = d;
+        } else if (c + 1 < row.length) {
+          const dNext = parseDateString(row[c + 1]);
+          if (dNext) headerMetaBalanceDate = dNext;
+        }
+      }
+    }
+
+    // Buscar saldo explícito en la cabecera (ej: ";Saldo:;;5.101,33 EUR")
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || '').trim();
+      const cellLower = norm(cell);
+      if (
+        cellLower === 'saldo:' ||
+        cellLower === 'saldo' ||
+        cellLower.startsWith('saldo:') ||
+        cellLower.includes('saldo actual') ||
+        cellLower.includes('saldo disponible') ||
+        cellLower.includes('saldo contable') ||
+        cellLower.includes('saldo final')
+      ) {
+        // Mirar si el importe está en la misma celda (ej: "Saldo: 5.101,33 EUR")
+        const sameCellText = cell.replace(/^saldo\s*:?/i, '').trim();
+        const sameCellNum = parseAmountNumber(sameCellText);
+        if (sameCellNum !== null) {
+          headerMetaBalance = sameCellNum;
+          break;
+        }
+
+        // O en las siguientes celdas no vacías de la misma fila
+        for (let c2 = c + 1; c2 < row.length; c2++) {
+          const num = parseAmountNumber(row[c2]);
+          if (num !== null) {
+            headerMetaBalance = num;
+            break;
+          }
+        }
+        if (headerMetaBalance !== undefined) break;
+      }
+    }
+  }
+
+  // Priorizar el saldo explícito oficial de la cabecera si existe
+  if (headerMetaBalance !== undefined) {
+    detectedStatementBalance = headerMetaBalance;
+    detectedStatementBalanceDate = headerMetaBalanceDate || latestTransactionDate;
+  } else if (rows.length > 0) {
+    // Si no había en la cabecera, usar el saldo posterior de la transacción más reciente
     for (const r of rows) {
       if (r.balanceAfter !== undefined) {
         detectedStatementBalance = r.balanceAfter;
@@ -1554,7 +1654,7 @@ export function parseStatementFile(
     }
   }
 
-  // Si no se encontró en las filas de movimientos, buscar en metadatos o resumen del extracto (Saldo final / Saldo cierre)
+  // Fallback si aún no se detectó
   if (detectedStatementBalance === undefined) {
     for (let r = 0; r < Math.min(rawData.length, 30); r++) {
       const row = rawData[r];
@@ -1566,9 +1666,11 @@ export function parseStatementFile(
           cellStr.includes('saldo al cierre') ||
           cellStr.includes('saldo de cierre') ||
           cellStr.includes('saldo actual') ||
-          cellStr.includes('saldo en cuenta')
+          cellStr.includes('saldo en cuenta') ||
+          cellStr === 'saldo:' ||
+          cellStr === 'saldo'
         ) {
-          for (let c2 = c; c2 < row.length; c2++) {
+          for (let c2 = c + 1; c2 < row.length; c2++) {
             const num = parseAmountNumber(row[c2]);
             if (num !== null && Math.abs(num) < 10000000) {
               detectedStatementBalance = num;

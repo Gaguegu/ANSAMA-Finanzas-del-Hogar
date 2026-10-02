@@ -1,3 +1,3 @@
-export const APP_VERSION = '2.8.8';
+export const APP_VERSION = '2.8.9';
 export const APP_NAME = 'ANSAMA Finanzas del Hogar';
-export const APP_BUILD_DATE = '2026-10-01';
+export const APP_BUILD_DATE = '2026-10-02';
