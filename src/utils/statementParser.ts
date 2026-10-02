@@ -964,6 +964,58 @@ export function extractRowsWithMapping(
   return rows;
 }
 
+// Extrae de forma limpia filas y celdas de un archivo HTML (muy habitual en bancos como Openbank, Santander, Sabadell que descargan tablas HTML con extensión falsa .xls)
+export function extractHtmlTableData(html: string): any[][] {
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const tables = doc.querySelectorAll('table');
+      let bestTableData: any[][] = [];
+
+      tables.forEach((table) => {
+        const rows: any[][] = [];
+        const trList = table.querySelectorAll('tr');
+        trList.forEach((tr) => {
+          const rowCells: any[] = [];
+          const cells = tr.querySelectorAll('th, td');
+          cells.forEach((cell) => {
+            rowCells.push(cell.textContent?.trim() || '');
+          });
+          if (rowCells.some(c => c !== '')) {
+            rows.push(rowCells);
+          }
+        });
+        if (rows.length > bestTableData.length) {
+          bestTableData = rows;
+        }
+      });
+
+      if (bestTableData.length > 0) {
+        return bestTableData;
+      }
+    } catch (e) {
+      console.warn('Error en DOMParser de tabla HTML:', e);
+    }
+  }
+
+  // Fallback si no está disponible DOMParser (o en entorno de servidor / tests)
+  const rows: any[][] = [];
+  const trMatches = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+  for (const tr of trMatches) {
+    const cells: any[] = [];
+    const cellMatches = tr.match(/<(?:td|th)[\s\S]*?<\/(?:td|th)>/gi) || [];
+    for (const c of cellMatches) {
+      const text = c.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+      cells.push(text);
+    }
+    if (cells.length > 0 && cells.some(c => c !== '')) {
+      rows.push(cells);
+    }
+  }
+  return rows;
+}
+
 // Analiza el contenido de un archivo (Buffer / ArrayBuffer)
 export function parseStatementFile(
   fileData: ArrayBuffer,
@@ -972,24 +1024,58 @@ export function parseStatementFile(
   existingAccounts: BankAccount[] = [],
   existingTransactions: Transaction[] = []
 ): ParseResult {
-  // Detectar si el contenido es texto plano (como CSV con separador de punto y coma, muy habitual en Openbank aunque el archivo tenga extensión .xls)
-  let isTextCsv = false;
+  // Detectar si el contenido es HTML (muy habitual en extractos de Openbank, Santander, etc. con extensión falsa .xls)
+  let isHtml = false;
+  let textSample = '';
   try {
-    const sample = new Uint8Array(fileData.slice(0, 2048));
-    const sampleStr = new TextDecoder('utf-8', { fatal: false }).decode(sample);
-    if (sampleStr.includes(';') || (sampleStr.includes(',') && !sampleStr.includes('PK\x03\x04'))) {
-      isTextCsv = true;
+    const sample = new Uint8Array(fileData.slice(0, 4096));
+    textSample = new TextDecoder('utf-8', { fatal: false }).decode(sample);
+    if (/<html|<table|<body|<!doctype|<tr|<thead|<th/i.test(textSample)) {
+      isHtml = true;
     }
   } catch (e) {
     // binary
   }
 
-  // Leer libro con cellDates: true para que XLSX parsee fechas nativas de Excel
-  // Si es archivo texto/CSV, usamos raw: true para que XLSX no convierta decimales con comas ("-7,2", "4.421,67") en números truncados
-  const workbook = XLSX.read(fileData, { type: 'array', cellDates: true, raw: isTextCsv });
-  
-  if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-    throw new Error('El archivo no contiene hojas de cálculo válidas.');
+  const sheets: Array<{ name: string; data: any[][] }> = [];
+
+  // 1. Si es HTML, extraerlo de forma pura con el motor HTML del navegador (eliminando estilos inline que rompen SheetJS)
+  if (isHtml) {
+    try {
+      const fullHtml = new TextDecoder('utf-8', { fatal: false }).decode(fileData);
+      const htmlRows = extractHtmlTableData(fullHtml);
+      if (htmlRows.length > 0) {
+        sheets.push({ name: 'Extracto Bancario', data: htmlRows });
+      }
+    } catch (e) {
+      console.warn('Fallback a XLSX para HTML:', e);
+    }
+  }
+
+  // 2. Si no era HTML o no extrajo filas, usar XLSX.read estándar
+  if (sheets.length === 0) {
+    let isTextCsv = false;
+    if (textSample.includes(';') || (textSample.includes(',') && !textSample.includes('PK\x03\x04'))) {
+      isTextCsv = true;
+    }
+    const workbook = XLSX.read(fileData, { type: 'array', cellDates: true, raw: isTextCsv });
+    
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      throw new Error('El archivo no contiene hojas de cálculo válidas.');
+    }
+
+    for (const sName of workbook.SheetNames) {
+      const s = workbook.Sheets[sName];
+      if (!s) continue;
+      const data: any[][] = XLSX.utils.sheet_to_json(s, { header: 1, defval: '' });
+      if (data && data.length > 0) {
+        sheets.push({ name: sName, data });
+      }
+    }
+  }
+
+  if (sheets.length === 0) {
+    throw new Error('La hoja de cálculo está vacía o no tiene datos reconocibles.');
   }
 
   // Función de normalización sin acentos y en minúsculas
@@ -1005,21 +1091,6 @@ export function parseStatementFile(
   const titleKeywords = ['concepto', 'descripcion', 'detalle', 'tipo', 'transaccion', 'beneficiario', 'observacion', 'datos', 'asunto', 'movimiento', 'referencia'];
   const amountKeywords = ['importe', 'cargo', 'abono', 'monto', 'cantidad', 'saldo', 'haber', 'debe'];
   const metaExcludeKeywords = ['extracto', 'titular', 'periodo', 'iban', 'nº de cuenta', 'nro cuenta', 'cuenta:'];
-
-  // 1. Cargar todas las hojas disponibles en el libro
-  const sheets: Array<{ name: string; data: any[][] }> = [];
-  for (const sName of workbook.SheetNames) {
-    const s = workbook.Sheets[sName];
-    if (!s) continue;
-    const data: any[][] = XLSX.utils.sheet_to_json(s, { header: 1, defval: '' });
-    if (data && data.length > 0) {
-      sheets.push({ name: sName, data });
-    }
-  }
-
-  if (sheets.length === 0) {
-    throw new Error('La hoja de cálculo está vacía o no tiene datos reconocibles.');
-  }
 
   // 2. Evaluar qué hoja contiene la mejor cabecera de extracto bancario
   let bestSheetIdx = 0;
@@ -1049,7 +1120,13 @@ export function parseStatementFile(
 
       if (score >= 4 || (hasDate && (hasTitle || hasAmount))) {
         const hdrs = row.map((cell, idx) => {
-          const cleaned = String(cell || '').trim();
+          let cleaned = String(cell || '').trim();
+          cleaned = cleaned
+            .replace(/<[^>]+>/g, '')
+            .replace(/style\s*=\s*"[^"]*"/gi, '')
+            .replace(/vertical-align:[^;"]+/gi, '')
+            .replace(/["><]/g, '')
+            .trim();
           return cleaned !== '' ? cleaned : `Columna_${idx + 1}`;
         });
         const cand = { r, score, headers: hdrs };
@@ -1084,7 +1161,15 @@ export function parseStatementFile(
       const nonEmpties = rawData[r].filter(c => String(c || '').trim() !== '');
       if (nonEmpties.length >= 3) {
         headerRowIndex = r;
-        headers = rawData[r].map((c, idx) => String(c || '').trim() || `Columna_${idx + 1}`);
+        headers = rawData[r].map((c, idx) => {
+          let cleaned = String(c || '').trim()
+            .replace(/<[^>]+>/g, '')
+            .replace(/style\s*=\s*"[^"]*"/gi, '')
+            .replace(/vertical-align:[^;"]+/gi, '')
+            .replace(/["><]/g, '')
+            .trim();
+          return cleaned || `Columna_${idx + 1}`;
+        });
         break;
       }
     }
@@ -1092,7 +1177,15 @@ export function parseStatementFile(
 
   if (headerRowIndex === -1) {
     headerRowIndex = 0;
-    headers = (rawData[0] || []).map((c, idx) => String(c || '').trim() || `Columna_${idx + 1}`);
+    headers = (rawData[0] || []).map((c, idx) => {
+      let cleaned = String(c || '').trim()
+        .replace(/<[^>]+>/g, '')
+        .replace(/style\s*=\s*"[^"]*"/gi, '')
+        .replace(/vertical-align:[^;"]+/gi, '')
+        .replace(/["><]/g, '')
+        .trim();
+      return cleaned || `Columna_${idx + 1}`;
+    });
   }
 
   // 3. COMBINACIÓN AUTOMÁTICA DE MÚLTIPLES HOJAS (Especial para PDFs convertidos a Excel en varias páginas)
