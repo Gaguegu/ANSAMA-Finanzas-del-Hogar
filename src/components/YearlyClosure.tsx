@@ -446,7 +446,20 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthNum = String(idx + 1).padStart(2, '0');
       const prefix = `${selectedYear}-${monthNum}`;
 
-      // Si el mes está en el benchmark auditado y estamos en modo 'real'
+      // 1. Si el mes está oficialmente cerrado por el usuario en la aplicación:
+      const closure = appState.monthlyClosures?.find((c) => c.month === prefix);
+      if (closure?.isClosed && closure.auditedIncome !== undefined && closure.auditedExpense !== undefined) {
+        return {
+          month: name,
+          fullMonth: MONTH_NAMES_FULL[idx],
+          income: closure.auditedIncome,
+          expense: closure.auditedExpense,
+          net: closure.auditedNet ?? (closure.auditedIncome - closure.auditedExpense),
+          hasActivity: true
+        };
+      }
+
+      // 2. Si el mes está en el benchmark auditado y estamos en modo 'real'
       if (currentBenchmark && savingsViewMode === 'real') {
         const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
         if (bMonth) {
@@ -471,7 +484,6 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
         .reduce((sum, t) => sum + t.amount, 0);
       const net = income - expense;
-      const closure = appState.monthlyClosures?.find((c) => c.month === prefix);
       const hasActivity = txs.length > 0 || income > 0 || expense > 0 || !!closure?.isClosed;
 
       return {

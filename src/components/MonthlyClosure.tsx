@@ -248,22 +248,28 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
 
   // Compute real income and expenses for the month according to savingsViewMode
   const monthIncome = useMemo(() => {
+    if (currentClosure.isClosed && currentClosure.auditedIncome !== undefined) {
+      return currentClosure.auditedIncome;
+    }
     if (monthBenchmark && savingsViewMode === 'real') {
       return monthBenchmark.income;
     }
     return monthTransactions
       .filter((tx) => tx.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
       .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions, savingsViewMode, monthBenchmark]);
+  }, [monthTransactions, savingsViewMode, monthBenchmark, currentClosure]);
 
   const monthExpense = useMemo(() => {
+    if (currentClosure.isClosed && currentClosure.auditedExpense !== undefined) {
+      return currentClosure.auditedExpense;
+    }
     if (monthBenchmark && savingsViewMode === 'real') {
       return monthBenchmark.expense;
     }
     return monthTransactions
       .filter((tx) => tx.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(tx)))
       .reduce((sum, tx) => sum + tx.amount, 0);
-  }, [monthTransactions, savingsViewMode, monthBenchmark]);
+  }, [monthTransactions, savingsViewMode, monthBenchmark, currentClosure]);
 
   const monthTransfers = useMemo(() => {
     return monthTransactions
@@ -272,11 +278,14 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   }, [monthTransactions]);
 
   const monthNet = useMemo(() => {
+    if (currentClosure.isClosed && currentClosure.auditedNet !== undefined) {
+      return currentClosure.auditedNet;
+    }
     if (monthBenchmark && savingsViewMode === 'real') {
       return monthBenchmark.net;
     }
     return monthIncome - monthExpense;
-  }, [monthIncome, monthExpense, monthBenchmark, savingsViewMode]);
+  }, [monthIncome, monthExpense, monthBenchmark, savingsViewMode, currentClosure]);
 
   const savingsRate = monthIncome > 0 ? Math.round((monthNet / monthIncome) * 100) : 0;
 
@@ -438,7 +447,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       isClosed: isClosing,
       closedAt: isClosing ? new Date().toISOString() : undefined,
       notes: notesText,
-      auditedBalances: audited
+      auditedBalances: audited,
+      auditedIncome: isClosing ? monthIncome : undefined,
+      auditedExpense: isClosing ? monthExpense : undefined,
+      auditedNet: isClosing ? (monthIncome - monthExpense) : undefined
     };
     onUpdateClosure(updated);
   };
@@ -468,7 +480,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
       isClosed: true,
       closedAt: currentClosure.closedAt || new Date().toISOString(),
       notes: notesText,
-      auditedBalances: parsedAudited
+      auditedBalances: parsedAudited,
+      auditedIncome: monthIncome,
+      auditedExpense: monthExpense,
+      auditedNet: monthIncome - monthExpense
     };
     onUpdateClosure(updated);
     setIsEditingBalances(false);

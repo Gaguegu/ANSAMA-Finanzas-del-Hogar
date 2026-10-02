@@ -88,6 +88,10 @@ export interface MonthClosure {
   closedAt?: string;
   notes?: string;
   auditedBalances?: Record<string, number>; // accountId -> closing balance
+  auditedIncome?: number;
+  auditedExpense?: number;
+  auditedNet?: number;
+  auditedByBank?: Record<string, { income: number; expense: number; net: number; balance?: number }>;
 }
 
 export interface SecurityConfig {
