@@ -62,38 +62,11 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
   }, [selectedYear]);
 
   // Total real income and expenses for the year according to savingsViewMode
-  const totalYearIncome = useMemo(() => {
-    if (currentBenchmark && savingsViewMode === 'real') {
-      return currentBenchmark.yearIncome;
-    }
-    return yearTransactions
-      .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions, savingsViewMode, currentBenchmark]);
-
-  const totalYearExpense = useMemo(() => {
-    if (currentBenchmark && savingsViewMode === 'real') {
-      return currentBenchmark.yearExpense;
-    }
-    return yearTransactions
-      .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [yearTransactions, savingsViewMode, currentBenchmark]);
-
   const totalYearTransfers = useMemo(() => {
     return yearTransactions
       .filter((t) => isCapitalTransfer(t))
       .reduce((sum, t) => sum + t.amount, 0);
   }, [yearTransactions]);
-
-  const totalYearNet = useMemo(() => {
-    if (currentBenchmark && savingsViewMode === 'real') {
-      return currentBenchmark.yearNet;
-    }
-    return totalYearIncome - totalYearExpense;
-  }, [totalYearIncome, totalYearExpense, currentBenchmark, savingsViewMode]);
-
-  const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
   // Helper function to compute monthly balances and flows for any list of accounts
   const computeMonthlyStats = (accounts: BankAccount[]) => {
@@ -469,8 +442,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
 
   // Monthly cashflow: Real Income vs Real Expense per month for the year
   const monthlyCashflow = useMemo(() => {
-    if (currentBenchmark && savingsViewMode === 'real') {
-      return MONTH_NAMES_SHORT.map((name, idx) => {
+    return MONTH_NAMES_SHORT.map((name, idx) => {
+      const monthNum = String(idx + 1).padStart(2, '0');
+      const prefix = `${selectedYear}-${monthNum}`;
+
+      // Si el mes está en el benchmark auditado y estamos en modo 'real'
+      if (currentBenchmark && savingsViewMode === 'real') {
         const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
         if (bMonth) {
           return {
@@ -482,19 +459,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
             hasActivity: true
           };
         }
-        return {
-          month: name,
-          fullMonth: MONTH_NAMES_FULL[idx],
-          income: 0,
-          expense: 0,
-          net: 0,
-          hasActivity: false
-        };
-      });
-    }
-    return MONTH_NAMES_SHORT.map((name, idx) => {
-      const monthNum = String(idx + 1).padStart(2, '0');
-      const prefix = `${selectedYear}-${monthNum}`;
+      }
+
+      // Si no está en el benchmark (ej: Septiembre 2026 cerrado/en curso) o estamos en modo 'gross',
+      // se calcula a partir de las transacciones reales registradas en la app
       const txs = yearTransactions.filter((t) => t.date.startsWith(prefix));
       const income = txs
         .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
@@ -503,16 +471,34 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
         .reduce((sum, t) => sum + t.amount, 0);
       const net = income - expense;
+      const closure = appState.monthlyClosures?.find((c) => c.month === prefix);
+      const hasActivity = txs.length > 0 || income > 0 || expense > 0 || !!closure?.isClosed;
+
       return {
         month: name,
         fullMonth: MONTH_NAMES_FULL[idx],
-        income,
-        expense,
-        net,
-        hasActivity: txs.length > 0
+        income: Math.round(income * 100) / 100,
+        expense: Math.round(expense * 100) / 100,
+        net: Math.round(net * 100) / 100,
+        hasActivity
       };
     });
-  }, [yearTransactions, selectedYear, savingsViewMode, currentBenchmark]);
+  }, [yearTransactions, selectedYear, savingsViewMode, currentBenchmark, appState.monthlyClosures]);
+
+  // Totales acumulados anuales exactos (suma de todos los meses mostrados en pantalla)
+  const totalYearIncome = useMemo(() => {
+    return Math.round(monthlyCashflow.reduce((sum, m) => sum + m.income, 0) * 100) / 100;
+  }, [monthlyCashflow]);
+
+  const totalYearExpense = useMemo(() => {
+    return Math.round(monthlyCashflow.reduce((sum, m) => sum + m.expense, 0) * 100) / 100;
+  }, [monthlyCashflow]);
+
+  const totalYearNet = useMemo(() => {
+    return Math.round((totalYearIncome - totalYearExpense) * 100) / 100;
+  }, [totalYearIncome, totalYearExpense]);
+
+  const yearSavingsRate = totalYearIncome > 0 ? Math.round((totalYearNet / totalYearIncome) * 100) : 0;
 
   // Cashflow desglosado para cada una de las cuentas individuales
   const allAccountsMonthlyCashflow = useMemo(() => {
@@ -522,15 +508,17 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const months = MONTH_NAMES_SHORT.map((name, idx) => {
         if (currentBenchmark && savingsViewMode === 'real' && benchKey) {
           const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
-          const bData = bMonth?.byBank[benchKey] || { income: 0, expense: 0, net: 0 };
-          return {
-            month: name,
-            fullMonth: MONTH_NAMES_FULL[idx],
-            income: bData.income,
-            expense: bData.expense,
-            net: bData.net,
-            hasActivity: bMonth !== undefined
-          };
+          const bData = bMonth?.byBank[benchKey];
+          if (bData) {
+            return {
+              month: name,
+              fullMonth: MONTH_NAMES_FULL[idx],
+              income: bData.income,
+              expense: bData.expense,
+              net: bData.net,
+              hasActivity: true
+            };
+          }
         }
 
         const monthNum = String(idx + 1).padStart(2, '0');
@@ -546,9 +534,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         return {
           month: name,
           fullMonth: MONTH_NAMES_FULL[idx],
-          income,
-          expense,
-          net,
+          income: Math.round(income * 100) / 100,
+          expense: Math.round(expense * 100) / 100,
+          net: Math.round(net * 100) / 100,
           hasActivity: txs.length > 0
         };
       });
@@ -596,13 +584,24 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         const months = MONTH_NAMES_SHORT.map((name, idx) => {
           const bMonth = currentBenchmark.months.find((m) => m.monthIndex === idx);
           if (!bMonth) {
+            const monthNum = String(idx + 1).padStart(2, '0');
+            const prefix = `${selectedYear}-${monthNum}`;
+            const txs = yearTransactions.filter(
+              (t) => bankAccs.some((a) => a.id === t.accountId) && t.date.startsWith(prefix)
+            );
+            const inc = txs
+              .filter((t) => t.type === 'income' && !isCapitalTransfer(t))
+              .reduce((s, t) => s + t.amount, 0);
+            const exp = txs
+              .filter((t) => t.type === 'expense' && !isCapitalTransfer(t))
+              .reduce((s, t) => s + t.amount, 0);
             return {
               month: name,
               fullMonth: MONTH_NAMES_FULL[idx],
-              income: 0,
-              expense: 0,
-              net: 0,
-              hasActivity: false
+              income: Math.round(inc * 100) / 100,
+              expense: Math.round(exp * 100) / 100,
+              net: Math.round((inc - exp) * 100) / 100,
+              hasActivity: txs.length > 0
             };
           }
           let bInc = 0;
@@ -1624,11 +1623,14 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 </div>
 
                 <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-600 font-semibold flex justify-between">
-                  <span>{savingsViewMode === 'real' && currentBenchmark ? 'Promedio mensual' : 'Balance consolidado'}</span>
+                  <span>Promedio mensual</span>
                   <span className="font-bold text-[#0E6A3B]">
-                    {savingsViewMode === 'real' && currentBenchmark 
-                      ? `+${formatCurrency(currentBenchmark.averageMonthNet)}/mes` 
-                      : (activeCashflowData.yearIncome > 0 ? `${Math.round((activeCashflowData.yearNet / activeCashflowData.yearIncome) * 100)}% ahorro` : '')}
+                    {(() => {
+                      const activeMonths = activeCashflowData.months.filter(m => m.hasActivity);
+                      const count = activeMonths.length || 1;
+                      const avg = Math.round((activeCashflowData.yearNet / count) * 100) / 100;
+                      return `${avg >= 0 ? '+' : ''}${formatCurrency(avg)}/mes (${count} meses)`;
+                    })()}
                   </span>
                 </div>
               </div>
