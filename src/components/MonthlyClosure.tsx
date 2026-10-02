@@ -583,8 +583,8 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               onClick={handleToggleClose}
               className={`px-4 py-2 h-10 min-w-[125px] sm:min-w-[140px] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0 ${
                 currentClosure.isClosed
-                  ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-300'
-                  : 'bg-[#0E6A3B] text-white hover:bg-[#0a522d]'
+                  ? 'bg-rose-600 text-white hover:bg-rose-700 border border-rose-700 active:scale-[0.98]'
+                  : 'bg-[#0E6A3B] text-white hover:bg-[#0a522d] border border-emerald-900 active:scale-[0.98]'
               }`}
             >
               {currentClosure.isClosed ? (
