@@ -34,12 +34,42 @@ export function loadAppState(): AppState {
           !['yd-2025-1', 'yd-2025-2', 'yd-2025-3', 'yd-2025-4'].includes(y.id)
         );
         const authentic2025 = (INITIAL_STATE.yieldRecords || []).filter((y: YieldRecord) => 
-          y.id.startsWith('yd-2025-') || y.id === 'yd-2026-tr-ipf-0'
+          y.id.startsWith('yd-2025-')
         );
         const existingIds = new Set(withoutDummy.map((y: YieldRecord) => y.id));
         const toAdd = authentic2025.filter((y: YieldRecord) => !existingIds.has(y.id));
         parsed.yieldRecords = [...withoutDummy, ...toAdd];
       }
+
+      // Asegurar que los rendimientos auditados del ejercicio 2026 (Bankinter y Trade Republic)
+      // estén presentes y sustituyan a los datos de muestra genéricos anteriores
+      const hasDummy2026 = parsed.yieldRecords.some((y: YieldRecord) => 
+        ['yd-2026-1', 'yd-2026-2', 'yd-2026-3', 'yd-2026-4', 'yd-2026-5', 'yd-2026-6', 'yd-2026-tr-ipf-0'].includes(y.id)
+      );
+      const hasAuthentic2026 = parsed.yieldRecords.some((y: YieldRecord) => y.id === 'yd-2026-bk-1');
+      if (hasDummy2026 || !hasAuthentic2026) {
+        const withoutDummy2026 = parsed.yieldRecords.filter((y: YieldRecord) => 
+          !['yd-2026-1', 'yd-2026-2', 'yd-2026-3', 'yd-2026-4', 'yd-2026-5', 'yd-2026-6', 'yd-2026-tr-ipf-0'].includes(y.id)
+        );
+        const authentic2026 = (INITIAL_STATE.yieldRecords || []).filter((y: YieldRecord) => 
+          y.id.startsWith('yd-2026-')
+        );
+        const existingIds = new Set(withoutDummy2026.map((y: YieldRecord) => y.id));
+        const toAdd2026 = authentic2026.filter((y: YieldRecord) => !existingIds.has(y.id));
+        parsed.yieldRecords = [...withoutDummy2026, ...toAdd2026];
+      }
+
+      // Eliminar posibles rendimientos auto-detectados duplicados en 2026 para los que ya existe el apunte oficial auditado
+      parsed.yieldRecords = parsed.yieldRecords.filter((y: YieldRecord) => {
+        if (y.autoDetected && y.date && y.date.startsWith('2026-')) {
+          const yMonth = y.date.substring(0, 7);
+          const hasOfficial = parsed.yieldRecords.some((off: YieldRecord) => 
+            off.id.startsWith('yd-2026-') && off.date.startsWith(yMonth) && off.accountId === y.accountId && off.type === y.type
+          );
+          if (hasOfficial) return false;
+        }
+        return true;
+      });
 
       // Asegurar que las liquidaciones de efectivo de Trade Republic reflejen 0% IRPF y 0 retención por IBAN alemán
       parsed.yieldRecords = parsed.yieldRecords

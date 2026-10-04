@@ -17,7 +17,17 @@ const INTEREST_KEYWORDS = [
   'interés acreedor',
   'abono de liquidacion',
   'abono de liquidación',
-  'rentabilidad cuenta'
+  'rentabilidad cuenta',
+  'liq. propia cta',
+  'liq. propia',
+  'liq propia cta',
+  'liq propia',
+  'liq.propia',
+  'liquidacion propia',
+  'liquidación propia',
+  'liq.cta',
+  'liq cta',
+  'liq. cta'
 ];
 
 const DIVIDEND_KEYWORDS = [
@@ -64,6 +74,8 @@ export function detectYieldFromTransaction(
   if (DIVIDEND_KEYWORDS.some((kw) => textToScan.includes(kw))) {
     detectedType = 'dividend';
   } else if (INTEREST_KEYWORDS.some((kw) => textToScan.includes(kw))) {
+    detectedType = 'interest';
+  } else if ((tx as any).categoryId === 'cat-rendimientos') {
     detectedType = 'interest';
   }
 
