@@ -15,6 +15,8 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   PieChart,
   Percent,
   CheckCircle2,
@@ -146,6 +148,30 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>('all'); // 'all' or '01'..'12'
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'matrix' | 'list'>('matrix');
+
+  // Estado para desplegar los apuntes individuales de un mes dentro de la matriz
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+
+  const toggleMonthExpand = (monthNumStr: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthNumStr)) {
+        next.delete(monthNumStr);
+      } else {
+        next.add(monthNumStr);
+      }
+      return next;
+    });
+  };
+
+  const expandAllMonths = () => {
+    const activeMonths = monthlyMatrix.filter((m) => m.count > 0).map((m) => m.monthNumStr);
+    setExpandedMonths(new Set(activeMonths));
+  };
+
+  const collapseAllMonths = () => {
+    setExpandedMonths(new Set());
+  };
 
   const allYields = appState.yieldRecords || [];
 
@@ -347,6 +373,29 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     });
   }, [allYields, selectedYear, selectedBankId, selectedType, selectedWithholding, selectedStatus, appState.accounts]);
 
+  // Obtener los cobros individuales de un mes concreto aplicando los filtros actuales
+  const getMonthItems = (monthNumStr: string) => {
+    return allYields.filter((y) => {
+      const [yYear, yMonth] = y.date.split('-');
+      if (parseInt(yYear, 10) !== selectedYear || yMonth !== monthNumStr) return false;
+      if (selectedType !== 'all' && y.type !== selectedType) return false;
+      if (selectedWithholding === 'with_tax') {
+        const hasTax = (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding;
+        if (!hasTax) return false;
+      } else if (selectedWithholding === 'without_tax') {
+        const isZeroTax = y.withholdingTax === 0 || y.taxRatePercent === 0 || !!y.noWithholding;
+        if (!isZeroTax) return false;
+      }
+      if (selectedBankId !== 'all') {
+        const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+        if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) return false;
+      }
+      if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return false;
+      if (selectedStatus === 'verified' && y.status === 'needs_review') return false;
+      return true;
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  };
+
   // Bank summary breakdown for the year
   const bankBreakdown = useMemo(() => {
     const map = new Map<string, {
@@ -391,6 +440,24 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
   return (
     <div id="section-yields" className="space-y-6 animate-in fade-in duration-200">
       
+      {/* Printable Header (Visible ONLY when printing) */}
+      <div className="hidden print:block mb-6 border-b-2 border-zinc-900 pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-black text-zinc-950 uppercase tracking-tight">
+              ANSAMA • Informe Fiscal de Rendimientos del Capital Mobiliario
+            </h1>
+            <p className="text-xs text-zinc-600 mt-0.5">
+              Ejercicio Fiscal {selectedYear} • {selectedType === 'all' ? 'Intereses y Dividendos' : selectedType === 'interest' ? 'Solo Intereses' : 'Solo Dividendos'} • {selectedWithholding === 'without_tax' ? 'Sin retención (IBAN DE / Extranjero)' : selectedWithholding === 'with_tax' ? 'Con retención IRPF' : 'Consolidado'}
+            </p>
+          </div>
+          <div className="text-right text-xs text-zinc-500">
+            <div>Fecha: {new Date().toLocaleDateString('es-ES')}</div>
+            <div className="font-bold text-zinc-800">{filteredYields.length} operaciones registradas</div>
+          </div>
+        </div>
+      </div>
+
       {/* Top Banner / Header */}
       <div className="bg-white rounded-3xl p-6 sm:p-7 border border-zinc-200/90 shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-emerald-100/40 via-transparent to-transparent pointer-events-none rounded-full blur-2xl -mr-20 -mt-20"></div>
@@ -846,7 +913,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                     : 'Desglose mensual de Intereses Bancarios y Dividendos de Acciones con Bruto, Retención y Líquido'}
                 </p>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
                 {selectedType !== 'all' && (
                   <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300">
                     Filtrado: {selectedType === 'interest' ? 'Solo Intereses' : 'Solo Dividendos'}
@@ -857,6 +924,27 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                     Solo sin retención (IBAN DE)
                   </span>
                 )}
+                
+                {/* Botón rápido para desplegar o plegar los apuntes de todos los meses */}
+                <button
+                  type="button"
+                  onClick={() => expandedMonths.size > 0 ? collapseAllMonths() : expandAllMonths()}
+                  className="text-xs font-bold px-3 py-1 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-[#0E6A3B] transition-colors shadow-2xs flex items-center gap-1 cursor-pointer"
+                  title="Desplegar o plegar los cobros detallados de todos los meses de la matriz"
+                >
+                  {expandedMonths.size > 0 ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span>Plegar apuntes</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      <span>Desplegar apuntes</span>
+                    </>
+                  )}
+                </button>
+
                 <span className="text-xs font-bold text-zinc-600 bg-white px-3 py-1 rounded-xl border border-zinc-200 shadow-2xs">
                   12 Meses Fiscales
                 </span>
@@ -867,7 +955,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-zinc-100/90 text-zinc-700 font-extrabold uppercase tracking-wider text-[11px] border-b border-zinc-200">
-                    <th className="py-3 px-4">Mes</th>
+                    <th className="py-3 px-4">Mes (Click para ver apuntes)</th>
                     <th className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-100/90 text-blue-950 font-black' : selectedType === 'dividend' ? 'opacity-30' : ''}`}>
                       Intereses Bruto
                     </th>
@@ -890,52 +978,261 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 <tbody className="divide-y divide-zinc-100 text-zinc-800">
                   {monthlyMatrix.map((m) => {
                     const hasActivity = m.count > 0;
+                    const isExpanded = expandedMonths.has(m.monthNumStr);
+                    const monthItems = isExpanded ? getMonthItems(m.monthNumStr) : [];
+
                     return (
-                      <tr 
-                        key={m.monthNumStr}
-                        className={`hover:bg-zinc-50/80 transition-colors ${
-                          hasActivity ? 'font-medium' : 'text-zinc-400'
-                        }`}
-                      >
-                        <td className="py-3 px-4 font-bold text-zinc-900 flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${hasActivity ? 'bg-[#0E6A3B]' : 'bg-zinc-300'}`}></span>
-                          <span>{m.monthName}</span>
-                          {hasActivity && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 font-normal">
-                              {m.count}
-                            </span>
-                          )}
-                        </td>
+                      <React.Fragment key={m.monthNumStr}>
+                        <tr 
+                          onClick={() => hasActivity && toggleMonthExpand(m.monthNumStr)}
+                          className={`transition-colors border-b border-zinc-100 ${
+                            isExpanded ? 'bg-emerald-50/40 border-emerald-200' : 'hover:bg-zinc-50/80'
+                          } ${hasActivity ? 'font-medium cursor-pointer' : 'text-zinc-400'}`}
+                        >
+                          <td className="py-3 px-4 font-bold text-zinc-900">
+                            <div className="flex items-center gap-2">
+                              {hasActivity ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMonthExpand(m.monthNumStr);
+                                  }}
+                                  className={`p-1 rounded-md transition-all ${
+                                    isExpanded 
+                                      ? 'bg-[#0E6A3B] text-white shadow-2xs' 
+                                      : 'bg-zinc-100 text-zinc-600 hover:bg-emerald-100 hover:text-[#0E6A3B]'
+                                  }`}
+                                  title={isExpanded ? 'Plegar apuntes' : 'Desplegar apuntes de este mes'}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="w-5 h-5 flex items-center justify-center">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-300"></span>
+                                </span>
+                              )}
 
-                        {/* Intereses */}
-                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : ''}`}>
-                          {m.interestGross > 0 ? formatCurrency(m.interestGross) : '—'}
-                        </td>
-                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
-                          {m.interestNet > 0 ? formatCurrency(m.interestNet) : '—'}
-                        </td>
+                              <span className={isExpanded ? 'text-[#0E6A3B] font-black' : ''}>
+                                {m.monthName}
+                              </span>
 
-                        {/* Dividendos */}
-                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : ''}`}>
-                          {m.dividendGross > 0 ? formatCurrency(m.dividendGross) : '—'}
-                        </td>
-                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
-                          {m.dividendNet > 0 ? formatCurrency(m.dividendNet) : '—'}
-                        </td>
+                              {hasActivity && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-colors ${
+                                  isExpanded ? 'bg-[#0E6A3B] text-white' : 'bg-zinc-100 text-zinc-700'
+                                }`}>
+                                  {m.count}
+                                </span>
+                              )}
+                            </div>
+                          </td>
 
-                        {/* Totales del mes (respetando filtros) */}
-                        <td className="py-3 px-3 text-right font-bold text-zinc-950 bg-zinc-50/50">
-                          {m.totalGross > 0 ? formatCurrency(m.totalGross) : '—'}
-                        </td>
+                          {/* Intereses */}
+                          <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : ''}`}>
+                            {m.interestGross > 0 ? formatCurrency(m.interestGross) : '—'}
+                          </td>
+                          <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
+                            {m.interestNet > 0 ? formatCurrency(m.interestNet) : '—'}
+                          </td>
 
-                        <td className="py-3 px-3 text-right font-bold text-amber-900 bg-amber-50/30">
-                          {m.totalWithholding > 0 ? formatCurrency(m.totalWithholding) : '—'}
-                        </td>
+                          {/* Dividendos */}
+                          <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : ''}`}>
+                            {m.dividendGross > 0 ? formatCurrency(m.dividendGross) : '—'}
+                          </td>
+                          <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
+                            {m.dividendNet > 0 ? formatCurrency(m.dividendNet) : '—'}
+                          </td>
 
-                        <td className="py-3 px-4 text-right font-black text-[#0E6A3B] bg-emerald-50/40">
-                          {m.totalNet > 0 ? formatCurrency(m.totalNet) : '—'}
-                        </td>
-                      </tr>
+                          {/* Totales del mes (respetando filtros) */}
+                          <td className="py-3 px-3 text-right font-bold text-zinc-950 bg-zinc-50/50">
+                            {m.totalGross > 0 ? formatCurrency(m.totalGross) : '—'}
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-bold text-amber-900 bg-amber-50/30">
+                            {m.totalWithholding > 0 ? formatCurrency(m.totalWithholding) : '—'}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-black text-[#0E6A3B] bg-emerald-50/40">
+                            {m.totalNet > 0 ? formatCurrency(m.totalNet) : '—'}
+                          </td>
+                        </tr>
+
+                        {/* Desplegable interactivo de apuntes de este mes */}
+                        {isExpanded && (
+                          <tr className="bg-emerald-50/30 border-b-2 border-emerald-300">
+                            <td colSpan={8} className="p-0">
+                              <div className="p-3.5 sm:p-5 bg-gradient-to-r from-emerald-50/50 via-white to-zinc-50/50 border-l-4 border-[#0E6A3B] space-y-3 animate-in fade-in duration-150">
+                                
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-200/80 pb-2.5">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-[#0E6A3B]"></span>
+                                    <h4 className="text-xs sm:text-sm font-black text-zinc-950">
+                                      Apuntes de {m.monthName} {selectedYear} ({monthItems.length} {monthItems.length === 1 ? 'cobro' : 'cobros'})
+                                    </h4>
+                                    <span className="text-[11px] text-zinc-500 font-medium">
+                                      • Bruto: <strong className="text-zinc-900">{formatCurrency(m.totalGross)}</strong> • Retención: <strong className="text-amber-900">{formatCurrency(m.totalWithholding)}</strong> • Líquido: <strong className="text-[#0E6A3B]">{formatCurrency(m.totalNet)}</strong>
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenNewYieldModal()}
+                                      className="px-2.5 py-1 rounded-lg bg-[#0E6A3B] hover:bg-[#092B19] text-white text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Añadir apunte</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleMonthExpand(m.monthNumStr)}
+                                      className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 text-[11px] font-semibold transition-colors cursor-pointer shadow-2xs"
+                                    >
+                                      Plegar
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {monthItems.length === 0 ? (
+                                  <p className="text-xs text-zinc-500 italic py-2">
+                                    No hay cobros registrados en {m.monthName} que cumplan los filtros activos.
+                                  </p>
+                                ) : (
+                                  <div className="overflow-x-auto rounded-xl border border-zinc-200/90 bg-white shadow-2xs">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead>
+                                        <tr className="bg-zinc-100/90 text-zinc-700 uppercase tracking-wider text-[10px] font-black border-b border-zinc-200">
+                                          <th className="py-2.5 px-3">Fecha</th>
+                                          <th className="py-2.5 px-3">Concepto / Entidad</th>
+                                          <th className="py-2.5 px-3">Cuenta / Broker</th>
+                                          <th className="py-2.5 px-2.5">Tipo</th>
+                                          <th className="py-2.5 px-3 text-right">Bruto (€)</th>
+                                          <th className="py-2.5 px-3 text-right">Retención IRPF</th>
+                                          <th className="py-2.5 px-3 text-right">Líquido Neto</th>
+                                          <th className="py-2.5 px-3 text-center">Estado</th>
+                                          <th className="py-2.5 px-3 text-right">Acciones</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-zinc-100">
+                                        {monthItems.map((rec) => {
+                                          const acc = getAccountForYieldRecord(appState.accounts, rec.accountId);
+                                          return (
+                                            <tr key={rec.id} className="hover:bg-zinc-50/80 transition-colors">
+                                              <td className="py-2.5 px-3 font-semibold text-zinc-700 whitespace-nowrap">
+                                                {formatDate(rec.date)}
+                                              </td>
+                                              <td className="py-2.5 px-3 font-bold text-zinc-900">
+                                                <div>{rec.title}</div>
+                                                {rec.notes && (
+                                                  <div className="text-[10px] text-zinc-500 font-normal line-clamp-1">{rec.notes}</div>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span 
+                                                    className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                                    style={{ backgroundColor: acc.color }}
+                                                  />
+                                                  <span className="font-semibold text-zinc-800 text-xs">
+                                                    {acc.bankName}
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                                {rec.type === 'interest' ? (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                                    <Building2 className="w-2.5 h-2.5" /> Interés
+                                                  </span>
+                                                ) : (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                    <TrendingUp className="w-2.5 h-2.5" /> Dividendo
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-bold text-zinc-950 whitespace-nowrap">
+                                                {formatCurrency(rec.grossAmount)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-semibold whitespace-nowrap">
+                                                {rec.withholdingTax > 0 ? (
+                                                  <div className="text-amber-900">
+                                                    <span>{formatCurrency(rec.withholdingTax)}</span>
+                                                    <span className="text-[10px] text-amber-700 font-normal ml-1">({rec.taxRatePercent}%)</span>
+                                                  </div>
+                                                ) : (
+                                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Cobro íntegro sin retención en origen">
+                                                    Sin retención (0%)
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-black text-[#0E6A3B] whitespace-nowrap">
+                                                {formatCurrency(rec.netAmount)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onToggleYieldStatus(rec.id);
+                                                  }}
+                                                  className="cursor-pointer inline-flex items-center gap-1"
+                                                  title={rec.status === 'needs_review' ? 'Click para marcar como comprobado' : 'Click para marcar como pendiente'}
+                                                >
+                                                  {rec.status === 'needs_review' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                      Revisar
+                                                    </span>
+                                                  ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                      OK
+                                                    </span>
+                                                  )}
+                                                </button>
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onEditYield(rec);
+                                                    }}
+                                                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-[#0E6A3B] bg-emerald-50 hover:bg-[#0E6A3B] hover:text-white transition-colors flex items-center gap-1 cursor-pointer shadow-2xs border border-emerald-200"
+                                                    title="Editar este apunte"
+                                                  >
+                                                    <Edit3 className="w-3 h-3" />
+                                                    <span>Editar</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onDeleteYield(rec.id);
+                                                    }}
+                                                    className="p-1 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                                    title="Eliminar este apunte"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
