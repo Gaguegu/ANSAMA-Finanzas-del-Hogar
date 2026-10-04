@@ -703,6 +703,29 @@ export default function App() {
     );
   };
 
+  // Batch Verify Yields (mark all specified yields as verified in one click)
+  const handleBatchVerifyYields = (ids?: string[]) => {
+    const existingYields = appState.yieldRecords || [];
+    const idSet = ids ? new Set(ids) : null;
+    let count = 0;
+    const updatedYields: YieldRecord[] = existingYields.map((y) => {
+      if (!idSet || idSet.has(y.id)) {
+        if (y.status === 'needs_review') count++;
+        return { ...y, status: 'verified' as YieldStatus };
+      }
+      return y;
+    });
+
+    const newState: AppState = {
+      ...appState,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    triggerNotification(`Se han marcado ${count} cobros como comprobados y verificados.`);
+  };
+
   // Lista ordenada de meses disponibles para el selector de Patrimonio
   const availableMonths = useMemo(() => {
     return getAvailableMonths(appState.transactions, appState.monthlyClosures);
@@ -967,6 +990,7 @@ export default function App() {
               }}
               onDeleteYield={handleDeleteYield}
               onToggleYieldStatus={handleToggleYieldStatus}
+              onBatchVerifyYields={handleBatchVerifyYields}
             />
           </div>
         )}

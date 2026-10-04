@@ -10,7 +10,8 @@ import {
   HelpCircle,
   FileText,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Globe
 } from 'lucide-react';
 import { BankAccount, YieldRecord, YieldType, Transaction } from '../types';
 import { formatCurrency, parseCurrencyInput } from '../utils/storage';
@@ -40,6 +41,7 @@ export const YieldModal: React.FC<YieldModalProps> = ({
   const [taxRatePercent, setTaxRatePercent] = useState<number>(19); // Default 19% Spanish IRPF
   const [withholdingTaxStr, setWithholdingTaxStr] = useState<string>('');
   const [netAmountStr, setNetAmountStr] = useState<string>('');
+  const [noWithholding, setNoWithholding] = useState<boolean>(false); // Sin retención en origen (IBAN alemán / extranjero)
   
   // Stock dividend specific fields
   const [isinOrTicker, setIsinOrTicker] = useState<string>('');
@@ -60,6 +62,8 @@ export const YieldModal: React.FC<YieldModalProps> = ({
         setTitle(initialYield.title);
         setDate(initialYield.date);
         setGrossAmountStr(initialYield.grossAmount.toString());
+        const isZeroTax = initialYield.noWithholding ?? (initialYield.taxRatePercent === 0 && initialYield.withholdingTax === 0);
+        setNoWithholding(isZeroTax);
         setTaxRatePercent(initialYield.taxRatePercent);
         setWithholdingTaxStr(initialYield.withholdingTax.toString());
         setNetAmountStr(initialYield.netAmount.toString());
@@ -79,6 +83,7 @@ export const YieldModal: React.FC<YieldModalProps> = ({
         setTaxRatePercent(19);
         setWithholdingTaxStr('');
         setNetAmountStr('');
+        setNoWithholding(false);
         setIsinOrTicker('');
         setSharesCountStr('');
         setGrossPerShareStr('');
@@ -92,21 +97,53 @@ export const YieldModal: React.FC<YieldModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Toggle explicit No-Withholding (IBAN Alemán / Extranjero / 0% IRPF)
+  const handleToggleNoWithholding = (forceVal?: boolean) => {
+    const nextVal = typeof forceVal === 'boolean' ? forceVal : !noWithholding;
+    setNoWithholding(nextVal);
+    if (nextVal) {
+      setTaxRatePercent(0);
+      setWithholdingTaxStr('0.00');
+      const parsedGross = parseCurrencyInput(grossAmountStr);
+      if (!isNaN(parsedGross) && parsedGross > 0) {
+        setNetAmountStr(parsedGross.toFixed(2));
+      }
+    } else {
+      setTaxRatePercent(19);
+      const parsedGross = parseCurrencyInput(grossAmountStr);
+      if (!isNaN(parsedGross) && parsedGross > 0) {
+        const withholding = Math.round(parsedGross * 0.19 * 100) / 100;
+        setWithholdingTaxStr(withholding.toFixed(2));
+        setNetAmountStr((parsedGross - withholding).toFixed(2));
+      }
+    }
+  };
+
   // Handle Gross amount change and auto calculate withholding & net
   const handleGrossChange = (valStr: string) => {
     setGrossAmountStr(valStr);
     const parsed = parseCurrencyInput(valStr);
     if (!isNaN(parsed) && parsed > 0) {
-      const withholding = Math.round(parsed * (taxRatePercent / 100) * 100) / 100;
-      const net = Math.round((parsed - withholding) * 100) / 100;
-      setWithholdingTaxStr(withholding.toFixed(2));
-      setNetAmountStr(net.toFixed(2));
+      if (noWithholding || taxRatePercent === 0) {
+        setWithholdingTaxStr('0.00');
+        setNetAmountStr(parsed.toFixed(2));
+      } else {
+        const withholding = Math.round(parsed * (taxRatePercent / 100) * 100) / 100;
+        const net = Math.round((parsed - withholding) * 100) / 100;
+        setWithholdingTaxStr(withholding.toFixed(2));
+        setNetAmountStr(net.toFixed(2));
+      }
     }
   };
 
   // Handle Tax Rate % change
   const handleTaxRateChange = (rate: number) => {
     setTaxRatePercent(rate);
+    if (rate === 0) {
+      setNoWithholding(true);
+    } else {
+      setNoWithholding(false);
+    }
     const parsedGross = parseCurrencyInput(grossAmountStr);
     if (!isNaN(parsedGross) && parsedGross > 0) {
       const withholding = Math.round(parsedGross * (rate / 100) * 100) / 100;
@@ -193,7 +230,8 @@ export const YieldModal: React.FC<YieldModalProps> = ({
       notes: notes.trim() || undefined,
       transactionId: initialYield?.transactionId,
       status: isNeedsReview ? 'needs_review' : 'verified',
-      autoDetected: initialYield?.autoDetected
+      autoDetected: initialYield?.autoDetected,
+      noWithholding: noWithholding || taxRatePercent === 0
     };
 
     onSaveYield(record, syncWithTransactions);
@@ -417,6 +455,60 @@ export const YieldModal: React.FC<YieldModalProps> = ({
                     {item.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Campo visual explícito: Sin retención IRPF (IBAN extranjero / Cuenta Internacional) */}
+            <div className={`p-3.5 rounded-2xl border transition-all ${
+              noWithholding || taxRatePercent === 0
+                ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-400/20' 
+                : 'bg-white border-zinc-200 hover:border-zinc-300'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    noWithholding || taxRatePercent === 0
+                      ? 'bg-amber-200 text-amber-900 font-bold' 
+                      : 'bg-zinc-100 text-zinc-600'
+                  }`}>
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-zinc-900">
+                        Sin Retención en Origen (0% IRPF)
+                      </span>
+                      {(noWithholding || taxRatePercent === 0) ? (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          Cobro íntegro • IBAN DE / Extranjero
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500">
+                          Retención estándar practicada
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-0.5 leading-snug">
+                      Marca si este rendimiento se cobró íntegro sin retención en el banco (ej. Trade Republic con IBAN alemán o exento). Permite filtrarlo después.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleNoWithholding()}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                    noWithholding || taxRatePercent === 0 ? 'bg-amber-600' : 'bg-zinc-300'
+                  }`}
+                  aria-pressed={noWithholding || taxRatePercent === 0}
+                  title={(noWithholding || taxRatePercent === 0) ? 'Desactivar: aplicar retención normal' : 'Activar: marcar sin retención (0%)'}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      noWithholding || taxRatePercent === 0 ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 

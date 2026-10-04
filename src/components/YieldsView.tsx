@@ -22,7 +22,8 @@ import {
   AlertTriangle,
   CheckSquare,
   Square,
-  HelpCircle
+  HelpCircle,
+  Globe
 } from 'lucide-react';
 import { AppState, BankAccount, YieldRecord, YieldType } from '../types';
 import { formatCurrency, formatDate } from '../utils/storage';
@@ -33,6 +34,7 @@ interface YieldsViewProps {
   onEditYield: (record: YieldRecord) => void;
   onDeleteYield: (id: string) => void;
   onToggleYieldStatus: (id: string) => void;
+  onBatchVerifyYields?: (ids?: string[]) => void;
 }
 
 const MONTH_NAMES = [
@@ -128,11 +130,13 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
   onOpenNewYieldModal,
   onEditYield,
   onDeleteYield,
-  onToggleYieldStatus
+  onToggleYieldStatus,
+  onBatchVerifyYields
 }) => {
   // Filters state
   const [selectedType, setSelectedType] = useState<'all' | 'interest' | 'dividend'>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'needs_review' | 'verified'>('all');
+  const [selectedWithholding, setSelectedWithholding] = useState<'all' | 'with_tax' | 'without_tax'>('all');
   const [selectedBankId, setSelectedBankId] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<number>(() => {
     // Current year or latest yield year
@@ -158,12 +162,47 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [allYields]);
 
+  // Counts for the currently selected year (for badges and informative filters)
+  const yearCounts = useMemo(() => {
+    const yearYields = allYields.filter((y) => {
+      const yr = parseInt(y.date.split('-')[0], 10);
+      return yr === selectedYear;
+    });
+
+    const interests = yearYields.filter((y) => y.type === 'interest').length;
+    const dividends = yearYields.filter((y) => y.type === 'dividend').length;
+    const withTax = yearYields.filter((y) => (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding).length;
+    const withoutTax = yearYields.filter((y) => y.withholdingTax === 0 || y.taxRatePercent === 0 || y.noWithholding).length;
+    const pendingYear = yearYields.filter((y) => y.status === 'needs_review').length;
+    const verifiedYear = yearYields.filter((y) => y.status !== 'needs_review').length;
+
+    return {
+      total: yearYields.length,
+      interests,
+      dividends,
+      withTax,
+      withoutTax,
+      pendingYear,
+      verifiedYear,
+      yearYields
+    };
+  }, [allYields, selectedYear]);
+
   // Filtered yields based on all active filters
   const filteredYields = useMemo(() => {
     return allYields.filter((y) => {
       // Filter by Type
       if (selectedType !== 'all' && y.type !== selectedType) {
         return false;
+      }
+
+      // Filter by Withholding (con retención vs sin retención)
+      if (selectedWithholding === 'with_tax') {
+        const hasTax = (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding;
+        if (!hasTax) return false;
+      } else if (selectedWithholding === 'without_tax') {
+        const isZeroTax = y.withholdingTax === 0 || y.taxRatePercent === 0 || !!y.noWithholding;
+        if (!isZeroTax) return false;
       }
 
       // Filter by Bank / Account
@@ -199,7 +238,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       // Filter by Search term
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
-        const acc = appState.accounts.find((a) => a.id === y.accountId);
+        const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
         const matchTitle = y.title.toLowerCase().includes(term);
         const matchTicker = y.isinOrTicker?.toLowerCase().includes(term);
         const matchBank = acc?.bankName.toLowerCase().includes(term);
@@ -211,7 +250,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [allYields, selectedType, selectedStatus, selectedBankId, selectedYear, selectedMonth, searchTerm, appState.accounts]);
+  }, [allYields, selectedType, selectedWithholding, selectedStatus, selectedBankId, selectedYear, selectedMonth, searchTerm, appState.accounts]);
 
   // Overall pending review stats
   const reviewStats = useMemo(() => {
@@ -220,7 +259,8 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     return {
       pendingCount: pending.length,
       verifiedCount: verified.length,
-      totalCount: allYields.length
+      totalCount: allYields.length,
+      pendingIds: pending.map((y) => y.id)
     };
   }, [allYields]);
 
@@ -239,7 +279,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     );
   }, [filteredYields]);
 
-  // Monthly Matrix data for the selected year and bank (independent of selected month)
+  // Monthly Matrix data for the selected year and bank
   const monthlyMatrix = useMemo(() => {
     return MONTH_NAMES.map((monthName, idx) => {
       const monthNumStr = String(idx + 1).padStart(2, '0');
@@ -249,9 +289,22 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         if (parseInt(yYear, 10) !== selectedYear || yMonth !== monthNumStr) return false;
         
         if (selectedBankId !== 'all') {
-          const acc = appState.accounts.find((a) => a.id === y.accountId);
-          if (!acc || (acc.bankId !== selectedBankId && acc.id !== selectedBankId)) return false;
+          const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+          if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) return false;
         }
+
+        // Apply withholding filter
+        if (selectedWithholding === 'with_tax') {
+          const hasTax = (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding;
+          if (!hasTax) return false;
+        } else if (selectedWithholding === 'without_tax') {
+          const isZeroTax = y.withholdingTax === 0 || y.taxRatePercent === 0 || !!y.noWithholding;
+          if (!isZeroTax) return false;
+        }
+
+        // Apply status filter
+        if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return false;
+        if (selectedStatus === 'verified' && y.status === 'needs_review') return false;
         
         return true;
       });
@@ -259,35 +312,40 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       const interests = monthYields.filter((y) => y.type === 'interest');
       const dividends = monthYields.filter((y) => y.type === 'dividend');
 
-      const interestGross = interests.reduce((sum, y) => sum + y.grossAmount, 0);
-      const interestWithholding = interests.reduce((sum, y) => sum + y.withholdingTax, 0);
-      const interestNet = interests.reduce((sum, y) => sum + y.netAmount, 0);
+      const rawInterestGross = interests.reduce((sum, y) => sum + y.grossAmount, 0);
+      const rawInterestWithholding = interests.reduce((sum, y) => sum + y.withholdingTax, 0);
+      const rawInterestNet = interests.reduce((sum, y) => sum + y.netAmount, 0);
 
-      const dividendGross = dividends.reduce((sum, y) => sum + y.grossAmount, 0);
-      const dividendWithholding = dividends.reduce((sum, y) => sum + y.withholdingTax, 0);
-      const dividendNet = dividends.reduce((sum, y) => sum + y.netAmount, 0);
+      const rawDividendGross = dividends.reduce((sum, y) => sum + y.grossAmount, 0);
+      const rawDividendWithholding = dividends.reduce((sum, y) => sum + y.withholdingTax, 0);
+      const rawDividendNet = dividends.reduce((sum, y) => sum + y.netAmount, 0);
 
-      const totalGross = interestGross + dividendGross;
-      const totalWithholding = interestWithholding + dividendWithholding;
-      const totalNet = interestNet + dividendNet;
+      // Respetar el tipo seleccionado en los totales
+      const includeInterests = selectedType === 'all' || selectedType === 'interest';
+      const includeDividends = selectedType === 'all' || selectedType === 'dividend';
+
+      const totalGross = (includeInterests ? rawInterestGross : 0) + (includeDividends ? rawDividendGross : 0);
+      const totalWithholding = (includeInterests ? rawInterestWithholding : 0) + (includeDividends ? rawDividendWithholding : 0);
+      const totalNet = (includeInterests ? rawInterestNet : 0) + (includeDividends ? rawDividendNet : 0);
+      const count = (includeInterests ? interests.length : 0) + (includeDividends ? dividends.length : 0);
 
       return {
         monthIndex: idx,
         monthName,
         monthNumStr,
-        interestGross,
-        interestWithholding,
-        interestNet,
-        dividendGross,
-        dividendWithholding,
-        dividendNet,
+        interestGross: rawInterestGross,
+        interestWithholding: rawInterestWithholding,
+        interestNet: rawInterestNet,
+        dividendGross: rawDividendGross,
+        dividendWithholding: rawDividendWithholding,
+        dividendNet: rawDividendNet,
         totalGross,
         totalWithholding,
         totalNet,
-        count: monthYields.length
+        count
       };
     });
-  }, [allYields, selectedYear, selectedBankId, appState.accounts]);
+  }, [allYields, selectedYear, selectedBankId, selectedType, selectedWithholding, selectedStatus, appState.accounts]);
 
   // Bank summary breakdown for the year
   const bankBreakdown = useMemo(() => {
@@ -395,7 +453,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
               >
-                Todos ({allYields.length})
+                Todos ({yearCounts.total})
               </button>
 
               <button
@@ -407,7 +465,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
-                <span>Intereses</span>
+                <span>Intereses ({yearCounts.interests})</span>
               </button>
 
               <button
@@ -419,7 +477,47 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 }`}
               >
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Dividendos</span>
+                <span>Dividendos ({yearCounts.dividends})</span>
+              </button>
+            </div>
+
+            {/* Selector de Retención Fiscal (Con IRPF vs Sin retención / IBAN extranjero) */}
+            <div className="flex items-center p-1 bg-zinc-100 rounded-xl max-w-fit">
+              <button
+                onClick={() => setSelectedWithholding('all')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedWithholding === 'all'
+                    ? 'bg-white text-zinc-900 shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                Toda fiscalidad
+              </button>
+
+              <button
+                onClick={() => setSelectedWithholding('with_tax')}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedWithholding === 'with_tax'
+                    ? 'bg-white text-zinc-900 shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+                title="Mostrar cobros con retención de IRPF practicada en cuenta"
+              >
+                <Percent className="w-3.5 h-3.5 text-zinc-600" />
+                <span>Con IRPF ({yearCounts.withTax})</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedWithholding('without_tax')}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedWithholding === 'without_tax'
+                    ? 'bg-amber-100 text-amber-900 shadow-xs font-black'
+                    : 'text-amber-800 hover:bg-amber-50'
+                }`}
+                title="Mostrar cobros íntegros sin retención (IBAN alemán DE / cuentas internacionales / exentos)"
+              >
+                <Globe className="w-3.5 h-3.5 text-amber-700" />
+                <span>Sin retención ({yearCounts.withoutTax})</span>
               </button>
             </div>
 
@@ -433,7 +531,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                     : 'text-zinc-600 hover:text-zinc-900'
                 }`}
               >
-                Cualquier estado
+                Todos
               </button>
 
               <button
@@ -446,7 +544,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 title="Mostrar solo cobros auto-detectados pendientes de comprobar con el banco"
               >
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                <span>Por Comprobar ({reviewStats.pendingCount})</span>
+                <span>Por Comprobar ({yearCounts.pendingYear})</span>
               </button>
 
               <button
@@ -459,7 +557,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 title="Mostrar solo cobros verificados"
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Comprobados ({reviewStats.verifiedCount})</span>
+                <span>Comprobados ({yearCounts.verifiedYear})</span>
               </button>
             </div>
           </div>
@@ -686,23 +784,45 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
             </div>
             <div>
               <h4 className="text-xs sm:text-sm font-bold text-amber-950">
-                Tienes {reviewStats.pendingCount} {reviewStats.pendingCount === 1 ? 'rendimiento detectado pendiente' : 'rendimientos detectados pendientes'} de comprobación
+                {yearCounts.pendingYear > 0 ? (
+                  <span>Tienes {yearCounts.pendingYear} cobros pendientes de comprobación en el ejercicio {selectedYear} ({reviewStats.pendingCount} en total de la app)</span>
+                ) : (
+                  <span>En el ejercicio {selectedYear} todos tus rendimientos están comprobados con tu documento oficial (0 pendientes). Hay {reviewStats.pendingCount} de otros ejercicios pendientes.</span>
+                )}
               </h4>
               <p className="text-[11px] sm:text-xs text-amber-800/90">
-                Anotados automáticamente desde los movimientos bancarios. Puedes editar los importes si no coinciden con el justificante oficial y desmarcar el check de comprobación una vez corregido.
+                Anotados automáticamente desde los extractos bancarios. Puedes revisarlos individualmente o marcarlos como comprobados con un solo clic.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setSelectedStatus('needs_review');
-              setActiveSubTab('list');
-            }}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <CheckSquare className="w-3.5 h-3.5" />
-            <span>Revisar pendientes ({reviewStats.pendingCount})</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onBatchVerifyYields && (
+              <button
+                type="button"
+                onClick={() => {
+                  const idsToVerify = yearCounts.pendingYear > 0
+                    ? yearCounts.yearYields.filter((y) => y.status === 'needs_review').map((y) => y.id)
+                    : reviewStats.pendingIds;
+                  onBatchVerifyYields(idsToVerify);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-50 border border-amber-300 text-amber-900 text-xs font-bold shrink-0 transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                title="Marcar los cobros pendientes como comprobados"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Marcar comprobados</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setSelectedStatus('needs_review');
+                setActiveSubTab('list');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Ver pendientes ({yearCounts.pendingYear > 0 ? yearCounts.pendingYear : reviewStats.pendingCount})</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -719,12 +839,28 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                   Matriz Anual de Rendimientos por Meses — Ejercicio {selectedYear}
                 </h3>
                 <p className="text-xs text-zinc-500">
-                  Desglose mensual de Intereses Bancarios y Dividendos de Acciones con Bruto, Retención y Líquido
+                  {selectedType === 'interest' 
+                    ? 'Mostrando exclusivamente Intereses bancarios e imposiciones a plazo fijo (IPF)' 
+                    : selectedType === 'dividend'
+                    ? 'Mostrando exclusivamente Dividendos de acciones cobrados'
+                    : 'Desglose mensual de Intereses Bancarios y Dividendos de Acciones con Bruto, Retención y Líquido'}
                 </p>
               </div>
-              <span className="text-xs font-bold text-zinc-600 bg-white px-3 py-1 rounded-xl border border-zinc-200 shadow-2xs self-start sm:self-auto">
-                12 Meses Fiscales
-              </span>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {selectedType !== 'all' && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300">
+                    Filtrado: {selectedType === 'interest' ? 'Solo Intereses' : 'Solo Dividendos'}
+                  </span>
+                )}
+                {selectedWithholding === 'without_tax' && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
+                    Solo sin retención (IBAN DE)
+                  </span>
+                )}
+                <span className="text-xs font-bold text-zinc-600 bg-white px-3 py-1 rounded-xl border border-zinc-200 shadow-2xs">
+                  12 Meses Fiscales
+                </span>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -732,11 +868,21 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 <thead>
                   <tr className="bg-zinc-100/90 text-zinc-700 font-extrabold uppercase tracking-wider text-[11px] border-b border-zinc-200">
                     <th className="py-3 px-4">Mes</th>
-                    <th className="py-3 px-3 text-right">Intereses Bruto</th>
-                    <th className="py-3 px-3 text-right">Intereses Líq.</th>
-                    <th className="py-3 px-3 text-right">Dividendos Bruto</th>
-                    <th className="py-3 px-3 text-right">Dividendos Líq.</th>
-                    <th className="py-3 px-3 text-right bg-zinc-200/50">Total Bruto</th>
+                    <th className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-100/90 text-blue-950 font-black' : selectedType === 'dividend' ? 'opacity-30' : ''}`}>
+                      Intereses Bruto
+                    </th>
+                    <th className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-100/90 text-blue-950 font-black' : selectedType === 'dividend' ? 'opacity-30' : ''}`}>
+                      Intereses Líq.
+                    </th>
+                    <th className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-100/90 text-emerald-950 font-black' : selectedType === 'interest' ? 'opacity-30' : ''}`}>
+                      Dividendos Bruto
+                    </th>
+                    <th className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-100/90 text-emerald-950 font-black' : selectedType === 'interest' ? 'opacity-30' : ''}`}>
+                      Dividendos Líq.
+                    </th>
+                    <th className="py-3 px-3 text-right bg-zinc-200/50">
+                      {selectedType === 'interest' ? 'Total Intereses Bruto' : selectedType === 'dividend' ? 'Total Div. Bruto' : 'Total Bruto'}
+                    </th>
                     <th className="py-3 px-3 text-right text-amber-900 bg-amber-50/50">Retención IRPF</th>
                     <th className="py-3 px-4 text-right text-[#0E6A3B] bg-emerald-50/60 font-black">Total Líquido</th>
                   </tr>
@@ -762,22 +908,22 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                         </td>
 
                         {/* Intereses */}
-                        <td className="py-3 px-3 text-right">
+                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : ''}`}>
                           {m.interestGross > 0 ? formatCurrency(m.interestGross) : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-semibold text-zinc-700">
+                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'interest' ? 'bg-blue-50/50 font-bold text-blue-900' : selectedType === 'dividend' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
                           {m.interestNet > 0 ? formatCurrency(m.interestNet) : '—'}
                         </td>
 
                         {/* Dividendos */}
-                        <td className="py-3 px-3 text-right">
+                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : ''}`}>
                           {m.dividendGross > 0 ? formatCurrency(m.dividendGross) : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-semibold text-zinc-700">
+                        <td className={`py-3 px-3 text-right transition-colors ${selectedType === 'dividend' ? 'bg-emerald-50/50 font-bold text-emerald-900' : selectedType === 'interest' ? 'opacity-25' : 'font-semibold text-zinc-700'}`}>
                           {m.dividendNet > 0 ? formatCurrency(m.dividendNet) : '—'}
                         </td>
 
-                        {/* Totales del mes */}
+                        {/* Totales del mes (respetando filtros) */}
                         <td className="py-3 px-3 text-right font-bold text-zinc-950 bg-zinc-50/50">
                           {m.totalGross > 0 ? formatCurrency(m.totalGross) : '—'}
                         </td>
@@ -798,18 +944,18 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 <tfoot>
                   <tr className="bg-[#092B19] text-white font-extrabold text-xs border-t-2 border-[#0E6A3B]">
                     <td className="py-3.5 px-4 text-emerald-200 uppercase tracking-wider font-black">
-                      TOTAL EJERCICIO {selectedYear}
+                      TOTAL {selectedType === 'interest' ? 'INTERESES' : selectedType === 'dividend' ? 'DIVIDENDOS' : `EJERCICIO ${selectedYear}`}
                     </td>
-                    <td className="py-3.5 px-3 text-right text-emerald-100">
+                    <td className={`py-3.5 px-3 text-right ${selectedType === 'dividend' ? 'opacity-30' : 'text-emerald-100 font-bold'}`}>
                       {formatCurrency(monthlyMatrix.reduce((s, m) => s + m.interestGross, 0))}
                     </td>
-                    <td className="py-3.5 px-3 text-right text-emerald-100 font-bold">
+                    <td className={`py-3.5 px-3 text-right ${selectedType === 'dividend' ? 'opacity-30' : 'text-emerald-100 font-bold'}`}>
                       {formatCurrency(monthlyMatrix.reduce((s, m) => s + m.interestNet, 0))}
                     </td>
-                    <td className="py-3.5 px-3 text-right text-emerald-100">
+                    <td className={`py-3.5 px-3 text-right ${selectedType === 'interest' ? 'opacity-30' : 'text-emerald-100 font-bold'}`}>
                       {formatCurrency(monthlyMatrix.reduce((s, m) => s + m.dividendGross, 0))}
                     </td>
-                    <td className="py-3.5 px-3 text-right text-emerald-100 font-bold">
+                    <td className={`py-3.5 px-3 text-right ${selectedType === 'interest' ? 'opacity-30' : 'text-emerald-100 font-bold'}`}>
                       {formatCurrency(monthlyMatrix.reduce((s, m) => s + m.dividendNet, 0))}
                     </td>
                     <td className="py-3.5 px-3 text-right text-white font-black bg-emerald-950/40">

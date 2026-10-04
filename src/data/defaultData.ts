@@ -449,7 +449,8 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     withholdingTax: 0,
     netAmount: 44.37,
     notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)',
-    status: 'verified'
+    status: 'verified',
+    noWithholding: true
   },
   {
     id: 'yd-2025-tr-cash-2',
@@ -462,7 +463,8 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     withholdingTax: 0,
     netAmount: 41.70,
     notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)',
-    status: 'verified'
+    status: 'verified',
+    noWithholding: true
   },
   {
     id: 'yd-2025-tr-cash-3',
@@ -475,7 +477,8 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     withholdingTax: 0,
     netAmount: 46.14,
     notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)',
-    status: 'verified'
+    status: 'verified',
+    noWithholding: true
   },
   {
     id: 'yd-2025-tr-cash-4',
@@ -488,7 +491,8 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     withholdingTax: 0,
     netAmount: 68.16,
     notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)',
-    status: 'verified'
+    status: 'verified',
+    noWithholding: true
   },
   {
     id: 'yd-2025-tr-cash-5',
@@ -501,7 +505,8 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     withholdingTax: 0,
     netAmount: 58.72,
     notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)',
-    status: 'verified'
+    status: 'verified',
+    noWithholding: true
   },
   // 2. Imposiciones a Plazo Fijo (IPF) y Dividendos (Tabla Oficial 2025)
   {

@@ -42,18 +42,33 @@ export function loadAppState(): AppState {
       }
 
       // Asegurar que las liquidaciones de efectivo de Trade Republic reflejen 0% IRPF y 0 retención por IBAN alemán
-      parsed.yieldRecords = parsed.yieldRecords.map((y: YieldRecord) => {
-        if (y.id && y.id.startsWith('yd-2025-tr-cash-')) {
-          return {
-            ...y,
-            taxRatePercent: 0,
-            withholdingTax: 0,
-            netAmount: y.grossAmount,
-            notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)'
-          };
-        }
-        return y;
-      });
+      parsed.yieldRecords = parsed.yieldRecords
+        .filter((y: YieldRecord) => {
+          // Si es un rendimiento auto-detectado en 2025 previo a la carga de la tabla oficial, eliminar duplicado
+          if (y.autoDetected && y.date && y.date.startsWith('2025-') && !y.id.startsWith('yd-2025-')) {
+            return false;
+          }
+          return true;
+        })
+        .map((y: YieldRecord) => {
+          if (y.id && y.id.startsWith('yd-2025-tr-cash-')) {
+            return {
+              ...y,
+              taxRatePercent: 0,
+              withholdingTax: 0,
+              netAmount: y.grossAmount,
+              noWithholding: true,
+              notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)'
+            };
+          }
+          if (y.taxRatePercent === 0 && y.withholdingTax === 0) {
+            return {
+              ...y,
+              noWithholding: true
+            };
+          }
+          return y;
+        });
     }
 
     // Auto-reparar cuentas afectadas por el truncamiento de separador de miles y asegurar balanceDate

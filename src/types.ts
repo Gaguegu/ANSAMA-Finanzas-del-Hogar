@@ -80,6 +80,7 @@ export interface YieldRecord {
   transactionId?: string; // ID de la transacción en cuenta vinculada (si aplica)
   status?: YieldStatus; // 'needs_review' = Pendiente de comprobar con el extracto/justificante | 'verified' = Comprobado
   autoDetected?: boolean; // true si fue anotado automáticamente al recibirse en el banco
+  noWithholding?: boolean; // true si está exento o no tuvo retención en origen (ej. IBAN extranjero / alemán)
 }
 
 export interface MonthClosure {
