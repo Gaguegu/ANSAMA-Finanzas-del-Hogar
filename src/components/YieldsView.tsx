@@ -151,6 +151,8 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
   // Estado para desplegar los apuntes individuales de un mes dentro de la matriz
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  // Estado para desplegar los apuntes individuales de un banco/entidad
+  const [expandedBanks, setExpandedBanks] = useState<Set<string>>(new Set());
 
   const toggleMonthExpand = (monthNumStr: string) => {
     setExpandedMonths((prev) => {
@@ -171,6 +173,27 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
   const collapseAllMonths = () => {
     setExpandedMonths(new Set());
+  };
+
+  const toggleBankExpand = (accountId: string) => {
+    setExpandedBanks((prev) => {
+      const next = new Set(prev);
+      if (next.has(accountId)) {
+        next.delete(accountId);
+      } else {
+        next.add(accountId);
+      }
+      return next;
+    });
+  };
+
+  const expandAllBanks = () => {
+    const allBankIds = bankBreakdown.map((b) => b.account.id);
+    setExpandedBanks(new Set(allBankIds));
+  };
+
+  const collapseAllBanks = () => {
+    setExpandedBanks(new Set());
   };
 
   const allYields = appState.yieldRecords || [];
@@ -412,7 +435,21 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       if (selectedMonth !== 'all' && y.date.split('-')[1] !== selectedMonth) return;
       if (selectedType !== 'all' && y.type !== selectedType) return;
 
+      if (selectedWithholding === 'with_tax') {
+        const hasTax = (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding;
+        if (!hasTax) return;
+      } else if (selectedWithholding === 'without_tax') {
+        const isZeroTax = y.withholdingTax === 0 || y.taxRatePercent === 0 || !!y.noWithholding;
+        if (!isZeroTax) return;
+      }
+
+      if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return;
+      if (selectedStatus === 'verified' && y.status === 'needs_review') return;
+
       const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+      if (selectedBankId !== 'all') {
+        if (acc.id !== selectedBankId && acc.bankId !== selectedBankId) return;
+      }
 
       const existing = map.get(acc.id) || {
         account: acc,
@@ -431,7 +468,31 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     });
 
     return Array.from(map.values()).sort((a, b) => b.gross - a.gross);
-  }, [allYields, selectedYear, selectedMonth, selectedType, appState.accounts]);
+  }, [allYields, selectedYear, selectedMonth, selectedType, selectedWithholding, selectedStatus, selectedBankId, appState.accounts]);
+
+  // Obtener los cobros individuales de un banco/broker concreto aplicando los filtros actuales
+  const getBankItems = (accountId: string) => {
+    return allYields.filter((y) => {
+      const year = parseInt(y.date.split('-')[0], 10);
+      if (year !== selectedYear) return false;
+      if (selectedMonth !== 'all' && y.date.split('-')[1] !== selectedMonth) return false;
+      if (selectedType !== 'all' && y.type !== selectedType) return false;
+
+      const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+      if (acc.id !== accountId && acc.bankId !== accountId) return false;
+
+      if (selectedWithholding === 'with_tax') {
+        const hasTax = (y.withholdingTax > 0 || y.taxRatePercent > 0) && !y.noWithholding;
+        if (!hasTax) return false;
+      } else if (selectedWithholding === 'without_tax') {
+        const isZeroTax = y.withholdingTax === 0 || y.taxRatePercent === 0 || !!y.noWithholding;
+        if (!isZeroTax) return false;
+      }
+      if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return false;
+      if (selectedStatus === 'verified' && y.status === 'needs_review') return false;
+      return true;
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  };
 
   const handlePrint = () => {
     window.print();
@@ -1272,16 +1333,38 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
           {/* Breakdown por Banco / Entidad */}
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-zinc-50/70">
               <div>
                 <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-[#0E6A3B]" />
                   Resumen por Entidad Bancaria / Broker — Ejercicio {selectedYear}
                 </h3>
                 <p className="text-xs text-zinc-500">
-                  Total de rendimientos percibidos en cada cuenta bancaria o de valores
+                  Total de rendimientos percibidos en cada cuenta bancaria o de valores (haz clic en cualquier banco para ver sus apuntes)
                 </p>
               </div>
+
+              {/* Botón rápido para desplegar o plegar todos los bancos */}
+              {bankBreakdown.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => expandedBanks.size > 0 ? collapseAllBanks() : expandAllBanks()}
+                  className="text-xs font-bold px-3 py-1 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-[#0E6A3B] transition-colors shadow-2xs flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                  title="Desplegar o plegar los cobros detallados de todas las entidades bancarias"
+                >
+                  {expandedBanks.size > 0 ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span>Plegar bancos</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      <span>Desplegar bancos</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             {bankBreakdown.length === 0 ? (
@@ -1290,10 +1373,10 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-zinc-50 text-zinc-600 font-bold uppercase tracking-wider text-[11px] border-b border-zinc-200">
-                      <th className="py-3 px-4">Banco & Cuenta</th>
+                    <tr className="bg-zinc-100/90 text-zinc-700 font-extrabold uppercase tracking-wider text-[11px] border-b border-zinc-200">
+                      <th className="py-3 px-4">Banco & Cuenta (Click para ver apuntes)</th>
                       <th className="py-3 px-3 text-center">Tipo Cuenta</th>
                       <th className="py-3 px-3 text-center">Cobros</th>
                       <th className="py-3 px-3 text-right">Importe Bruto</th>
@@ -1302,47 +1385,242 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {bankBreakdown.map((item) => (
-                      <tr key={item.account.id} className="hover:bg-zinc-50/80 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <span 
-                              className="w-3 h-3 rounded-full shrink-0" 
-                              style={{ backgroundColor: item.account.color }}
-                            />
-                            <div>
-                              <div className="font-bold text-zinc-900">{item.account.bankName}</div>
-                              <div className="text-[11px] text-zinc-500">{item.account.accountName} ({item.account.accountNumberMasked})</div>
-                            </div>
-                          </div>
-                        </td>
+                    {bankBreakdown.map((item) => {
+                      const isExpanded = expandedBanks.has(item.account.id);
+                      const bankItems = isExpanded ? getBankItems(item.account.id) : [];
 
-                        <td className="py-3.5 px-3 text-center">
-                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-700">
-                            {item.account.type === 'checking' && 'Corriente'}
-                            {item.account.type === 'savings' && 'Ahorro / Metas'}
-                            {item.account.type === 'investment' && 'Valores'}
-                            {item.account.type === 'credit' && 'Crédito'}
-                          </span>
-                        </td>
+                      return (
+                        <React.Fragment key={item.account.id}>
+                          <tr 
+                            onClick={() => item.count > 0 && toggleBankExpand(item.account.id)}
+                            className={`transition-colors border-b border-zinc-100 ${
+                              isExpanded ? 'bg-emerald-50/40 border-emerald-200' : 'hover:bg-zinc-50/80'
+                            } ${item.count > 0 ? 'font-medium cursor-pointer' : 'text-zinc-400'}`}
+                          >
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleBankExpand(item.account.id);
+                                  }}
+                                  className={`p-1 rounded-md transition-all ${
+                                    isExpanded 
+                                      ? 'bg-[#0E6A3B] text-white shadow-2xs' 
+                                      : 'bg-zinc-100 text-zinc-600 hover:bg-emerald-100 hover:text-[#0E6A3B]'
+                                  }`}
+                                  title={isExpanded ? 'Plegar apuntes' : 'Desplegar apuntes de este banco'}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <span 
+                                  className="w-3 h-3 rounded-full shrink-0" 
+                                  style={{ backgroundColor: item.account.color }}
+                                />
+                                <div>
+                                  <div className={`font-bold ${isExpanded ? 'text-[#0E6A3B]' : 'text-zinc-900'}`}>{item.account.bankName}</div>
+                                  <div className="text-[11px] text-zinc-500">{item.account.accountName} ({item.account.accountNumberMasked})</div>
+                                </div>
+                              </div>
+                            </td>
 
-                        <td className="py-3.5 px-3 text-center font-semibold text-zinc-700">
-                          {item.count}
-                        </td>
+                            <td className="py-3.5 px-3 text-center">
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-700">
+                                {item.account.type === 'checking' && 'Corriente'}
+                                {item.account.type === 'savings' && 'Ahorro / Metas'}
+                                {item.account.type === 'investment' && 'Valores'}
+                                {item.account.type === 'credit' && 'Crédito'}
+                              </span>
+                            </td>
 
-                        <td className="py-3.5 px-3 text-right font-semibold text-zinc-900">
-                          {formatCurrency(item.gross)}
-                        </td>
+                            <td className="py-3.5 px-3 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${
+                                isExpanded ? 'bg-[#0E6A3B] text-white' : 'bg-zinc-100 text-zinc-800'
+                              }`}>
+                                {item.count}
+                              </span>
+                            </td>
 
-                        <td className="py-3.5 px-3 text-right font-semibold text-amber-900">
-                          {formatCurrency(item.withholding)}
-                        </td>
+                            <td className="py-3.5 px-3 text-right font-bold text-zinc-900">
+                              {formatCurrency(item.gross)}
+                            </td>
 
-                        <td className="py-3.5 px-4 text-right font-black text-[#0E6A3B]">
-                          {formatCurrency(item.net)}
-                        </td>
-                      </tr>
-                    ))}
+                            <td className="py-3.5 px-3 text-right font-bold text-amber-900">
+                              {formatCurrency(item.withholding)}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right font-black text-[#0E6A3B]">
+                              {formatCurrency(item.net)}
+                            </td>
+                          </tr>
+
+                          {/* Desplegable interactivo de apuntes de este banco */}
+                          {isExpanded && (
+                            <tr className="bg-emerald-50/30 border-b-2 border-emerald-300">
+                              <td colSpan={6} className="p-0">
+                                <div className="p-3.5 sm:p-5 bg-gradient-to-r from-emerald-50/50 via-white to-zinc-50/50 border-l-4 border-[#0E6A3B] space-y-3 animate-in fade-in duration-150">
+                                  
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-200/80 pb-2.5">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span 
+                                        className="w-3 h-3 rounded-full shrink-0" 
+                                        style={{ backgroundColor: item.account.color }}
+                                      />
+                                      <h4 className="text-xs sm:text-sm font-black text-zinc-950">
+                                        Apuntes en {item.account.bankName} ({bankItems.length} {bankItems.length === 1 ? 'cobro' : 'cobros'})
+                                      </h4>
+                                      <span className="text-[11px] text-zinc-500 font-medium">
+                                        • Bruto: <strong className="text-zinc-900">{formatCurrency(item.gross)}</strong> • Retención: <strong className="text-amber-900">{formatCurrency(item.withholding)}</strong> • Líquido: <strong className="text-[#0E6A3B]">{formatCurrency(item.net)}</strong>
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenNewYieldModal()}
+                                        className="px-2.5 py-1 rounded-lg bg-[#0E6A3B] hover:bg-[#092B19] text-white text-[11px] font-bold shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Añadir apunte</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleBankExpand(item.account.id)}
+                                        className="px-2.5 py-1 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-700 text-[11px] font-semibold transition-colors cursor-pointer shadow-2xs"
+                                      >
+                                        Plegar
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {bankItems.length === 0 ? (
+                                    <p className="text-xs text-zinc-500 italic py-2">
+                                      No hay cobros registrados en {item.account.bankName} con los filtros activos.
+                                    </p>
+                                  ) : (
+                                    <div className="overflow-x-auto rounded-xl border border-zinc-200/90 bg-white shadow-2xs">
+                                      <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                          <tr className="bg-zinc-100/90 text-zinc-700 uppercase tracking-wider text-[10px] font-black border-b border-zinc-200">
+                                            <th className="py-2.5 px-3">Fecha</th>
+                                            <th className="py-2.5 px-3">Concepto / Entidad</th>
+                                            <th className="py-2.5 px-2.5">Tipo</th>
+                                            <th className="py-2.5 px-3 text-right">Bruto (€)</th>
+                                            <th className="py-2.5 px-3 text-right">Retención IRPF</th>
+                                            <th className="py-2.5 px-3 text-right">Líquido Neto</th>
+                                            <th className="py-2.5 px-3 text-center">Estado</th>
+                                            <th className="py-2.5 px-3 text-right">Acciones</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-zinc-100">
+                                          {bankItems.map((rec) => (
+                                            <tr key={rec.id} className="hover:bg-zinc-50/80 transition-colors">
+                                              <td className="py-2.5 px-3 font-semibold text-zinc-700 whitespace-nowrap">
+                                                {formatDate(rec.date)}
+                                              </td>
+                                              <td className="py-2.5 px-3 font-bold text-zinc-900">
+                                                <div>{rec.title}</div>
+                                                {rec.notes && (
+                                                  <div className="text-[10px] text-zinc-500 font-normal line-clamp-1">{rec.notes}</div>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-2.5 whitespace-nowrap">
+                                                {rec.type === 'interest' ? (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                                    <Building2 className="w-2.5 h-2.5" /> Interés
+                                                  </span>
+                                                ) : (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                    <TrendingUp className="w-2.5 h-2.5" /> Dividendo
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-bold text-zinc-950 whitespace-nowrap">
+                                                {formatCurrency(rec.grossAmount)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-semibold whitespace-nowrap">
+                                                {rec.withholdingTax > 0 ? (
+                                                  <div className="text-amber-900">
+                                                    <span>{formatCurrency(rec.withholdingTax)}</span>
+                                                    <span className="text-[10px] text-amber-700 font-normal ml-1">({rec.taxRatePercent}%)</span>
+                                                  </div>
+                                                ) : (
+                                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Cobro íntegro sin retención en origen">
+                                                    Sin retención (0%)
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right font-black text-[#0E6A3B] whitespace-nowrap">
+                                                {formatCurrency(rec.netAmount)}
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onToggleYieldStatus(rec.id);
+                                                  }}
+                                                  className="cursor-pointer inline-flex items-center gap-1"
+                                                  title={rec.status === 'needs_review' ? 'Click para marcar como comprobado' : 'Click para marcar como pendiente'}
+                                                >
+                                                  {rec.status === 'needs_review' ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                                      Revisar
+                                                    </span>
+                                                  ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                      OK
+                                                    </span>
+                                                  )}
+                                                </button>
+                                              </td>
+                                              <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                <div className="flex items-center justify-end gap-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onEditYield(rec);
+                                                    }}
+                                                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-[#0E6A3B] bg-emerald-50 hover:bg-[#0E6A3B] hover:text-white transition-colors flex items-center gap-1 cursor-pointer shadow-2xs border border-emerald-200"
+                                                    title="Editar este apunte"
+                                                  >
+                                                    <Edit3 className="w-3 h-3" />
+                                                    <span>Editar</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onDeleteYield(rec.id);
+                                                    }}
+                                                    className="p-1 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                                    title="Eliminar este apunte"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
