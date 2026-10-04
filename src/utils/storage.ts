@@ -22,6 +22,40 @@ export function loadAppState(): AppState {
       parsed.yieldRecords = INITIAL_STATE.yieldRecords || [];
     }
 
+    // Asegurar que los rendimientos auditados del ejercicio 2025 (Openbank, Trade Republic, Bankinter)
+    // estén presentes y sustituyan a los datos de muestra genéricos anteriores
+    if (Array.isArray(parsed.yieldRecords)) {
+      const hasDummy2025 = parsed.yieldRecords.some((y: YieldRecord) => 
+        y.id === 'yd-2025-1' || y.id === 'yd-2025-2' || y.id === 'yd-2025-3' || y.id === 'yd-2025-4'
+      );
+      const hasAuthentic2025 = parsed.yieldRecords.some((y: YieldRecord) => y.id === 'yd-2025-openbank-1');
+      if (hasDummy2025 || !hasAuthentic2025) {
+        const withoutDummy = parsed.yieldRecords.filter((y: YieldRecord) => 
+          !['yd-2025-1', 'yd-2025-2', 'yd-2025-3', 'yd-2025-4'].includes(y.id)
+        );
+        const authentic2025 = (INITIAL_STATE.yieldRecords || []).filter((y: YieldRecord) => 
+          y.id.startsWith('yd-2025-') || y.id === 'yd-2026-tr-ipf-0'
+        );
+        const existingIds = new Set(withoutDummy.map((y: YieldRecord) => y.id));
+        const toAdd = authentic2025.filter((y: YieldRecord) => !existingIds.has(y.id));
+        parsed.yieldRecords = [...withoutDummy, ...toAdd];
+      }
+
+      // Asegurar que las liquidaciones de efectivo de Trade Republic reflejen 0% IRPF y 0 retención por IBAN alemán
+      parsed.yieldRecords = parsed.yieldRecords.map((y: YieldRecord) => {
+        if (y.id && y.id.startsWith('yd-2025-tr-cash-')) {
+          return {
+            ...y,
+            taxRatePercent: 0,
+            withholdingTax: 0,
+            netAmount: y.grossAmount,
+            notes: 'Cuenta remunerada efectivo Trade Republic (IBAN alemán sin retención en origen)'
+          };
+        }
+        return y;
+      });
+    }
+
     // Auto-reparar cuentas afectadas por el truncamiento de separador de miles y asegurar balanceDate
     let hasRepairedAccount = false;
     if (Array.isArray(parsed.accounts)) {

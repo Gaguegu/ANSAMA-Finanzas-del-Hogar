@@ -40,6 +40,89 @@ const MONTH_NAMES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
+export function getAccountForYieldRecord(accounts: BankAccount[], accountId: string): BankAccount {
+  const acc = accounts.find((a) => a.id === accountId);
+  if (acc) return acc;
+  const lower = accountId.toLowerCase();
+  if (lower.includes('openbank')) {
+    const ob = accounts.find(a => a.bankId === 'openbank');
+    return ob || {
+      id: 'acc-openbank',
+      bankId: 'openbank',
+      bankName: 'Openbank',
+      accountName: 'Imposiciones a Plazo Fijo Openbank',
+      accountNumberMasked: 'Openbank •• IPF',
+      iban: 'ES76 0073 •••• •••• 1234',
+      type: 'savings',
+      balance: 0,
+      balanceDate: '2025-12-31',
+      lastSynced: '2025-12-31T23:59:59Z',
+      currency: 'EUR',
+      color: '#FD5300',
+      textColor: '#ffffff',
+      bgLight: '#fff5f0',
+      borderColor: '#FD5300'
+    };
+  }
+  if (lower.includes('trade') || lower.includes('tr')) {
+    const tr = accounts.find(a => a.bankId === 'traderepublic');
+    return tr || {
+      id: 'acc-trade-republic',
+      bankId: 'traderepublic',
+      bankName: 'Trade Republic',
+      accountName: 'Trade Republic Broker & Efectivo',
+      accountNumberMasked: 'Trade Republic •• Inv',
+      iban: 'DE89 •••• •••• 5678',
+      type: 'investment',
+      balance: 0,
+      balanceDate: '2025-12-31',
+      lastSynced: '2025-12-31T23:59:59Z',
+      currency: 'EUR',
+      color: '#111827',
+      textColor: '#ffffff',
+      bgLight: '#f3f4f6',
+      borderColor: '#111827'
+    };
+  }
+  if (lower.includes('bankinter')) {
+    const bk = accounts.find(a => a.bankId === 'bankinter');
+    return bk || {
+      id: 'acc-bankinter',
+      bankId: 'bankinter',
+      bankName: 'Bankinter',
+      accountName: 'Bankinter Depósito IPF',
+      accountNumberMasked: 'Bankinter •• IPF',
+      iban: 'ES09 0128 •••• •••• 9876',
+      type: 'deposit',
+      balance: 0,
+      balanceDate: '2025-12-31',
+      lastSynced: '2025-12-31T23:59:59Z',
+      currency: 'EUR',
+      color: '#FF6000',
+      textColor: '#ffffff',
+      bgLight: '#fff7ed',
+      borderColor: '#FF6000'
+    };
+  }
+  return {
+    id: accountId,
+    bankId: 'other',
+    bankName: 'Entidad Bancaria',
+    accountName: 'Cuenta Valores / IPF',
+    accountNumberMasked: '•• ' + accountId.slice(-4),
+    iban: '',
+    type: 'checking',
+    balance: 0,
+    balanceDate: '2025-12-31',
+    lastSynced: '2025-12-31T23:59:59Z',
+    currency: 'EUR',
+    color: '#64748b',
+    textColor: '#ffffff',
+    bgLight: '#f8fafc',
+    borderColor: '#64748b'
+  };
+}
+
 export const YieldsView: React.FC<YieldsViewProps> = ({
   appState,
   onOpenNewYieldModal,
@@ -85,8 +168,8 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       // Filter by Bank / Account
       if (selectedBankId !== 'all') {
-        const acc = appState.accounts.find((a) => a.id === y.accountId);
-        if (!acc || (acc.bankId !== selectedBankId && acc.id !== selectedBankId)) {
+        const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+        if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) {
           return false;
         }
       }
@@ -222,8 +305,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       if (selectedMonth !== 'all' && y.date.split('-')[1] !== selectedMonth) return;
       if (selectedType !== 'all' && y.type !== selectedType) return;
 
-      const acc = appState.accounts.find((a) => a.id === y.accountId);
-      if (!acc) return;
+      const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
 
       const existing = map.get(acc.id) || {
         account: acc,
@@ -424,11 +506,18 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
               className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs font-semibold text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B]"
             >
               <option value="all">Todas las entidades bancarias</option>
-              {appState.accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.bankName} - {acc.accountName}
-                </option>
-              ))}
+              {Array.from(new Set([
+                ...appState.accounts.map((a) => a.id),
+                ...bankBreakdown.map((b) => b.account.id)
+              ])).map((id) => {
+                const acc = bankBreakdown.find((b) => b.account.id === id)?.account || appState.accounts.find((a) => a.id === id);
+                if (!acc) return null;
+                return (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.bankName} - {acc.accountName}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -877,7 +966,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {filteredYields.map((record) => {
-                    const acc = appState.accounts.find((a) => a.id === record.accountId);
+                    const acc = getAccountForYieldRecord(appState.accounts, record.accountId);
                     const isNeedsReview = record.status === 'needs_review';
                     return (
                       <tr 
@@ -990,9 +1079,23 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                           {formatCurrency(record.grossAmount)}
                         </td>
 
-                        <td className="py-3.5 px-3 text-right font-semibold text-amber-900">
-                          <div>{formatCurrency(record.withholdingTax)}</div>
-                          <div className="text-[10px] text-amber-700 font-medium">({record.taxRatePercent}%)</div>
+                        <td className="py-3.5 px-3 text-right font-semibold">
+                          {record.withholdingTax > 0 ? (
+                            <>
+                              <div className="text-amber-900">{formatCurrency(record.withholdingTax)}</div>
+                              <div className="text-[10px] text-amber-700 font-medium">({record.taxRatePercent}%)</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-zinc-500 text-xs">0,00 €</div>
+                              <span 
+                                className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 mt-0.5" 
+                                title="Rendimiento percibido íntegro sin retención en origen (IBAN alemán). Debe incluirse en la Declaración de la Renta anual."
+                              >
+                                Sin retención (IBAN DE)
+                              </span>
+                            </>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-3 text-right font-black text-[#0E6A3B] text-sm">
