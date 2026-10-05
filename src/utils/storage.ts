@@ -1,5 +1,5 @@
 import { AppState, BankAccount, Transaction, TransactionCategory, BankSyncResult, YieldRecord, MonthClosure } from '../types';
-import { INITIAL_STATE } from '../data/defaultData';
+import { INITIAL_STATE, DEFAULT_ACCOUNTS } from '../data/defaultData';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './yieldDetection';
 import { reconcileAndCategorizeAll } from './reconciliation';
 
@@ -127,6 +127,15 @@ export function loadAppState(): AppState {
         }
         return updated;
       });
+
+      // Asegurar que todas las entidades con movimientos o rendimientos (Bankinter, Trade Republic, Openbank)
+      // estén presentes en la lista de cuentas para poder filtrar por ellas
+      const existingAccIds = new Set(parsed.accounts.map((a: BankAccount) => a.id));
+      const missingAccounts = DEFAULT_ACCOUNTS.filter(def => !existingAccIds.has(def.id));
+      if (missingAccounts.length > 0) {
+        parsed.accounts = [...parsed.accounts, ...missingAccounts];
+        hasRepairedAccount = true;
+      }
     }
 
     // 2. Auto-reparar transacciones genuinamente de abono/broker mal clasificadas como gasto (dividendos, intereses, saveback),

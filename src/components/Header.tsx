@@ -65,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLockApp,
 }) => {
   return (
-    <header id="app-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-zinc-200">
+    <header id="app-header" className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-zinc-200 print:hidden">
       {/* Update notification announcement banner if update is available */}
       {hasNewUpdate && (
         <div className="bg-[#092B19] text-white px-4 py-2.5 text-xs sm:text-sm border-b border-emerald-800 flex flex-wrap items-center justify-between gap-2 shadow-inner animate-in slide-in-from-top-2">

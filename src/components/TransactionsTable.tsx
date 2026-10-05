@@ -21,9 +21,10 @@ import {
   Tag,
   Building2,
   Coins,
-  Filter
+  Filter,
+  Printer
 } from 'lucide-react';
-import { Transaction, BankAccount, TransactionCategory } from '../types';
+import { Transaction, BankAccount, TransactionCategory, BankId } from '../types';
 import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
 import { normalizeConceptForMatching, areTransactionsSimilar } from '../utils/reconciliation';
@@ -154,8 +155,58 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   const accountMap = useMemo(() => {
     const map = new Map<string, BankAccount>();
     accounts.forEach((a) => map.set(a.id, a));
+    transactions.forEach((tx) => {
+      if (!map.has(tx.accountId)) {
+        const lower = tx.accountId.toLowerCase();
+        let bId: BankId = 'other';
+        let bName = 'Otras Entidades';
+        let color = '#64748b';
+        if (lower.includes('bankinter')) {
+          bId = 'bankinter';
+          bName = 'Bankinter';
+          color = '#FF6000';
+        } else if (lower.includes('trade') || lower.includes('tr')) {
+          bId = 'traderepublic';
+          bName = 'Trade Republic';
+          color = '#111827';
+        } else if (lower.includes('openbank')) {
+          bId = 'openbank';
+          bName = 'Openbank';
+          color = '#FD5300';
+        } else if (lower.includes('bbva')) {
+          bId = 'bbva';
+          bName = 'BBVA';
+          color = '#004481';
+        } else if (lower.includes('santander')) {
+          bId = 'santander';
+          bName = 'Santander';
+          color = '#EC0000';
+        } else if (lower.includes('ing')) {
+          bId = 'ing';
+          bName = 'ING Direct';
+          color = '#FF6200';
+        }
+        map.set(tx.accountId, {
+          id: tx.accountId,
+          bankId: bId,
+          bankName: bName,
+          accountName: `${bName} (${tx.accountId.replace('acc-', '')})`,
+          accountNumberMasked: '•• ' + tx.accountId.slice(-4),
+          iban: '',
+          type: 'checking',
+          balance: 0,
+          balanceDate: '',
+          currency: 'EUR',
+          lastSynced: '',
+          color,
+          textColor: '#ffffff',
+          bgLight: '#f8fafc',
+          borderColor: color
+        });
+      }
+    });
     return map;
-  }, [accounts]);
+  }, [accounts, transactions]);
 
   // Estructura organizada de Cuentas agrupadas por Entidad Bancaria
   const accountsByBank = useMemo(() => {
@@ -166,8 +217,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
     const groups = new Map<string, { bankId: string; bankName: string; totalTxCount: number; accounts: Array<{ account: BankAccount; txCount: number }> }>();
 
+    // 1. Cuentas explícitamente registradas en el estado
     accounts.forEach((acc) => {
-      const bId = acc.bankId || 'otros';
+      const bId = acc.bankId || 'other';
       if (!groups.has(bId)) {
         groups.set(bId, {
           bankId: bId,
@@ -182,8 +234,70 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       g.totalTxCount += count;
     });
 
-    return Array.from(groups.values());
-  }, [accounts, transactions]);
+    // 2. Cuentas detectadas en los movimientos que no estuvieran en la lista
+    transactions.forEach((tx) => {
+      if (!accountMap.has(tx.accountId)) {
+        const lower = tx.accountId.toLowerCase();
+        let bId: BankId = 'other';
+        let bName = 'Otras Entidades';
+        if (lower.includes('bankinter')) {
+          bId = 'bankinter';
+          bName = 'Bankinter';
+        } else if (lower.includes('trade') || lower.includes('tr')) {
+          bId = 'traderepublic';
+          bName = 'Trade Republic';
+        } else if (lower.includes('openbank')) {
+          bId = 'openbank';
+          bName = 'Openbank';
+        } else if (lower.includes('bbva')) {
+          bId = 'bbva';
+          bName = 'BBVA';
+        } else if (lower.includes('santander')) {
+          bId = 'santander';
+          bName = 'Santander';
+        } else if (lower.includes('ing')) {
+          bId = 'ing';
+          bName = 'ING Direct';
+        }
+
+        if (!groups.has(bId)) {
+          groups.set(bId, {
+            bankId: bId,
+            bankName: bName,
+            totalTxCount: 0,
+            accounts: []
+          });
+        }
+        const g = groups.get(bId)!;
+        if (!g.accounts.some(a => a.account.id === tx.accountId)) {
+          const count = txCountByAcc.get(tx.accountId) || 0;
+          g.accounts.push({
+            account: {
+              id: tx.accountId,
+              bankId: bId,
+              bankName: bName,
+              accountName: `${bName} (${tx.accountId.replace('acc-', '')})`,
+              accountNumberMasked: '•• ' + tx.accountId.slice(-4),
+              iban: '',
+              type: 'checking',
+              balance: 0,
+              balanceDate: '',
+              currency: 'EUR',
+              lastSynced: '',
+              color: '#0E6A3B',
+              textColor: '#ffffff',
+              bgLight: '#f8fafc',
+              borderColor: '#0E6A3B'
+            },
+            txCount: count
+          });
+          g.totalTxCount += count;
+        }
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => b.totalTxCount - a.totalTxCount);
+  }, [accounts, transactions, accountMap]);
 
   // Etiqueta legible del filtro de cuenta o banco activo
   const activeAccountLabel = useMemo(() => {
@@ -379,25 +493,33 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       // Filter by account or bank
       if (filterAccount !== 'all') {
+        const account = accountMap.get(tx.accountId);
+        const txAccLower = (tx.accountId || '').toLowerCase();
+        const accBankIdLower = (account?.bankId || '').toLowerCase();
+        const accBankNameLower = (account?.bankName || '').toLowerCase();
+
         if (filterAccount.startsWith('bank:')) {
-          const targetBankId = filterAccount.replace('bank:', '');
-          const account = accountMap.get(tx.accountId);
-          const matchesBank = account && (
-            account.bankId === targetBankId || 
-            account.bankName.toLowerCase() === targetBankId.toLowerCase()
-          );
-          if (!matchesBank && tx.accountId !== targetBankId) return false;
+          const targetBank = filterAccount.replace('bank:', '').toLowerCase().trim();
+          const matchesBank = 
+            accBankIdLower === targetBank ||
+            accBankNameLower === targetBank ||
+            accBankNameLower.includes(targetBank) ||
+            targetBank.includes(accBankNameLower) ||
+            txAccLower === targetBank ||
+            txAccLower.includes(targetBank);
+          if (!matchesBank) return false;
         } else if (filterAccount.startsWith('acc:')) {
-          const targetAccId = filterAccount.replace('acc:', '');
+          const targetAccId = filterAccount.replace('acc:', '').trim();
           if (tx.accountId !== targetAccId) return false;
         } else {
-          const account = accountMap.get(tx.accountId);
-          const matchesAcc = tx.accountId === filterAccount;
-          const matchesBank = account && (
-            account.bankId === filterAccount || 
-            account.bankName.toLowerCase() === filterAccount.toLowerCase()
-          );
-          if (!matchesAcc && !matchesBank) return false;
+          const target = filterAccount.toLowerCase().trim();
+          const matches =
+            tx.accountId === filterAccount ||
+            txAccLower.includes(target) ||
+            accBankIdLower === target ||
+            accBankNameLower === target ||
+            accBankNameLower.includes(target);
+          if (!matches) return false;
         }
       }
 
@@ -917,8 +1039,43 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   return (
     <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 space-y-4">
       
+      {/* Printable Header for Transactions (Visible ONLY on print) */}
+      <div className="hidden print:block mb-4 pb-3 border-b-2 border-zinc-950 print-only">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">ANSAMA • Finanzas del Hogar</div>
+            <h2 className="text-lg font-black text-zinc-950 uppercase mt-0.5">Extracto Consolidado de Movimientos</h2>
+            <div className="text-xs text-zinc-700 mt-1">
+              <span>Periodo: <strong>{periodLabel}</strong></span> • <span>Entidad: <strong>{activeAccountLabel}</strong></span>
+              {filterType !== 'all' && <span> • Flujo: <strong>{filterType === 'expense' ? 'Solo Gastos' : 'Solo Ingresos'}</strong></span>}
+            </div>
+          </div>
+          <div className="text-right text-xs text-zinc-600">
+            <div>Fecha: <strong>{new Date().toLocaleDateString('es-ES')}</strong></div>
+            <div className="font-bold text-zinc-900 mt-0.5">{filteredTransactions.length} movimientos</div>
+          </div>
+        </div>
+        {/* Resumen impreso de totales */}
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-zinc-200 text-center text-xs">
+          <div className="p-1.5 border border-zinc-300 rounded bg-zinc-50">
+            <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total Ingresos</div>
+            <div className="font-black text-[#0E6A3B]">+{formatCurrency(filteredStats.income)}</div>
+          </div>
+          <div className="p-1.5 border border-zinc-300 rounded bg-zinc-50">
+            <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total Gastos</div>
+            <div className="font-black text-zinc-950">-{formatCurrency(filteredStats.expense)}</div>
+          </div>
+          <div className="p-1.5 border border-zinc-300 rounded bg-zinc-50">
+            <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Saldo Neto</div>
+            <div className={`font-black ${filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}`}>
+              {filteredStats.net >= 0 ? '+' : ''}{formatCurrency(filteredStats.net)}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Title & Action Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90 print:hidden screen-only">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base sm:text-lg font-black text-zinc-950">Historial Consolidado de Movimientos</h3>
@@ -1080,10 +1237,22 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             )}
           </div>
 
+          {/* Botón Imprimir Extracto */}
+          <button
+            id="btn-print-transactions"
+            type="button"
+            onClick={() => window.print()}
+            title="Imprimir extracto bancario en papel o guardar en PDF limpio y sin controles"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-zinc-800 bg-white hover:bg-zinc-100 border border-zinc-300 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95 print:hidden screen-only"
+          >
+            <Printer className="w-4 h-4 text-zinc-700" />
+            <span>Imprimir</span>
+          </button>
+
           <button
             id="btn-add-transaction-table"
             onClick={onOpenNewTransactionModal}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95 print:hidden screen-only"
           >
             <Plus className="w-3.5 h-3.5" />
             Añadir Movimiento
@@ -1093,7 +1262,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       {/* Toast de confirmación de descarga */}
       {downloadToast && (
-        <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in shadow-xs">
+        <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in shadow-xs print:hidden screen-only">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-[#0E6A3B] shrink-0" />
             <span>{downloadToast}</span>
@@ -1110,7 +1279,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       {/* Notificación de resultados de Reconciliación */}
       {reconcileFeedback && (
-        <div className="p-3.5 bg-emerald-50 border-2 border-emerald-500/40 text-emerald-950 rounded-xl text-xs flex flex-col gap-2 animate-in fade-in shadow-xs">
+        <div className="p-3.5 bg-emerald-50 border-2 border-emerald-500/40 text-emerald-950 rounded-xl text-xs flex flex-col gap-2 animate-in fade-in shadow-xs print:hidden screen-only">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-start gap-2.5">
               <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
@@ -1151,7 +1320,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
       {/* Barra de acciones en lote si hay selección */}
       {selectedTxIds.size > 0 && (
-        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 animate-in fade-in">
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 animate-in fade-in print:hidden screen-only">
           <div className="flex items-center gap-2 font-bold">
             <CheckCircle2 className="w-4 h-4 text-[#0E6A3B]" />
             <span>{selectedTxIds.size} movimiento(s) seleccionados</span>
@@ -1237,8 +1406,59 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
       )}
 
+      {/* Selector Rápido de Banco / Entidad en Píldoras */}
+      <div className="flex items-center gap-1.5 flex-wrap pt-1 print:hidden screen-only">
+        <span className="text-[11px] font-black uppercase text-zinc-500 mr-1 flex items-center gap-1">
+          <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
+          <span>Banco:</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setFilterAccount('all')}
+          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            filterAccount === 'all'
+              ? 'bg-[#0E6A3B] text-white shadow-2xs font-black'
+              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+          }`}
+        >
+          Todos ({transactions.length})
+        </button>
+        {accountsByBank.map((g) => {
+          const isSelected = filterAccount === `bank:${g.bankId}` || filterAccount === g.bankId;
+          return (
+            <button
+              key={`bank-pill-${g.bankId}`}
+              type="button"
+              onClick={() => setFilterAccount(isSelected ? 'all' : `bank:${g.bankId}`)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                isSelected
+                  ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-2xs font-black'
+                  : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
+              }`}
+              title={`Filtrar movimientos exclusivamente de ${g.bankName}`}
+            >
+              <span>{g.bankName}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+              }`}>
+                {g.totalTxCount}
+              </span>
+            </button>
+          );
+        })}
+        {filterAccount !== 'all' && (
+          <button
+            type="button"
+            onClick={() => setFilterAccount('all')}
+            className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            <span>✕ Quitar filtro</span>
+          </button>
+        )}
+      </div>
+
       {/* Filter Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 print:hidden screen-only">
         
         {/* Search input */}
         <div className="relative">
@@ -1951,7 +2171,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {hasActiveFilters && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 animate-in fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 animate-in fade-in print:hidden screen-only">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-extrabold flex items-center gap-1.5 text-zinc-900">
               <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
@@ -2033,11 +2253,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       )}
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+      <div className="hidden md:block print:block overflow-x-auto print:overflow-visible">
+        <table className="w-full text-left border-collapse print-table">
           <thead>
             <tr className="border-b border-zinc-200/80 text-[11px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-50/50">
-              <th className="py-3 px-3 rounded-l-lg w-10 text-center">
+              <th className="py-3 px-3 rounded-l-lg w-10 text-center action-column print:hidden">
                 <button
                   type="button"
                   onClick={toggleSelectAllFiltered}
@@ -2056,7 +2276,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               <th className="py-3 px-3.5">Categoría</th>
               <th className="py-3 px-3.5">Cuenta / Entidad</th>
               <th className="py-3 px-3.5 text-right">Importe</th>
-              <th className="py-3 px-3.5 text-center rounded-r-lg w-20">Acción</th>
+              <th className="py-3 px-3.5 text-center rounded-r-lg w-20 action-column print:hidden">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 text-xs">
@@ -2072,7 +2292,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     key={tx.id} 
                     className={`transition-colors group ${isSelected ? 'bg-emerald-50/60' : 'hover:bg-zinc-50/70'}`}
                   >
-                    <td className="py-3.5 px-3 text-center">
+                    <td className="py-3.5 px-3 text-center action-column print:hidden">
                       <button
                         type="button"
                         onClick={() => toggleSelectTx(tx.id)}
@@ -2092,24 +2312,24 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
                     <td className="py-3.5 px-3.5">
                       <div className="font-semibold text-zinc-950 flex items-center gap-2">
-                        {tx.title}
+                        <span>{tx.title}</span>
                         {tx.isSimulated && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#004481] border border-blue-200" title="Sincronizado automáticamente por PSD2">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#004481] border border-blue-200 print:hidden" title="Sincronizado automáticamente por PSD2">
                             <Sparkles className="w-2.5 h-2.5 text-[#004481]" />
                             PSD2
                           </span>
                         )}
                       </div>
                       {tx.note && (
-                        <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-xs" title={tx.note}>
+                        <div className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-xs print:whitespace-normal print:max-w-none print:text-zinc-600 print:overflow-visible" title={tx.note}>
                           {tx.note}
                         </div>
                       )}
                     </td>
 
-                    <td className="py-3.5 px-3.5 whitespace-nowrap">
+                    <td className="py-3.5 px-3.5 whitespace-nowrap print:whitespace-normal">
                       {onUpdateTransactionCategory ? (
-                        <div className="relative inline-block">
+                        <div className="relative inline-block print:hidden">
                           <select
                             value={tx.categoryId}
                             onChange={(e) => handleCategoryChange(tx, e.target.value)}
@@ -2143,7 +2363,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                         </div>
                       ) : category ? (
                         <span 
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold print:hidden"
                           style={{
                             backgroundColor: category.bgLight,
                             color: category.color
@@ -2156,15 +2376,19 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                           {category.name}
                         </span>
                       ) : (
-                        <span className="text-zinc-400">General</span>
+                        <span className="text-zinc-400 print:hidden">General</span>
                       )}
+                      {/* Texto limpio exclusivo para impresión */}
+                      <span className="hidden print:inline-block font-semibold text-zinc-800 text-[10px]">
+                        {category ? category.name : 'General'}
+                      </span>
                     </td>
 
-                    <td className="py-3.5 px-3.5 whitespace-nowrap">
+                    <td className="py-3.5 px-3.5 whitespace-nowrap print:whitespace-normal">
                       {account ? (
                         <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
                           <span
-                            className="w-2 h-2 rounded-full shrink-0"
+                            className="w-2 h-2 rounded-full shrink-0 print:hidden"
                             style={{ backgroundColor: account.color }}
                           />
                           <span className="font-bold text-[11px] text-zinc-900">{account.bankName}</span>
@@ -2181,7 +2405,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-3.5 text-center whitespace-nowrap">
+                    <td className="py-3.5 px-3.5 text-center whitespace-nowrap action-column print:hidden">
                       <div className="flex items-center justify-center gap-1">
                         {onMoveTransactions && accounts.length > 1 && (
                           <button
@@ -2223,11 +2447,26 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
               </tr>
             )}
           </tbody>
+          <tfoot className="hidden print:table-footer-group border-t-2 border-zinc-950 bg-zinc-50 font-bold text-xs">
+            <tr>
+              <td colSpan={2} className="py-2.5 px-3 text-zinc-900 font-black uppercase text-[10px]">
+                Totales ({filteredTransactions.length} apuntes)
+              </td>
+              <td colSpan={2} className="py-2.5 px-3.5 text-zinc-700 text-xs">
+                Ingresos: <strong className="text-[#0E6A3B]">+{formatCurrency(filteredStats.income)}</strong> • Gastos: <strong className="text-zinc-950">-{formatCurrency(filteredStats.expense)}</strong>
+              </td>
+              <td className="py-2.5 px-3.5 text-right font-black text-sm text-zinc-950">
+                <span className={filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}>
+                  {filteredStats.net >= 0 ? '+' : ''}{formatCurrency(filteredStats.net)}
+                </span>
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
       {/* Mobile Touch Card View */}
-      <div className="md:hidden divide-y divide-zinc-100">
+      <div className="md:hidden print:hidden divide-y divide-zinc-100">
         {filteredTransactions.length > 0 ? (
           filteredTransactions.map((tx) => {
             const account = accountMap.get(tx.accountId);

@@ -108,6 +108,26 @@ export function getAccountForYieldRecord(accounts: BankAccount[], accountId: str
       borderColor: '#FF6000'
     };
   }
+  if (lower.includes('ing')) {
+    const ing = accounts.find(a => (a.bankId && a.bankId.toLowerCase().includes('ing')) || (a.bankName && a.bankName.toLowerCase().includes('ing')));
+    return ing || {
+      id: 'acc-ing',
+      bankId: 'ing',
+      bankName: 'ING Direct',
+      accountName: 'Cuenta Naranja / Nómina ING',
+      accountNumberMasked: 'ING •• Ahorro',
+      iban: 'ES12 1465 •••• •••• 5566',
+      type: 'savings',
+      balance: 0,
+      balanceDate: '2026-09-20',
+      lastSynced: '2026-09-20T23:59:59Z',
+      currency: 'EUR',
+      color: '#FF6200',
+      textColor: '#ffffff',
+      bgLight: '#fff7ed',
+      borderColor: '#FF6200'
+    };
+  }
   return {
     id: accountId,
     bankId: 'other',
@@ -125,6 +145,37 @@ export function getAccountForYieldRecord(accounts: BankAccount[], accountId: str
     bgLight: '#f8fafc',
     borderColor: '#64748b'
   };
+}
+
+/**
+ * Validador robusto para comprobar si un rendimiento pertenece al banco/entidad filtrado
+ */
+export function isYieldMatchingBank(
+  y: YieldRecord,
+  bankFilter: string,
+  accounts: BankAccount[]
+): boolean {
+  if (!bankFilter || bankFilter === 'all') return true;
+  const acc = getAccountForYieldRecord(accounts, y.accountId);
+  const target = bankFilter.toLowerCase().trim();
+
+  const bankName = (acc.bankName || '').toLowerCase().trim();
+  const bankId = (acc.bankId || '').toLowerCase().trim();
+  const accId = (acc.id || '').toLowerCase().trim();
+  const yieldAccId = (y.accountId || '').toLowerCase().trim();
+  const accountName = (acc.accountName || '').toLowerCase().trim();
+
+  return (
+    bankName === target ||
+    bankName.includes(target) ||
+    target.includes(bankName) ||
+    bankId === target ||
+    target.includes(bankId) ||
+    accId === target ||
+    yieldAccId === target ||
+    yieldAccId.includes(target) ||
+    accountName.includes(target)
+  );
 }
 
 export const YieldsView: React.FC<YieldsViewProps> = ({
@@ -211,11 +262,77 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [allYields]);
 
+  // Lista deduplicada y normalizada de Bancos / Entidades disponibles
+  const availableBanks = useMemo(() => {
+    const bankMap = new Map<string, {
+      key: string;
+      bankName: string;
+      color: string;
+      totalCount: number;
+      yearCount: number;
+    }>();
+
+    // 1. Añadir bancos a partir de todos los rendimientos
+    allYields.forEach((y) => {
+      const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
+      const bName = (acc.bankName || 'Otras Entidades').trim();
+      const normKey = bName.toLowerCase();
+      const yr = parseInt(y.date.split('-')[0], 10);
+
+      const existing = bankMap.get(normKey) || {
+        key: normKey,
+        bankName: bName,
+        color: acc.color || '#0E6A3B',
+        totalCount: 0,
+        yearCount: 0
+      };
+
+      existing.totalCount += 1;
+      if (yr === selectedYear) {
+        existing.yearCount += 1;
+      }
+      bankMap.set(normKey, existing);
+    });
+
+    // 2. Añadir también cualquier cuenta registrada en la app
+    appState.accounts.forEach((acc) => {
+      const bName = (acc.bankName || acc.accountName || '').trim();
+      if (!bName) return;
+      const normKey = bName.toLowerCase();
+      if (!bankMap.has(normKey)) {
+        bankMap.set(normKey, {
+          key: normKey,
+          bankName: bName,
+          color: acc.color || '#64748b',
+          totalCount: 0,
+          yearCount: 0
+        });
+      }
+    });
+
+    return Array.from(bankMap.values()).sort((a, b) => {
+      if (b.yearCount !== a.yearCount) return b.yearCount - a.yearCount;
+      return a.bankName.localeCompare(b.bankName);
+    });
+  }, [allYields, appState.accounts, selectedYear]);
+
+  // Nombre legible del banco seleccionado para la cabecera y el informe impreso
+  const selectedBankName = useMemo(() => {
+    if (selectedBankId === 'all') return 'Todas las entidades bancarias';
+    const found = availableBanks.find((b) => b.key === selectedBankId);
+    if (found) return found.bankName;
+    return selectedBankId;
+  }, [selectedBankId, availableBanks]);
+
   // Counts for the currently selected year (for badges and informative filters)
   const yearCounts = useMemo(() => {
     const yearYields = allYields.filter((y) => {
       const yr = parseInt(y.date.split('-')[0], 10);
-      return yr === selectedYear;
+      if (yr !== selectedYear) return false;
+      if (selectedBankId !== 'all') {
+        if (!isYieldMatchingBank(y, selectedBankId, appState.accounts)) return false;
+      }
+      return true;
     });
 
     const interests = yearYields.filter((y) => y.type === 'interest').length;
@@ -235,7 +352,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       verifiedYear,
       yearYields
     };
-  }, [allYields, selectedYear]);
+  }, [allYields, selectedYear, selectedBankId, appState.accounts]);
 
   // Filtered yields based on all active filters
   const filteredYields = useMemo(() => {
@@ -256,8 +373,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       // Filter by Bank / Account
       if (selectedBankId !== 'all') {
-        const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
-        if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) {
+        if (!isYieldMatchingBank(y, selectedBankId, appState.accounts)) {
           return false;
         }
       }
@@ -338,8 +454,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         if (parseInt(yYear, 10) !== selectedYear || yMonth !== monthNumStr) return false;
         
         if (selectedBankId !== 'all') {
-          const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
-          if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) return false;
+          if (!isYieldMatchingBank(y, selectedBankId, appState.accounts)) return false;
         }
 
         // Apply withholding filter
@@ -410,8 +525,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         if (!isZeroTax) return false;
       }
       if (selectedBankId !== 'all') {
-        const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
-        if (acc.bankId !== selectedBankId && acc.id !== selectedBankId) return false;
+        if (!isYieldMatchingBank(y, selectedBankId, appState.accounts)) return false;
       }
       if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return false;
       if (selectedStatus === 'verified' && y.status === 'needs_review') return false;
@@ -446,10 +560,11 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       if (selectedStatus === 'needs_review' && y.status !== 'needs_review') return;
       if (selectedStatus === 'verified' && y.status === 'needs_review') return;
 
-      const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
       if (selectedBankId !== 'all') {
-        if (acc.id !== selectedBankId && acc.bankId !== selectedBankId) return;
+        if (!isYieldMatchingBank(y, selectedBankId, appState.accounts)) return;
       }
+
+      const acc = getAccountForYieldRecord(appState.accounts, y.accountId);
 
       const existing = map.get(acc.id) || {
         account: acc,
@@ -501,26 +616,198 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
   return (
     <div id="section-yields" className="space-y-6 animate-in fade-in duration-200">
       
-      {/* Printable Header (Visible ONLY when printing) */}
-      <div className="hidden print:block mb-6 border-b-2 border-zinc-900 pb-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-black text-zinc-950 uppercase tracking-tight">
-              ANSAMA • Informe Fiscal de Rendimientos del Capital Mobiliario
-            </h1>
-            <p className="text-xs text-zinc-600 mt-0.5">
-              Ejercicio Fiscal {selectedYear} • {selectedType === 'all' ? 'Intereses y Dividendos' : selectedType === 'interest' ? 'Solo Intereses' : 'Solo Dividendos'} • {selectedWithholding === 'without_tax' ? 'Sin retención (IBAN DE / Extranjero)' : selectedWithholding === 'with_tax' ? 'Con retención IRPF' : 'Consolidado'}
-            </p>
+      {/* Global Print Style for clean fiscal reporting without clipping */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm 8mm 12mm 8mm;
+          }
+          body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            background: #ffffff !important;
+          }
+          header, #app-header, #mobile-nav, nav, aside, .no-print, button, select, input, .screen-only {
+            display: none !important;
+          }
+          .overflow-x-auto, .overflow-hidden, .overflow-y-auto {
+            overflow: visible !important;
+          }
+          .print-table {
+            width: 100% !important;
+            table-layout: auto !important;
+            border-collapse: collapse !important;
+            font-size: 9.5px !important;
+          }
+          .print-table th, .print-table td {
+            overflow: visible !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            padding: 5px 4px !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+          }
+          thead {
+            display: table-header-group !important;
+          }
+          tfoot {
+            display: table-footer-group !important;
+          }
+        }
+      `}</style>
+
+      {/* ========================================================================= */}
+      {/* SECCIÓN EXCLUSIVA DE IMPRESIÓN (Visible ÚNICAMENTE al imprimir)          */}
+      {/* Formato fiscal A4 limpio, sin botones, sin cortes horizontales ni scrolls */}
+      {/* ========================================================================= */}
+      <div className="hidden print:block mb-6 w-full print-only">
+        {/* Cabecera Corporativa Fiscal */}
+        <div className="border-b-2 border-zinc-950 pb-3 mb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                ANSAMA • Finanzas del Hogar
+              </div>
+              <h1 className="text-xl font-black text-zinc-950 uppercase tracking-tight mt-0.5">
+                Informe Fiscal de Rendimientos del Capital Mobiliario
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-zinc-700">
+                <span className="font-bold">Ejercicio Fiscal: <strong className="text-zinc-950">{selectedYear}</strong></span>
+                <span>•</span>
+                <span className="font-bold">Entidad: <strong className="text-zinc-950">{selectedBankName}</strong></span>
+                <span>•</span>
+                <span>Tipo: <strong>{selectedType === 'all' ? 'Intereses y Dividendos' : selectedType === 'interest' ? 'Solo Intereses' : 'Solo Dividendos'}</strong></span>
+                {selectedWithholding === 'with_tax' && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-zinc-800">Con retención (IRPF)</span>
+                  </>
+                )}
+                {selectedWithholding === 'without_tax' && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-amber-900">Sin retención en origen (IBAN DE)</span>
+                  </>
+                )}
+                {selectedMonth !== 'all' && (
+                  <>
+                    <span>•</span>
+                    <span>Mes: <strong>{MONTH_NAMES[parseInt(selectedMonth, 10) - 1]}</strong></span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-zinc-600">
+              <div>Fecha de emisión: <strong>{new Date().toLocaleDateString('es-ES')}</strong></div>
+              <div className="font-bold text-zinc-950 mt-0.5">{filteredYields.length} operaciones registradas</div>
+            </div>
           </div>
-          <div className="text-right text-xs text-zinc-500">
-            <div>Fecha: {new Date().toLocaleDateString('es-ES')}</div>
-            <div className="font-bold text-zinc-800">{filteredYields.length} operaciones registradas</div>
+
+          {/* Resumen Fiscal Consolidado (Bruto, Retención, Líquido) */}
+          <div className="grid grid-cols-4 gap-2 mt-3 pt-2.5 border-t border-zinc-200 text-center">
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total Importe Bruto</div>
+              <div className="text-sm font-black text-zinc-950">{formatCurrency(totals.gross)}</div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-amber-900">Retención IRPF (Hacienda)</div>
+              <div className="text-sm font-black text-amber-900">
+                {formatCurrency(totals.withholding)} <span className="text-[9px] font-normal">({totals.gross > 0 ? ((totals.withholding / totals.gross) * 100).toFixed(1) : '19.0'}%)</span>
+              </div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-[#0E6A3B]">Líquido Neto Percibido</div>
+              <div className="text-sm font-black text-[#0E6A3B]">{formatCurrency(totals.net)}</div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Operaciones</div>
+              <div className="text-xs font-bold text-zinc-900 mt-0.5">
+                {filteredYields.length} <span className="text-[9px] font-normal text-zinc-600">({totals.interestCount} int. / {totals.dividendCount} div.)</span>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Tabla Impresa de Operaciones (Sin botones interactivos ni cortes laterales) */}
+        {filteredYields.length === 0 ? (
+          <div className="p-6 text-center text-xs text-zinc-500 border border-zinc-200 rounded">
+            No constan cobros registrados para los filtros seleccionados en este ejercicio fiscal.
+          </div>
+        ) : (
+          <table className="w-full text-left text-xs border border-zinc-300 border-collapse print-table">
+            <thead>
+              <tr className="bg-zinc-100 text-zinc-800 font-black uppercase text-[9px] border-b-2 border-zinc-300">
+                <th className="py-2 px-2.5 w-20">Fecha</th>
+                <th className="py-2 px-2.5">Concepto / Emisor</th>
+                <th className="py-2 px-2.5 w-36">Entidad Bancaria</th>
+                <th className="py-2 px-2 w-20 text-center">Tipo</th>
+                <th className="py-2 px-2.5 text-right w-24">Bruto (€)</th>
+                <th className="py-2 px-2.5 text-right w-28 text-amber-950">Retención IRPF</th>
+                <th className="py-2 px-2.5 text-right w-24 text-[#0E6A3B]">Líquido Neto</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {filteredYields.map((rec) => {
+                const acc = getAccountForYieldRecord(appState.accounts, rec.accountId);
+                return (
+                  <tr key={`print-row-${rec.id}`} className="border-b border-zinc-200">
+                    <td className="py-1.5 px-2.5 font-semibold text-zinc-900 whitespace-nowrap">
+                      {formatDate(rec.date)}
+                    </td>
+                    <td className="py-1.5 px-2.5">
+                      <div className="font-bold text-zinc-950 leading-tight">{rec.title}</div>
+                      {rec.notes && <div className="text-[9px] text-zinc-500 italic mt-0.5">{rec.notes}</div>}
+                    </td>
+                    <td className="py-1.5 px-2.5 text-zinc-800">
+                      <span className="font-bold">{acc.bankName}</span>
+                      <div className="text-[9px] text-zinc-500">{acc.accountName}</div>
+                    </td>
+                    <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                      <span className="font-bold text-[9px]">
+                        {rec.type === 'interest' ? 'Interés' : 'Dividendo'}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2.5 text-right font-bold text-zinc-950 whitespace-nowrap">
+                      {formatCurrency(rec.grossAmount)}
+                    </td>
+                    <td className="py-1.5 px-2.5 text-right font-semibold text-amber-900 whitespace-nowrap">
+                      {rec.withholdingTax > 0 ? (
+                        <span>{formatCurrency(rec.withholdingTax)} ({rec.taxRatePercent}%)</span>
+                      ) : (
+                        <span className="text-zinc-500">0,00 € (0%)</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2.5 text-right font-black text-[#0E6A3B] whitespace-nowrap">
+                      {formatCurrency(rec.netAmount)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-zinc-100 text-zinc-950 font-black text-xs border-t-2 border-zinc-950">
+                <td colSpan={4} className="py-2.5 px-2.5 uppercase tracking-wider">
+                  TOTAL LIQUIDACIONES FISCALES ({filteredYields.length})
+                </td>
+                <td className="py-2.5 px-2.5 text-right font-black">
+                  {formatCurrency(totals.gross)}
+                </td>
+                <td className="py-2.5 px-2.5 text-right font-black text-amber-900">
+                  {formatCurrency(totals.withholding)}
+                </td>
+                <td className="py-2.5 px-2.5 text-right font-black text-[#0E6A3B]">
+                  {formatCurrency(totals.net)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
       </div>
 
-      {/* Top Banner / Header */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-zinc-200/90 shadow-xs relative overflow-hidden">
+      {/* Top Banner / Header (Pantalla) */}
+      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-zinc-200/90 shadow-xs relative overflow-hidden print:hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-emerald-100/40 via-transparent to-transparent pointer-events-none rounded-full blur-2xl -mr-20 -mt-20"></div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
@@ -566,8 +853,8 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         </div>
       </div>
 
-      {/* Filter Toolbar Card */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200 shadow-2xs space-y-4">
+      {/* Filter Toolbar Card (Pantalla) */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200 shadow-2xs space-y-4 print:hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           
           {/* 1. Selector de Tipo: Todos / Intereses / Dividendos */}
@@ -718,32 +1005,100 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
           </div>
         </div>
 
+        {/* Quick Filter: Selector Rápido de Banco / Entidad (Botones con conteo) */}
+        <div className="pt-3 border-t border-zinc-100 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-black text-zinc-600 uppercase tracking-wider mr-1">
+            <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
+            <span>Entidad:</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedBankId('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedBankId === 'all'
+                ? 'bg-[#0E6A3B] text-white shadow-xs font-black ring-2 ring-emerald-500/20'
+                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+            }`}
+          >
+            Todas ({availableBanks.reduce((sum, b) => sum + b.yearCount, 0)} cobros)
+          </button>
+
+          {availableBanks.map((b) => {
+            const isSelected = selectedBankId === b.key || selectedBankId === b.bankName.toLowerCase();
+            return (
+              <button
+                key={`bank-pill-${b.key}`}
+                type="button"
+                onClick={() => setSelectedBankId(isSelected ? 'all' : b.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  isSelected
+                    ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-xs ring-2 ring-emerald-500/20 font-black'
+                    : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
+                }`}
+                title={`Filtrar rendimientos exclusivamente de ${b.bankName}`}
+              >
+                <span 
+                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                  style={{ backgroundColor: b.color }}
+                />
+                <span>{b.bankName}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                }`}>
+                  {b.yearCount}
+                </span>
+              </button>
+            );
+          })}
+
+          {selectedBankId !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setSelectedBankId('all')}
+              className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
+              title="Quitar filtro de banco y ver todas las entidades"
+            >
+              <span>✕ Quitar filtro</span>
+            </button>
+          )}
+        </div>
+
         {/* Second Row: Filters for Bank, Year, Month, and Search */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-zinc-100">
           
-          {/* Selector de Banco */}
+          {/* Selector de Banco / Entidad */}
           <div>
-            <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-              Banco / Entidad
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+                Banco / Entidad
+              </label>
+              {selectedBankId !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedBankId('all')}
+                  className="text-[10px] font-bold text-red-600 hover:text-red-700 cursor-pointer"
+                  title="Restablecer filtro a todas las entidades"
+                >
+                  ✕ Quitar filtro
+                </button>
+              )}
+            </div>
             <select
               value={selectedBankId}
               onChange={(e) => setSelectedBankId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs font-semibold text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B]"
+              className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B] transition-colors ${
+                selectedBankId !== 'all'
+                  ? 'border-[#0E6A3B] bg-emerald-50/50 text-[#092B19] font-bold ring-1 ring-emerald-500/20'
+                  : 'border-zinc-300 bg-white text-zinc-800'
+              }`}
             >
-              <option value="all">Todas las entidades bancarias</option>
-              {Array.from(new Set([
-                ...appState.accounts.map((a) => a.id),
-                ...bankBreakdown.map((b) => b.account.id)
-              ])).map((id) => {
-                const acc = bankBreakdown.find((b) => b.account.id === id)?.account || appState.accounts.find((a) => a.id === id);
-                if (!acc) return null;
-                return (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.bankName} - {acc.accountName}
-                  </option>
-                );
-              })}
+              <option value="all">Todas las entidades bancarias ({yearCounts.total} cobros)</option>
+              {availableBanks.map((b) => (
+                <option key={b.key} value={b.key}>
+                  {b.bankName} {b.yearCount > 0 ? `(${b.yearCount} en ${selectedYear})` : '(0 cobros)'}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -823,8 +1178,8 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         </div>
       </div>
 
-      {/* 4 KPI Summary Cards: Bruto, Retención, Líquido, Conteo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 KPI Summary Cards (Pantalla) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
         
         {/* KPI 1: Total Bruto */}
         <div className="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-2xs relative overflow-hidden">
@@ -905,7 +1260,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       {/* Alerta de cobros pendientes de comprobación */}
       {reviewStats.pendingCount > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs print:hidden screen-only">
           <div className="flex items-start sm:items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
               <AlertTriangle className="w-5 h-5 text-amber-600" />
@@ -956,7 +1311,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       {/* VIEW 1: Matriz Mensual & Desglose por Bancos */}
       {activeSubTab === 'matrix' && (
-        <div className="space-y-6">
+        <div className="space-y-6 print:hidden screen-only">
           
           {/* Main Matrix: Enero a Diciembre */}
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden">
@@ -1367,9 +1722,25 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
               )}
             </div>
 
+            {selectedBankId !== 'all' && (
+              <div className="mx-5 my-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-[#0E6A3B]">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-[#0E6A3B]" />
+                  <span>Filtrando exclusivamente por: <strong>{selectedBankName}</strong> ({bankBreakdown.reduce((s, b) => s + b.count, 0)} cobros)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBankId('all')}
+                  className="font-bold text-red-600 hover:text-red-700 underline cursor-pointer"
+                >
+                  ✕ Ver todas las entidades
+                </button>
+              </div>
+            )}
+
             {bankBreakdown.length === 0 ? (
               <div className="p-8 text-center text-zinc-500 text-xs">
-                No hay rendimientos registrados en los bancos para este ejercicio fiscal.
+                No hay rendimientos registrados en los bancos para este ejercicio fiscal con los filtros activos.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1382,6 +1753,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                       <th className="py-3 px-3 text-right">Importe Bruto</th>
                       <th className="py-3 px-3 text-right text-amber-900">Retención (IRPF)</th>
                       <th className="py-3 px-4 text-right text-[#0E6A3B] font-bold">Líquido Neto</th>
+                      <th className="py-3 px-3 text-right">Filtrar</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
@@ -1457,12 +1829,40 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                             <td className="py-3.5 px-4 text-right font-black text-[#0E6A3B]">
                               {formatCurrency(item.net)}
                             </td>
+
+                            <td className="py-3.5 px-3 text-right">
+                              {selectedBankId === item.account.id || selectedBankId === item.account.bankName.toLowerCase() ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedBankId('all');
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition-colors cursor-pointer"
+                                  title="Quitar filtro de banco"
+                                >
+                                  ✕ Quitar
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedBankId(item.account.bankName.toLowerCase());
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-[#0E6A3B] border border-emerald-300 hover:bg-[#0E6A3B] hover:text-white transition-colors cursor-pointer shadow-2xs"
+                                  title={`Filtrar toda la pantalla solo por ${item.account.bankName}`}
+                                >
+                                  Filtrar banco
+                                </button>
+                              )}
+                            </td>
                           </tr>
 
                           {/* Desplegable interactivo de apuntes de este banco */}
                           {isExpanded && (
                             <tr className="bg-emerald-50/30 border-b-2 border-emerald-300">
-                              <td colSpan={6} className="p-0">
+                              <td colSpan={7} className="p-0">
                                 <div className="p-3.5 sm:p-5 bg-gradient-to-r from-emerald-50/50 via-white to-zinc-50/50 border-l-4 border-[#0E6A3B] space-y-3 animate-in fade-in duration-150">
                                   
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-200/80 pb-2.5">
@@ -1632,7 +2032,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
       {/* VIEW 2: Listado Detallado de Cobros */}
       {activeSubTab === 'list' && (
-        <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xs overflow-hidden print:hidden screen-only">
           <div className="px-5 py-4 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-zinc-50/70">
             <div>
               <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-2">

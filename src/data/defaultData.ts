@@ -68,6 +68,57 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     textColor: '#ffffff',
     bgLight: '#fdf2f2',
     borderColor: '#B50000'
+  },
+  {
+    id: 'acc-bankinter',
+    bankId: 'bankinter',
+    bankName: 'Bankinter',
+    accountName: 'Cuenta Digital & Depósito IPF',
+    iban: 'ES09 0128 0000 0000 9876',
+    accountNumberMasked: 'Bankinter •• IPF / Digital',
+    type: 'deposit',
+    balance: 248.46,
+    balanceDate: '2026-09-30',
+    currency: 'EUR',
+    lastSynced: new Date().toISOString(),
+    color: '#FF6000',
+    textColor: '#ffffff',
+    bgLight: '#fff7ed',
+    borderColor: '#FF6000'
+  },
+  {
+    id: 'acc-trade-republic',
+    bankId: 'traderepublic',
+    bankName: 'Trade Republic',
+    accountName: 'Trade Republic Broker & Efectivo',
+    iban: 'DE89 •••• •••• 5678',
+    accountNumberMasked: 'Trade Republic •• Inv',
+    type: 'investment',
+    balance: 15.00,
+    balanceDate: '2026-09-30',
+    currency: 'EUR',
+    lastSynced: new Date().toISOString(),
+    color: '#111827',
+    textColor: '#ffffff',
+    bgLight: '#f3f4f6',
+    borderColor: '#111827'
+  },
+  {
+    id: 'acc-openbank',
+    bankId: 'openbank',
+    bankName: 'Openbank',
+    accountName: 'Imposiciones a Plazo Fijo Openbank',
+    iban: 'ES76 0073 •••• •••• 1234',
+    accountNumberMasked: 'Openbank •• IPF',
+    type: 'savings',
+    balance: 0.00,
+    balanceDate: '2026-09-30',
+    currency: 'EUR',
+    lastSynced: new Date().toISOString(),
+    color: '#FD5300',
+    textColor: '#ffffff',
+    bgLight: '#fff5f0',
+    borderColor: '#FD5300'
   }
 ];
 

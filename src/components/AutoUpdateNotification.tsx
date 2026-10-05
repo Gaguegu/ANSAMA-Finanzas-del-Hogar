@@ -30,7 +30,7 @@ export const AutoUpdateNotification: React.FC<AutoUpdateNotificationProps> = ({
   return (
     <div
       id="auto-update-floating-alert"
-      className="fixed bottom-16 sm:bottom-6 right-3 sm:right-6 z-50 max-w-md w-[calc(100vw-1.5rem)] sm:w-auto animate-in slide-in-from-bottom-5 duration-300 pointer-events-auto"
+      className="fixed bottom-16 sm:bottom-6 right-3 sm:right-6 z-50 max-w-md w-[calc(100vw-1.5rem)] sm:w-auto animate-in slide-in-from-bottom-5 duration-300 pointer-events-auto print:hidden screen-only"
       role="alert"
       aria-live="assertive"
     >
