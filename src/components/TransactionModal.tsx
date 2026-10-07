@@ -175,6 +175,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               <input
                 type="date"
                 required
+                min="2025-01-01"
+                max="2030-12-31"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 text-slate-900"

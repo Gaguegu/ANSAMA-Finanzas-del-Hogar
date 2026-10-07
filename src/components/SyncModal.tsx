@@ -272,6 +272,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({
                     </label>
                     <input
                       type="date"
+                      min="2025-01-01"
                       value={customFromDate}
                       onChange={(e) => setCustomFromDate(e.target.value)}
                       max={new Date().toISOString().split('T')[0]}

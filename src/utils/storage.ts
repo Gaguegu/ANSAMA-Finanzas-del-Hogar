@@ -61,6 +61,15 @@ export function loadAppState(): AppState {
 
       // Eliminar posibles rendimientos auto-detectados duplicados en 2026 para los que ya existe el apunte oficial auditado
       parsed.yieldRecords = parsed.yieldRecords.filter((y: YieldRecord) => {
+        // En enero 2026 Trade Republic no tuvo ningún abono de intereses (el primero es el 01/02/2026)
+        if (y.date && y.date.startsWith('2026-01') && y.accountId === 'acc-trade-republic') {
+          return false;
+        }
+        // Descartar rendimientos con fechas antiguas (< 2025)
+        if (y.date && y.date.length >= 4) {
+          const yr = parseInt(y.date.substring(0, 4), 10);
+          if (!isNaN(yr) && yr < 2025) return false;
+        }
         if (y.autoDetected && y.date && y.date.startsWith('2026-')) {
           const yMonth = y.date.substring(0, 7);
           const hasOfficial = parsed.yieldRecords.some((off: YieldRecord) => 
@@ -70,6 +79,23 @@ export function loadAppState(): AppState {
         }
         return true;
       });
+
+      // Conciliación y deduplicación del apunte de intereses de ING (31 ago 2026 vs 01 sep 2026 de 1,82 €):
+      // En ING, los intereses de agosto se liquidan contablemente a fin de mes (fecha operación: 31/08/2026),
+      // pero en el extracto la fecha valor puede reflejarse el 01/09/2026.
+      // Si coexisten dos apuntes idénticos de 1,82 € (uno el 31/08 y otro el 01/09), se unifican en un único apunte
+      // a fecha 31/08/2026 para no duplicar el saldo ni el rendimiento.
+      const aug31YieldIdx = parsed.yieldRecords.findIndex((y: YieldRecord) => 
+        (y.date === '2026-08-31' || y.date === '2026-08-30') &&
+        Math.abs(y.netAmount - 1.82) < 0.05
+      );
+      const sep01YieldIdx = parsed.yieldRecords.findIndex((y: YieldRecord) => 
+        (y.date === '2026-09-01' || y.date.startsWith('2026-09')) &&
+        Math.abs(y.netAmount - 1.82) < 0.05
+      );
+      if (aug31YieldIdx >= 0 && sep01YieldIdx >= 0) {
+        parsed.yieldRecords = parsed.yieldRecords.filter((_, idx) => idx !== sep01YieldIdx);
+      }
 
       // Asegurar que las liquidaciones de efectivo de Trade Republic reflejen 0% IRPF y 0 retención por IBAN alemán
       parsed.yieldRecords = parsed.yieldRecords
@@ -269,13 +295,13 @@ export function loadAppState(): AppState {
         return tx;
       });
 
-      // 3. Purgar automáticamente transacciones espurias generadas por notas legales/fiduciarias o fechas corruptas (< 2020)
+      // 3. Purgar automáticamente transacciones espurias generadas por notas legales/fiduciarias o fechas corruptas/antiguas (< 2025)
       const prevCount = parsed.transactions.length;
       parsed.transactions = parsed.transactions.filter((tx: Transaction) => {
-        // Purgar fechas corruptas o antiguas imposibles (como año 2001)
+        // Los datos del usuario son estrictamente del 2025 en adelante (purgar fechas corruptas o antiguas como año 2001 o 2023)
         if (tx.date && tx.date.length >= 4) {
           const y = parseInt(tx.date.substring(0, 4), 10);
-          if (isNaN(y) || y < 2020) {
+          if (isNaN(y) || y < 2025) {
             return false;
           }
         }
@@ -290,6 +316,22 @@ export function loadAppState(): AppState {
           (titleLower.includes('citibank') && (titleLower.includes('saldo') || titleLower.includes('extracto')));
         return !isLegalDisclaimer;
       });
+
+      // Deduplicar transacción de intereses ING si coexisten 31/08/2026 y 01/09/2026 (1,82 €)
+      const aug31TxIdx = parsed.transactions.findIndex((t: Transaction) => 
+        (t.date === '2026-08-31' || t.date === '2026-08-30') &&
+        Math.abs(t.amount - 1.82) < 0.05 &&
+        t.type === 'income'
+      );
+      const sep01TxIdx = parsed.transactions.findIndex((t: Transaction) => 
+        (t.date === '2026-09-01' || t.date.startsWith('2026-09')) &&
+        Math.abs(t.amount - 1.82) < 0.05 &&
+        t.type === 'income'
+      );
+      if (aug31TxIdx >= 0 && sep01TxIdx >= 0) {
+        parsed.transactions = parsed.transactions.filter((_, idx) => idx !== sep01TxIdx);
+      }
+
       if (parsed.transactions.length !== prevCount) {
         hasRepairedTransactions = true;
       }
@@ -1613,6 +1655,14 @@ export function getAvailableMonths(
   const currentMonth = new Date().toISOString().substring(0, 7);
   monthSet.add(currentMonth);
 
+  // Incluir siempre todos los meses del ejercicio 2025, 2026 y del próximo año (2027)
+  for (let m = 1; m <= 12; m++) {
+    const mStr = String(m).padStart(2, '0');
+    monthSet.add(`2025-${mStr}`);
+    monthSet.add(`2026-${mStr}`);
+    monthSet.add(`2027-${mStr}`);
+  }
+
   // De los cierres mensuales
   if (Array.isArray(monthlyClosures)) {
     monthlyClosures.forEach((c) => {
@@ -1631,8 +1681,13 @@ export function getAvailableMonths(
     });
   }
 
-  // Orden descendente (el más reciente primero)
-  return Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+  // Solo desde 2025 en adelante (descartar meses corruptos o antiguos anteriores a 2025, hasta 2030)
+  return Array.from(monthSet)
+    .filter((m) => {
+      const yr = parseInt(m.substring(0, 4), 10);
+      return !isNaN(yr) && yr >= 2025 && yr <= 2030;
+    })
+    .sort((a, b) => b.localeCompare(a));
 }
 
 /**

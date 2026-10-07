@@ -237,6 +237,8 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
                   </label>
                   <input
                     type="date"
+                    min="2025-01-01"
+                    max="2030-12-31"
                     value={manualDate}
                     onChange={(e) => setManualDate(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white border border-zinc-300 rounded-xl text-zinc-900"

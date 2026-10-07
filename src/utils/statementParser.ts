@@ -487,9 +487,10 @@ export function parseDateString(val: any): string | null {
   if (dmyMatch) {
     let year = dmyMatch[3];
     if (year.length === 2) year = '20' + year;
+    const yNum = parseInt(year, 10);
     const month = parseInt(dmyMatch[2], 10);
     const day = parseInt(dmyMatch[1], 10);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (yNum >= 2025 && yNum <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
@@ -498,9 +499,10 @@ export function parseDateString(val: any): string | null {
   const ymdMatch = str.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
   if (ymdMatch) {
     const year = ymdMatch[1];
+    const yNum = parseInt(year, 10);
     const month = parseInt(ymdMatch[2], 10);
     const day = parseInt(ymdMatch[3], 10);
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (yNum >= 2025 && yNum <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
   }
@@ -527,7 +529,8 @@ export function parseDateString(val: any): string | null {
     const monthNum = textMonthMap[monthRaw] || textMonthMap[monthRaw.slice(0, 3)];
     let year = textMonthMatch[3];
     if (year.length === 2) year = '20' + year;
-    if (monthNum && day >= 1 && day <= 31) {
+    const yNum = parseInt(year, 10);
+    if (yNum >= 2025 && yNum <= 2030 && monthNum && day >= 1 && day <= 31) {
       return `${year}-${monthNum}-${String(day).padStart(2, '0')}`;
     }
   }
@@ -536,7 +539,7 @@ export function parseDateString(val: any): string | null {
   // NUNCA admitir strings sin año explícito ni números solos
   if (/\b(20\d{2})\b/.test(str) && /[-/.\s]/.test(str)) {
     const parsed = new Date(str);
-    if (!isNaN(parsed.getTime()) && parsed.getFullYear() >= 2000 && parsed.getFullYear() < 2100) {
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() >= 2025 && parsed.getFullYear() <= 2030) {
       const y = parsed.getFullYear();
       const m = String(parsed.getMonth() + 1).padStart(2, '0');
       const d = String(parsed.getDate()).padStart(2, '0');

@@ -609,6 +609,8 @@ export const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                             />
                             <input
                               type="date"
+                              min="2025-01-01"
+                              max="2030-12-31"
                               value={manualBalanceDate}
                               onChange={(e) => setManualBalanceDate(e.target.value)}
                               className="w-full px-2 py-1 text-[11px] border border-zinc-300 rounded bg-white"

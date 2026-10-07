@@ -320,36 +320,44 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   }, [filterAccount, accountsByBank, accountMap]);
 
   // Lista ordenada de periodos disponibles (Años completos y Meses específicos con movimientos reales)
+  // Estrictamente desde 2025 en adelante (2025, 2026, 2027, 2028, 2029, 2030)
+  // Descartando cualquier año antiguo o erróneo (< 2025) y garantizando los años futuros (2026 en adelante)
   const availablePeriods = useMemo(() => {
     const monthSet = new Set<string>();
     const yearSet = new Set<string>();
+
+    // Garantizar que los años del ciclo fiscal y los ejercicios futuros (hasta 2030) siempre estén disponibles
+    for (let yr = 2025; yr <= 2030; yr++) {
+      yearSet.add(String(yr));
+    }
+
     transactions.forEach((tx) => {
       if (tx.date && tx.date.length >= 7) {
         const y = parseInt(tx.date.substring(0, 4), 10);
-        // Descartar fechas antiguas no válidas (< 2024)
-        if (!isNaN(y) && y >= 2024) {
+        // Descartar fechas antiguas o corruptas (< 2025)
+        if (!isNaN(y) && y >= 2025 && y <= 2030) {
           monthSet.add(tx.date.substring(0, 7));
           yearSet.add(tx.date.substring(0, 4));
         }
       }
     });
+
     return {
       months: Array.from(monthSet).sort().reverse(),
       years: Array.from(yearSet).sort().reverse()
     };
   }, [transactions]);
 
-  // Lista de meses seleccionables: año actual (2026), año anterior (2025) y años recientes con movimientos reales (>= 2024)
-  // Se eliminan por completo años antiguos sin movimientos (como 2001 o 2023)
+  // Lista de meses seleccionables: estrictamente desde 2025 en adelante (2025 a 2030)
+  // Incluye siempre los años futuros para poder operar el próximo año y descarta cualquier año antiguo (< 2025)
   const selectableMonthsList = useMemo(() => {
-    const currentYear = new Date().getFullYear();
     const txCountByYear = new Map<number, number>();
     const txCountByMonth = new Map<string, number>();
 
     transactions.forEach((tx) => {
       if (tx.date && tx.date.length >= 7) {
         const y = parseInt(tx.date.substring(0, 4), 10);
-        if (!isNaN(y) && y >= 2024 && y <= currentYear + 1) {
+        if (!isNaN(y) && y >= 2025 && y <= 2030) {
           txCountByYear.set(y, (txCountByYear.get(y) || 0) + 1);
           const ym = tx.date.substring(0, 7);
           txCountByMonth.set(ym, (txCountByMonth.get(ym) || 0) + 1);
@@ -357,18 +365,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       }
     });
 
-    // Años activos:
-    // Solo año actual (2026) y año anterior (2025).
-    // Y cualquier otro año reciente (>= 2024) SOLO si contiene movimientos reales (count > 0).
+    // Años activos: estrictamente desde 2025 hasta 2030 (garantizados para operar en años futuros)
     const activeYears = new Set<number>();
-    activeYears.add(currentYear);
-    activeYears.add(currentYear - 1);
-
-    txCountByYear.forEach((count, y) => {
-      if (count > 0 && y >= 2024) {
-        activeYears.add(y);
-      }
-    });
+    for (let yr = 2025; yr <= 2030; yr++) {
+      activeYears.add(yr);
+    }
 
     const sortedYears = Array.from(activeYears).sort((a, b) => b - a);
     const months: { value: string; label: string; year: number; monthNum: number; shortName: string; txCount: number }[] = [];
@@ -1075,7 +1076,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {/* Title & Action Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90 print:hidden screen-only">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-emerald-100/90 print:hidden screen-only no-print filter-controls">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base sm:text-lg font-black text-zinc-950">Historial Consolidado de Movimientos</h3>
@@ -1407,7 +1408,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       )}
 
       {/* Selector Rápido de Banco / Entidad en Píldoras */}
-      <div className="flex items-center gap-1.5 flex-wrap pt-1 print:hidden screen-only">
+      <div className="flex items-center gap-1.5 flex-wrap pt-1 print:hidden screen-only no-print filter-controls">
         <span className="text-[11px] font-black uppercase text-zinc-500 mr-1 flex items-center gap-1">
           <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
           <span>Banco:</span>
@@ -1458,7 +1459,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {/* Filter Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 print:hidden screen-only">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 print:hidden screen-only no-print filter-controls">
         
         {/* Search input */}
         <div className="relative">
@@ -1616,6 +1617,27 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     <div className="flex flex-wrap gap-1.5">
                       <button
                         type="button"
+                        onClick={() => handleApplyRange('2026-01', '2026-12')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-[#0E6A3B] text-white hover:bg-[#0a522d] cursor-pointer shadow-2xs"
+                      >
+                        🌟 Todo 2026
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2025-01', '2025-12')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-700 text-white hover:bg-zinc-800 cursor-pointer shadow-2xs"
+                      >
+                        🏛️ Todo 2025
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyRange('2027-01', '2027-12')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-[#0E6A3B] hover:bg-emerald-200 border border-emerald-300 cursor-pointer"
+                      >
+                        🔮 Próximo Año (2027)
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleApplyRange('2025-02', '2025-03')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
                       >
@@ -1623,38 +1645,38 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleApplyRange('2025-01', '2025-03')}
+                        onClick={() => handleApplyRange('2026-01', '2026-03')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
                       >
-                        Q1 2025 (Ene-Mar)
+                        Q1 2026 (Ene-Mar)
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleApplyRange('2025-04', '2025-06')}
+                        onClick={() => handleApplyRange('2026-04', '2026-06')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
                       >
-                        Q2 2025 (Abr-Jun)
+                        Q2 2026 (Abr-Jun)
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleApplyRange('2025-07', '2025-09')}
+                        onClick={() => handleApplyRange('2026-07', '2026-09')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
                       >
-                        Q3 2025 (Jul-Sep)
+                        Q3 2026 (Jul-Sep)
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleApplyRange('2025-01', '2025-06')}
+                        onClick={() => handleApplyRange('2026-01', '2026-06')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
                       >
-                        1º Semestre 2025
+                        1º Semestre 2026
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleApplyRange('2025-07', '2025-12')}
+                        onClick={() => handleApplyRange('2026-07', '2026-12')}
                         className="px-2 py-1 rounded-lg text-[10px] font-bold bg-zinc-100 text-zinc-800 hover:bg-zinc-200 cursor-pointer"
                       >
-                        2º Semestre 2025
+                        2º Semestre 2026
                       </button>
                     </div>
                   </div>
@@ -1831,6 +1853,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       </label>
                       <input
                         type="date"
+                        min="2025-01-01"
+                        max="2030-12-31"
                         value={tempStartDate}
                         onChange={(e) => setTempStartDate(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
@@ -1842,6 +1866,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                       </label>
                       <input
                         type="date"
+                        min="2025-01-01"
+                        max="2030-12-31"
                         value={tempEndDate}
                         onChange={(e) => setTempEndDate(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs font-bold rounded-xl border border-zinc-300 bg-zinc-50 text-zinc-900 focus:bg-white focus:border-emerald-600"
@@ -2171,7 +2197,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       </div>
 
       {hasActiveFilters && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 animate-in fade-in print:hidden screen-only">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 animate-in fade-in print:hidden screen-only no-print filter-controls">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-extrabold flex items-center gap-1.5 text-zinc-900">
               <span className="w-2 h-2 rounded-full bg-emerald-600"></span>

@@ -277,16 +277,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 0,
       monthName: 'Ene',
       fullMonthName: 'Enero',
-      income: 7697.92,
+      income: 7697.05,
       expense: 5964.34,
-      net: 1733.58,
+      net: 1732.71,
       byBank: {
         bbva: { income: 2667.14, expense: 2259.67, net: 407.47 },
         openbank_cte: { income: 3554.58, expense: 2817.67, net: 736.91 },
         openbank_fija: { income: 831.24, expense: 780.00, net: 51.24 },
         ing_nomina: { income: 175.00, expense: 107.00, net: 68.00 },
         ing_naranja: { income: 220.63, expense: 0.00, net: 220.63 },
-        trade_republic: { income: 0.87, expense: 0.00, net: 0.87 },
+        trade_republic: { income: 0.00, expense: 0.00, net: 0.00 },
         bankinter: { income: 248.46, expense: 0.00, net: 248.46 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }

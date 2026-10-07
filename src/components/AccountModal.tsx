@@ -403,6 +403,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               <input
                 type="date"
                 required
+                min="2025-01-01"
+                max="2030-12-31"
                 value={balanceDate}
                 onChange={(e) => setBalanceDate(e.target.value)}
                 className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"

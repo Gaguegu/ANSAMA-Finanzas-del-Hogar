@@ -249,17 +249,20 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
 
   const allYields = appState.yieldRecords || [];
 
-  // Available years from yields or fallback to [currentYear, currentYear - 1]
+  // Available years from yields: estrictamente desde 2025 en adelante (2025, 2026, 2027, 2028, 2029, 2030)
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
-    const currentYear = new Date().getFullYear();
-    yearsSet.add(currentYear);
-    yearsSet.add(currentYear - 1);
+    // Siempre incluir los años del ciclo fiscal de la app (2025) y los ejercicios futuros para poder operar el próximo año
+    for (let yr = 2025; yr <= 2030; yr++) {
+      yearsSet.add(yr);
+    }
     allYields.forEach((y) => {
       const year = parseInt(y.date.split('-')[0], 10);
-      if (!isNaN(year)) yearsSet.add(year);
+      if (!isNaN(year) && year >= 2025 && year <= 2030) {
+        yearsSet.add(year);
+      }
     });
-    return Array.from(yearsSet).sort((a, b) => b - a);
+    return Array.from(yearsSet).sort((a, b) => a - b);
   }, [allYields]);
 
   // Lista deduplicada y normalizada de Bancos / Entidades disponibles
@@ -628,8 +631,13 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
             print-color-adjust: exact !important;
             background: #ffffff !important;
           }
-          header, #app-header, #mobile-nav, nav, aside, .no-print, button, select, input, .screen-only {
+          header, #app-header, #mobile-nav, nav, aside, .no-print, .screen-only, .filter-controls, button, select, input, textarea, [class*="print:hidden"], [class*="screen-only"], [class*="no-print"], [class*="filter-controls"] {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
           }
           .overflow-x-auto, .overflow-hidden, .overflow-y-auto {
             overflow: visible !important;
@@ -858,7 +866,66 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       </div>
 
       {/* Filter Toolbar Card (Pantalla) */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200 shadow-2xs space-y-4 print:hidden">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200 shadow-2xs space-y-4 print:hidden screen-only no-print filter-controls">
+        {/* FILTRO PRINCIPAL: Selector Rápido de Banco / Entidad (Píldoras destacadas) */}
+        <div className="pb-3 border-b border-zinc-100 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-black text-zinc-700 uppercase tracking-wider mr-1">
+            <Building2 className="w-4 h-4 text-[#0E6A3B]" />
+            <span>Filtrar por Entidad:</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedBankId('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedBankId === 'all'
+                ? 'bg-[#0E6A3B] text-white shadow-xs font-black ring-2 ring-emerald-500/20'
+                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+            }`}
+          >
+            Todas ({availableBanks.reduce((sum, b) => sum + b.yearCount, 0)} cobros)
+          </button>
+
+          {availableBanks.map((b) => {
+            const isSelected = selectedBankId === b.key || selectedBankId === b.bankName.toLowerCase();
+            return (
+              <button
+                key={`bank-pill-top-${b.key}`}
+                type="button"
+                onClick={() => setSelectedBankId(isSelected ? 'all' : b.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  isSelected
+                    ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-xs ring-2 ring-emerald-500/20 font-black'
+                    : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
+                }`}
+                title={`Filtrar rendimientos exclusivamente de ${b.bankName}`}
+              >
+                <span 
+                  className="w-2.5 h-2.5 rounded-full shrink-0" 
+                  style={{ backgroundColor: b.color }}
+                />
+                <span>{b.bankName}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                }`}>
+                  {b.yearCount}
+                </span>
+              </button>
+            );
+          })}
+
+          {selectedBankId !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setSelectedBankId('all')}
+              className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
+              title="Quitar filtro de banco y ver todas las entidades"
+            >
+              <span>✕ Quitar filtro</span>
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           
           {/* 1. Selector de Tipo: Todos / Intereses / Dividendos */}
@@ -1009,65 +1076,6 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
           </div>
         </div>
 
-        {/* Quick Filter: Selector Rápido de Banco / Entidad (Botones con conteo) */}
-        <div className="pt-3 border-t border-zinc-100 flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-black text-zinc-600 uppercase tracking-wider mr-1">
-            <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
-            <span>Entidad:</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setSelectedBankId('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              selectedBankId === 'all'
-                ? 'bg-[#0E6A3B] text-white shadow-xs font-black ring-2 ring-emerald-500/20'
-                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-            }`}
-          >
-            Todas ({availableBanks.reduce((sum, b) => sum + b.yearCount, 0)} cobros)
-          </button>
-
-          {availableBanks.map((b) => {
-            const isSelected = selectedBankId === b.key || selectedBankId === b.bankName.toLowerCase();
-            return (
-              <button
-                key={`bank-pill-${b.key}`}
-                type="button"
-                onClick={() => setSelectedBankId(isSelected ? 'all' : b.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                  isSelected
-                    ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-xs ring-2 ring-emerald-500/20 font-black'
-                    : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
-                }`}
-                title={`Filtrar rendimientos exclusivamente de ${b.bankName}`}
-              >
-                <span 
-                  className="w-2.5 h-2.5 rounded-full shrink-0" 
-                  style={{ backgroundColor: b.color }}
-                />
-                <span>{b.bankName}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
-                }`}>
-                  {b.yearCount}
-                </span>
-              </button>
-            );
-          })}
-
-          {selectedBankId !== 'all' && (
-            <button
-              type="button"
-              onClick={() => setSelectedBankId('all')}
-              className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
-              title="Quitar filtro de banco y ver todas las entidades"
-            >
-              <span>✕ Quitar filtro</span>
-            </button>
-          )}
-        </div>
-
         {/* Second Row: Filters for Bank, Year, Month, and Search */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-zinc-100">
           
@@ -1113,16 +1121,20 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
             </label>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setSelectedYear((y) => y - 1)}
-                className="p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 cursor-pointer"
-                title="Año anterior"
+                type="button"
+                onClick={() => setSelectedYear((y) => Math.max(2025, y - 1))}
+                disabled={selectedYear <= 2025}
+                className={`p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 transition-colors ${
+                  selectedYear <= 2025 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                title={selectedYear <= 2025 ? 'Límite inferior: tus datos son del ejercicio 2025 en adelante' : 'Año anterior'}
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-                className="flex-1 px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs font-bold text-zinc-900 text-center focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B]"
+                className="flex-1 px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs font-bold text-zinc-900 text-center focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B] cursor-pointer"
               >
                 {availableYears.map((yr) => (
                   <option key={yr} value={yr}>
@@ -1131,8 +1143,12 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                 ))}
               </select>
               <button
-                onClick={() => setSelectedYear((y) => y + 1)}
-                className="p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 cursor-pointer"
+                type="button"
+                onClick={() => setSelectedYear((y) => Math.min(2030, y + 1))}
+                disabled={selectedYear >= 2030}
+                className={`p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 transition-colors ${
+                  selectedYear >= 2030 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                }`}
                 title="Año siguiente"
               >
                 <ChevronRight className="w-3.5 h-3.5" />

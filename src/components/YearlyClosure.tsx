@@ -48,8 +48,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
     }));
   };
 
-  const handlePrevYear = () => setSelectedYear((y) => y - 1);
-  const handleNextYear = () => setSelectedYear((y) => y + 1);
+  const handlePrevYear = () => setSelectedYear((y) => Math.max(2025, y - 1));
+  const handleNextYear = () => setSelectedYear((y) => Math.min(2030, y + 1));
 
   // Filter transactions for the selected year
   const yearTransactions = useMemo(() => {
@@ -753,25 +753,42 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
           {/* Year selector controls */}
           <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 select-none">
             <button
+              type="button"
               onClick={handlePrevYear}
-              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
-              title="Año anterior"
+              disabled={selectedYear <= 2025}
+              className={`w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+                selectedYear <= 2025 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+              }`}
+              title={selectedYear <= 2025 ? 'Límite inferior: tus datos son del 2025 en adelante' : 'Año anterior'}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="px-4 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-center w-36 shrink-0">
-              <span className="text-[11px] font-semibold text-emerald-800 uppercase block tracking-wider truncate">
-                Año Fiscal
+            <div className="relative px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-center min-w-[130px] shrink-0">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">
+                Ejercicio Fiscal
               </span>
-              <span className="text-base font-black text-emerald-950 block truncate">
-                {selectedYear}
-              </span>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                className="w-full text-base font-black text-emerald-950 bg-transparent text-center focus:outline-hidden cursor-pointer"
+                title="Selecciona el año fiscal"
+              >
+                {[2025, 2026, 2027, 2028, 2029, 2030].map((yr) => (
+                  <option key={`closure-yr-${yr}`} value={yr}>
+                    Año {yr}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
+              type="button"
               onClick={handleNextYear}
-              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+              disabled={selectedYear >= 2030}
+              className={`w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+                selectedYear >= 2030 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+              }`}
               title="Año siguiente"
             >
               <ChevronRight className="w-4 h-4" />

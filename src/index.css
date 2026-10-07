@@ -18,6 +18,11 @@
   .screen-only,
   .print-hidden,
   .print\:hidden,
+  [class*="print:hidden"],
+  [class*="screen-only"],
+  [class*="no-print"],
+  [class*="filter-controls"],
+  .filter-controls,
   #app-header,
   #mobile-nav,
   #auto-update-floating-alert,
@@ -33,7 +38,6 @@
   .fixed,
   .sticky,
   .cursor-pointer,
-  .filter-controls,
   .action-column {
     display: none !important;
     visibility: hidden !important;

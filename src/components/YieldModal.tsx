@@ -358,6 +358,8 @@ export const YieldModal: React.FC<YieldModalProps> = ({
               </label>
               <input
                 type="date"
+                min="2025-01-01"
+                max="2030-12-31"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-zinc-300 text-sm font-medium text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B] transition-all"

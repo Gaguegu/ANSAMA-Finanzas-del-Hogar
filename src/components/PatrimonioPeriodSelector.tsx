@@ -41,7 +41,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
   const isClosed = Boolean(closure?.isClosed);
   const hasAuditedBalances = Boolean(closure?.auditedBalances && Object.keys(closure.auditedBalances).length > 0);
 
-  // Previous and next month handlers
+  // Previous and next month handlers: estrictamente desde 2025-01 hasta 2030-12
   const handlePrevMonth = () => {
     let prevM = month - 1;
     let prevY = year;
@@ -49,6 +49,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
       prevM = 12;
       prevY -= 1;
     }
+    if (prevY < 2025) return;
     const nextStr = `${prevY}-${String(prevM).padStart(2, '0')}`;
     onSelectMonth(nextStr);
   };
@@ -60,6 +61,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
       nextM = 1;
       nextY += 1;
     }
+    if (nextY > 2030) return;
     const nextStr = `${nextY}-${String(nextM).padStart(2, '0')}`;
     onSelectMonth(nextStr);
   };
@@ -114,8 +116,11 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 hover:bg-zinc-100 active:bg-zinc-200 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors cursor-pointer shadow-2xs shrink-0"
-            title="Mes anterior (Mes -1)"
+            disabled={selectedMonth === '2025-01'}
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+              selectedMonth === '2025-01' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+            }`}
+            title={selectedMonth === '2025-01' ? 'Límite inferior: tus datos son del 2025 en adelante' : 'Mes anterior (Mes -1)'}
             aria-label="Mes anterior"
           >
             <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-700" />
@@ -160,7 +165,10 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
           <button
             type="button"
             onClick={handleNextMonth}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 hover:bg-zinc-100 active:bg-zinc-200 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors cursor-pointer shadow-2xs shrink-0"
+            disabled={selectedMonth === '2030-12'}
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+              selectedMonth === '2030-12' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+            }`}
             title="Mes siguiente (Mes +1)"
             aria-label="Mes siguiente"
           >
@@ -171,13 +179,15 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
           <div className="relative w-9 h-9 sm:w-10 sm:h-10 shrink-0">
             <input
               type="month"
+              min="2025-01"
+              max="2030-12"
               value={selectedMonth}
               onChange={(e) => {
                 if (e.target.value) {
                   onSelectMonth(e.target.value);
                 }
               }}
-              title="Elegir cualquier mes y año del calendario"
+              title="Elegir cualquier mes y año del calendario (2025-2030)"
               className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10"
             />
             <button

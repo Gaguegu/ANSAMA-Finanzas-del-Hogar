@@ -218,10 +218,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return getAccountBalanceInfo(acc).balance;
   };
 
-  // Navigate months
+  // Navigate months: estrictamente desde 2025-01 hasta 2030-12
   const handlePrevMonth = () => {
     const prevDate = new Date(year, month - 2, 1);
     const newY = prevDate.getFullYear();
+    if (newY < 2025) return;
     const newM = String(prevDate.getMonth() + 1).padStart(2, '0');
     setSelectedMonth(`${newY}-${newM}`);
   };
@@ -229,6 +230,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const handleNextMonth = () => {
     const nextDate = new Date(year, month, 1);
     const newY = nextDate.getFullYear();
+    if (newY > 2030) return;
     const newM = String(nextDate.getMonth() + 1).padStart(2, '0');
     setSelectedMonth(`${newY}-${newM}`);
   };
@@ -543,9 +545,13 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           {/* Month selector controls */}
           <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 select-none">
             <button
+              type="button"
               onClick={handlePrevMonth}
-              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
-              title="Mes anterior"
+              disabled={selectedMonth === '2025-01'}
+              className={`w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+                selectedMonth === '2025-01' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+              }`}
+              title={selectedMonth === '2025-01' ? 'Límite inferior: tus datos son del 2025 en adelante' : 'Mes anterior'}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -560,8 +566,12 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={handleNextMonth}
-              className="w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 hover:bg-zinc-100 active:bg-zinc-200 flex items-center justify-center cursor-pointer shrink-0 shadow-2xs"
+              disabled={selectedMonth === '2030-12'}
+              className={`w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
+                selectedMonth === '2030-12' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+              }`}
               title="Mes siguiente"
             >
               <ChevronRight className="w-4 h-4" />
