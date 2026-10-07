@@ -662,7 +662,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
       {/* SECCIÓN EXCLUSIVA DE IMPRESIÓN (Visible ÚNICAMENTE al imprimir)          */}
       {/* Formato fiscal A4 limpio, sin botones, sin cortes horizontales ni scrolls */}
       {/* ========================================================================= */}
-      <div className="hidden print:block mb-6 w-full print-only">
+      <div className="print-only print-report mb-6 w-full" data-print="only">
         {/* Cabecera Corporativa Fiscal */}
         <div className="border-b-2 border-zinc-950 pb-3 mb-4">
           <div className="flex items-start justify-between">
@@ -806,8 +806,12 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         )}
       </div>
 
-      {/* Top Banner / Header (Pantalla) */}
-      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-zinc-200/90 shadow-xs relative overflow-hidden print:hidden">
+      {/* ========================================================================= */}
+      {/* VISTA EXCLUSIVA DE PANTALLA (100% oculta en modo impresión)              */}
+      {/* ========================================================================= */}
+      <div className="no-print screen-only space-y-6">
+        {/* Top Banner / Header (Pantalla) */}
+        <div className="bg-white rounded-3xl p-6 sm:p-7 border border-zinc-200/90 shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-emerald-100/40 via-transparent to-transparent pointer-events-none rounded-full blur-2xl -mr-20 -mt-20"></div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
@@ -2053,6 +2057,213 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
             </button>
           </div>
 
+          {/* Barra de Filtros Integrada para el Listado de Cobros */}
+          <div className="p-4 bg-zinc-50/70 border-b border-zinc-200 space-y-3">
+            {/* 1. Selector de Banco / Entidad con píldoras interactivas */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-black uppercase text-zinc-500 mr-1 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                <span>Filtrar Banco:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedBankId('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedBankId === 'all'
+                    ? 'bg-[#0E6A3B] text-white shadow-2xs font-black'
+                    : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200'
+                }`}
+              >
+                Todas las entidades ({availableBanks.reduce((s, b) => s + b.yearCount, 0)})
+              </button>
+              {availableBanks.map((b) => {
+                const isSelected = selectedBankId === b.key || selectedBankId === b.bankName.toLowerCase();
+                return (
+                  <button
+                    key={`list-pill-${b.key}`}
+                    type="button"
+                    onClick={() => setSelectedBankId(isSelected ? 'all' : b.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                      isSelected
+                        ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-2xs font-black'
+                        : 'bg-white hover:bg-zinc-100 text-zinc-800 border-zinc-200'
+                    }`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                    <span>{b.bankName}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      {b.yearCount}
+                    </span>
+                  </button>
+                );
+              })}
+              {selectedBankId !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedBankId('all')}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-rose-50"
+                >
+                  <span>✕ Ver todas</span>
+                </button>
+              )}
+            </div>
+
+            {/* 2. Filtros secundarios: Año, Estado, Tipo y Buscador */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-zinc-200/60">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Selector de Ejercicio Fiscal */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200">
+                  <span className="text-[10px] font-black uppercase text-zinc-400 px-2">Año:</span>
+                  {availableYears.map((yr) => (
+                    <button
+                      key={`list-yr-${yr}`}
+                      type="button"
+                      onClick={() => setSelectedYear(yr)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        selectedYear === yr
+                          ? 'bg-[#0E6A3B] text-white shadow-2xs font-black'
+                          : 'text-zinc-600 hover:text-zinc-900'
+                      }`}
+                    >
+                      {yr}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Selector de Estado (Todos / Por Comprobar / Comprobados) */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('all')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                      selectedStatus === 'all'
+                        ? 'bg-zinc-800 text-white shadow-2xs font-bold'
+                        : 'text-zinc-600 hover:text-zinc-900'
+                    }`}
+                  >
+                    Todos ({yearCounts.total})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('needs_review')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                      selectedStatus === 'needs_review'
+                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                        : 'text-amber-800 hover:bg-amber-50'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Por Comprobar ({yearCounts.pendingYear})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus('verified')}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                      selectedStatus === 'verified'
+                        ? 'bg-emerald-700 text-white shadow-2xs font-bold'
+                        : 'text-emerald-800 hover:bg-emerald-50'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Comprobados ({yearCounts.verifiedYear})</span>
+                  </button>
+                </div>
+
+                {/* Selector de Tipo (Todos / Intereses / Dividendos) */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedType('all')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      selectedType === 'all' ? 'bg-zinc-800 text-white shadow-2xs font-bold' : 'text-zinc-600'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedType('interest')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      selectedType === 'interest' ? 'bg-[#0E6A3B] text-white shadow-2xs font-bold' : 'text-zinc-600'
+                    }`}
+                  >
+                    Intereses
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedType('dividend')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                      selectedType === 'dividend' ? 'bg-emerald-800 text-white shadow-2xs font-bold' : 'text-zinc-600'
+                    }`}
+                  >
+                    Dividendos
+                  </button>
+                </div>
+              </div>
+
+              {/* Buscador de texto */}
+              <div className="relative min-w-[200px] flex-1 sm:flex-initial">
+                <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar concepto o banco..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs font-medium rounded-xl border border-zinc-200 bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0E6A3B]"
+                />
+              </div>
+            </div>
+
+            {/* Aviso informativo si hay filtros activos */}
+            {(selectedBankId !== 'all' || selectedStatus !== 'all' || selectedType !== 'all' || selectedMonth !== 'all' || searchTerm.trim()) && (
+              <div className="flex items-center justify-between gap-2 p-2 px-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold">Filtros activos:</span>
+                  {selectedBankId !== 'all' && (
+                    <span className="px-2 py-0.5 rounded-full bg-white font-bold border border-emerald-300 text-emerald-900">
+                      Banco: {selectedBankName}
+                    </span>
+                  )}
+                  {selectedStatus === 'needs_review' && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 font-bold border border-amber-300 text-amber-950">
+                      Solo Por Comprobar ({yearCounts.pendingYear})
+                    </span>
+                  )}
+                  {selectedStatus === 'verified' && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 font-bold border border-emerald-300 text-emerald-950">
+                      Solo Comprobados ({yearCounts.verifiedYear})
+                    </span>
+                  )}
+                  {selectedType !== 'all' && (
+                    <span className="px-2 py-0.5 rounded-full bg-white font-bold border border-emerald-300 text-emerald-900">
+                      Tipo: {selectedType === 'interest' ? 'Intereses' : 'Dividendos'}
+                    </span>
+                  )}
+                  {searchTerm.trim() && (
+                    <span className="px-2 py-0.5 rounded-full bg-white font-bold border border-emerald-300 text-emerald-900">
+                      Búsqueda: "{searchTerm}"
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBankId('all');
+                    setSelectedStatus('all');
+                    setSelectedType('all');
+                    setSelectedMonth('all');
+                    setSearchTerm('');
+                  }}
+                  className="font-bold text-rose-600 hover:text-rose-800 cursor-pointer text-xs shrink-0"
+                >
+                  Restablecer todos
+                </button>
+              </div>
+            )}
+          </div>
+
           {filteredYields.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-zinc-100 text-zinc-400 flex items-center justify-center mx-auto">
@@ -2255,6 +2466,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
         </div>
       )}
 
+      </div>
     </div>
   );
 };

@@ -1,58 +1,66 @@
 @import "tailwindcss";
 
+/* 1. Por defecto en pantalla: ocultar siempre elementos de impresión */
+.print-only,
+.print-report,
+[data-print="only"] {
+  display: none !important;
+}
+
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm 10mm 12mm 10mm;
+    margin: 8mm 8mm 10mm 8mm;
   }
 
-  /* 1. Ocultar absolutamente todos los controles interactivos, botones, formularios y navegación */
+  /* Ocultar absolutamente todos los elementos de pantalla, controles, botones, formularios y navegación */
+  .no-print,
+  .screen-only,
+  .print-hidden,
+  .print\:hidden,
   #app-header,
   #mobile-nav,
+  #auto-update-floating-alert,
   nav,
   aside,
   header,
-  .no-print,
-  .print-hidden,
-  .print\:hidden,
   button,
   select,
   input,
   textarea,
   [role="button"],
+  [role="alert"],
   .fixed,
   .sticky,
   .cursor-pointer,
   .filter-controls,
-  .screen-only,
   .action-column {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
   }
 
-  /* 2. Forzar visualización de elementos exclusivos de impresión */
+  /* Forzar visualización de elementos exclusivos de impresión */
   .print-only,
-  .print\:block {
+  .print-report,
+  [data-print="only"] {
     display: block !important;
+    visibility: visible !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
-  .print\:inline-block {
-    display: inline-block !important;
-  }
-
-  .print\:table {
-    display: table !important;
-  }
-
-  .print\:table-row {
-    display: table-row !important;
-  }
-
-  /* 3. Fondo blanco puro, textos oscuros y eliminación de sombras de pantalla */
-  body, html, #root {
+  /* Fondo blanco puro, textos oscuros y anulación de márgenes web */
+  body, html, #root, main {
     background-color: #ffffff !important;
     background: #ffffff !important;
     color: #09090b !important;
-    font-size: 10.5px !important;
+    font-size: 10px !important;
     line-height: 1.35 !important;
     width: 100% !important;
     margin: 0 !important;
@@ -66,23 +74,31 @@
     text-shadow: none !important;
   }
 
-  /* 4. Anular contenedores con scroll/overflow que cortan tablas o apuntes */
+  /* Desactivar cualquier contenedor con scroll o clipping que corte tablas */
   main, div, section, article, .overflow-x-auto, .overflow-y-auto, .overflow-hidden {
     max-width: 100% !important;
     overflow: visible !important;
-    overflow-x: visible !important;
-    overflow-y: visible !important;
     contain: none !important;
     height: auto !important;
   }
 
-  /* 5. Estilo impecable de tablas impresas: ancho completo, sin cortes y con cabeceras repetibles */
-  table {
+  /* Tabla oficial de impresión A4: ancho 100% y ajuste sin cortes */
+  .print-table {
+    display: table !important;
     width: 100% !important;
     max-width: 100% !important;
     table-layout: auto !important;
     border-collapse: collapse !important;
-    font-size: 10px !important;
+    font-size: 9.5px !important;
+  }
+
+  .print-table th,
+  .print-table td {
+    display: table-cell !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    padding: 5px 4px !important;
   }
 
   tr {
@@ -96,13 +112,6 @@
 
   tfoot {
     display: table-footer-group !important;
-  }
-
-  th, td {
-    padding: 5px 6px !important;
-    font-size: 9.5px !important;
-    white-space: normal !important; /* Salto de línea inteligente en descripciones largas para no recortar columnas */
-    word-break: break-word !important;
   }
 
   .break-inside-avoid {
