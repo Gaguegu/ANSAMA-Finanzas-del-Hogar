@@ -12,7 +12,8 @@ import {
   getAvailableMonths,
   getAccountBalanceForMonth,
   cleanAndRestoreBackup,
-  purgeDemoAccounts
+  purgeDemoAccounts,
+  normalizeAndDeduplicateYieldsAndTransactions
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { reconcileAndCategorizeAll, normalizeConceptForMatching, areTransactionsSimilar } from './utils/reconciliation';
@@ -88,6 +89,17 @@ export default function App() {
       triggerNotification(pwa.updateFeedback, 'info');
     }
   }, [pwa.updateFeedback]);
+
+  // Auto-conciliación, deduplicación y verificación de rendimientos hasta fecha de cierre
+  useEffect(() => {
+    const normalized = normalizeAndDeduplicateYieldsAndTransactions(appState);
+    const yieldsChanged = JSON.stringify(normalized.yieldRecords) !== JSON.stringify(appState.yieldRecords);
+    const txsChanged = normalized.transactions.length !== appState.transactions.length;
+    if (yieldsChanged || txsChanged) {
+      setAppState(normalized);
+      saveAppState(normalized);
+    }
+  }, []);
 
   // Add new transaction & update account balance
   const handleAddTransaction = (newTxData: Omit<Transaction, 'id'>) => {

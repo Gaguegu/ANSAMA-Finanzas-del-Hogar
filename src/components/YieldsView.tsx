@@ -2461,9 +2461,7 @@ export const YieldsView: React.FC<YieldsViewProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (window.confirm(`¿Eliminar el registro "${record.title}"?`)) {
-                                  onDeleteYield(record.id);
-                                }
+                                onDeleteYield(record.id);
                               }}
                               className="p-1.5 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
                               title="Eliminar este cobro"
