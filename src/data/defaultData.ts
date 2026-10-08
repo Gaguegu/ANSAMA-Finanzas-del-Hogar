@@ -19,23 +19,6 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     borderColor: '#004481'
   },
   {
-    id: 'acc-bbva-tarjeta',
-    bankId: 'bbva',
-    bankName: 'BBVA',
-    accountName: 'Tarjeta Aqua Crédito',
-    iban: 'ES76 0182 4590 1200 9942 8841',
-    accountNumberMasked: 'Aqua Crédito •• 8841',
-    type: 'credit',
-    balance: -435.60,
-    balanceDate: '2026-09-20',
-    currency: 'EUR',
-    lastSynced: new Date().toISOString(),
-    color: '#1464A5',
-    textColor: '#ffffff',
-    bgLight: '#eef6fc',
-    borderColor: '#1464A5'
-  },
-  {
     id: 'acc-santander-one',
     bankId: 'santander',
     bankName: 'Santander',
@@ -349,13 +332,13 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
   },
   {
     id: 'tx-4',
-    accountId: 'acc-bbva-tarjeta',
+    accountId: 'acc-bbva-nomina',
     date: '2026-09-10',
     title: 'Restaurante Asador La Dehesa',
     amount: 58.50,
     type: 'expense',
     categoryId: 'cat-ocio',
-    note: 'Comida de domingo'
+    note: 'Pago tarjeta de débito en cuenta corriente'
   },
   {
     id: 'tx-5',

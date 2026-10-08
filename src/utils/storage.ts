@@ -203,10 +203,17 @@ export function loadAppState(): AppState {
         return updated;
       });
 
-      // Asegurar que todas las entidades con movimientos o rendimientos (Bankinter, Trade Republic, Openbank)
+      // Eliminar cualquier tarjeta de crédito de demostración ('acc-bbva-tarjeta' / tipo credit)
+      // ya que el usuario únicamente opera con tarjetas de débito con cargos en cuenta corriente
+      if (parsed.accounts.some((a: BankAccount) => a.id === 'acc-bbva-tarjeta' || a.type === 'credit')) {
+        parsed.accounts = parsed.accounts.filter((a: BankAccount) => a.id !== 'acc-bbva-tarjeta' && a.type !== 'credit');
+        hasRepairedAccount = true;
+      }
+
+      // Asegurar que todas las entidades con movimientos o rendimientos (Bankinter, Trade Republic, Openbank, ING)
       // estén presentes en la lista de cuentas para poder filtrar por ellas
       const existingAccIds = new Set(parsed.accounts.map((a: BankAccount) => a.id));
-      const missingAccounts = DEFAULT_ACCOUNTS.filter(def => !existingAccIds.has(def.id));
+      const missingAccounts = DEFAULT_ACCOUNTS.filter(def => !existingAccIds.has(def.id) && def.id !== 'acc-bbva-tarjeta' && def.type !== 'credit');
       if (missingAccounts.length > 0) {
         parsed.accounts = [...parsed.accounts, ...missingAccounts];
         hasRepairedAccount = true;
@@ -218,6 +225,15 @@ export function loadAppState(): AppState {
     let hasRepairedTransactions = false;
     if (Array.isArray(parsed.transactions)) {
       parsed.transactions = parsed.transactions.map((tx: Transaction) => {
+        // Reasignar cargos de tarjeta a la cuenta corriente correspondiente (débito)
+        if (tx.accountId === 'acc-bbva-tarjeta') {
+          hasRepairedTransactions = true;
+          tx = {
+            ...tx,
+            accountId: 'acc-bbva-nomina'
+          };
+        }
+
         const titleLower = (tx.title || '').toLowerCase();
 
         // A. RETENCIONES FISCALES (Hacienda, IRPF sobre intereses/rendimientos):
