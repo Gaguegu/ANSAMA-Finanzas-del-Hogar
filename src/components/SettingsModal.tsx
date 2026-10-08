@@ -60,6 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [pendingEncryptedContent, setPendingEncryptedContent] = useState<string | null>(null);
   const [importPasswordInput, setImportPasswordInput] = useState('');
   const [importPasswordError, setImportPasswordError] = useState<string | null>(null);
+  const [generalImportError, setGeneralImportError] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
 
   // Backup format preference: encrypted (recommended) or standard json
@@ -141,6 +142,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setGeneralImportError(null);
     const reader = new FileReader();
     reader.onload = async (event) => {
       const content = event.target?.result as string;
@@ -155,19 +157,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }
 
         // Standard unencrypted JSON backup
-        if (parsed.accounts && parsed.transactions && parsed.categories) {
-          const cleaned = cleanAndRestoreBackup(parsed);
+        const data = parsed.state || parsed;
+        if (data && (Array.isArray(data.accounts) || Array.isArray(data.transactions))) {
+          const cleaned = cleanAndRestoreBackup(data);
           onStateUpdated(cleaned);
+          setGeneralImportError(null);
           setShowSuccessToast('Copia de seguridad restaurada correctamente con éxito.');
           setTimeout(() => {
             setShowSuccessToast(null);
             onClose();
           }, 1400);
         } else {
-          setImportPasswordError('El archivo no contiene una copia válida de ANSAMA Finanzas.');
+          setGeneralImportError('El archivo no contiene un formato reconocido de copia de seguridad (cuentas o movimientos).');
         }
-      } catch (err) {
-        setImportPasswordError('Error al leer el archivo. Asegúrate de que no está dañado.');
+      } catch (err: any) {
+        setGeneralImportError(err?.message || 'Error al leer el archivo. Asegúrate de que no está dañado.');
       }
     };
     reader.readAsText(file);
@@ -188,12 +192,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const decryptedJsonStr = await decryptData(pendingEncryptedContent, importPasswordInput.trim());
       const parsed = JSON.parse(decryptedJsonStr);
+      const data = parsed.state || parsed;
 
-      if (parsed.accounts && parsed.transactions && parsed.categories) {
-        const cleaned = cleanAndRestoreBackup(parsed);
+      if (data && (Array.isArray(data.accounts) || Array.isArray(data.transactions))) {
+        const cleaned = cleanAndRestoreBackup(data);
         onStateUpdated(cleaned);
         setPendingEncryptedContent(null);
         setImportPasswordInput('');
+        setGeneralImportError(null);
         setShowSuccessToast('¡Copia descifrada y restaurada correctamente con éxito!');
         setTimeout(() => {
           setShowSuccessToast(null);
@@ -550,6 +556,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="hidden"
               />
             </div>
+
+            {generalImportError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{generalImportError}</span>
+              </div>
+            )}
 
             {/* Export Standard unencrypted option (small link) */}
             <div className="flex items-center justify-between pt-1 text-[11px] text-zinc-500">

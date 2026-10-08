@@ -223,12 +223,18 @@ export function loadAppState(): AppState {
         return updated;
       });
 
-      // Eliminar cuentas de demostración (BBVA, Santander, ING de muestra, tarjetas de crédito ficticias)
-      // si el usuario tiene sus propias cuentas reales auténticas
+      // Quitar siempre tarjetas de crédito (el usuario opera con débito y los cargos se anotan en su cuenta corriente)
+      const creditCountBefore = parsed.accounts.length;
+      parsed.accounts = parsed.accounts.filter((a: BankAccount) => a.type !== 'credit' && a.id !== 'acc-bbva-tarjeta');
+      if (parsed.accounts.length !== creditCountBefore) {
+        hasRepairedAccount = true;
+      }
+
+      // Eliminar cuentas de demostración inyectadas si el usuario ya tiene sus propias cuentas reales
       const hasRealUserAccounts = parsed.accounts.some((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
       if (hasRealUserAccounts) {
         const initialCount = parsed.accounts.length;
-        parsed.accounts = parsed.accounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit');
+        parsed.accounts = parsed.accounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
         if (parsed.accounts.length !== initialCount) {
           hasRepairedAccount = true;
         }
@@ -792,28 +798,50 @@ export function purgeDemoAccounts(currentState: AppState): AppState {
 }
 
 export function cleanAndRestoreBackup(parsed: any): AppState {
-  if (!parsed || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.categories)) {
-    throw new Error('El archivo no contiene un formato válido de copia de seguridad.');
+  if (!parsed) {
+    throw new Error('El archivo no contiene un formato de datos válido.');
   }
 
-  // Si la copia contiene cuentas reales, eliminar cualquier cuenta de demostración o tarjeta de crédito
-  const hasRealAccounts = parsed.accounts.some((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
-  
-  let finalAccounts = parsed.accounts;
-  let finalTransactions = parsed.transactions;
-  let finalYields = parsed.yieldRecords || [];
+  const raw = parsed.state || parsed;
 
-  if (hasRealAccounts) {
-    finalAccounts = finalAccounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit');
-    finalTransactions = finalTransactions.filter((t: Transaction) => !DEMO_ACCOUNT_IDS.has(t.accountId));
-    finalYields = finalYields.filter((y: YieldRecord) => !DEMO_ACCOUNT_IDS.has(y.accountId));
+  const accounts: BankAccount[] = Array.isArray(raw.accounts) ? raw.accounts : [];
+  const transactions: Transaction[] = Array.isArray(raw.transactions) ? raw.transactions : [];
+  const categories: TransactionCategory[] = Array.isArray(raw.categories) && raw.categories.length > 0
+    ? raw.categories
+    : INITIAL_STATE.categories;
+
+  if (accounts.length === 0 && transactions.length === 0) {
+    throw new Error('El archivo no contiene cuentas ni movimientos válidos de copia de seguridad.');
   }
+
+  // Quitar tarjetas de crédito (el usuario solo opera con débito vinculado a cuenta corriente)
+  const creditAccountIds = new Set(
+    accounts
+      .filter((a: BankAccount) => a.type === 'credit' || a.id === 'acc-bbva-tarjeta')
+      .map((a: BankAccount) => a.id)
+  );
+
+  const finalAccounts = accounts.filter(
+    (a: BankAccount) => a.type !== 'credit' && a.id !== 'acc-bbva-tarjeta'
+  );
+
+  const finalTransactions = transactions.filter(
+    (t: Transaction) => !creditAccountIds.has(t.accountId)
+  );
+
+  const finalYields = Array.isArray(raw.yieldRecords)
+    ? raw.yieldRecords.filter((y: YieldRecord) => !creditAccountIds.has(y.accountId))
+    : [];
 
   const restoredState: AppState = {
-    ...parsed,
+    ...raw,
     accounts: finalAccounts,
     transactions: finalTransactions,
-    yieldRecords: finalYields
+    categories: categories,
+    monthlyClosures: Array.isArray(raw.monthlyClosures) ? raw.monthlyClosures : [],
+    yieldRecords: finalYields,
+    transfers: Array.isArray(raw.transfers) ? raw.transfers : [],
+    security: raw.security || { hasPassword: false }
   };
 
   saveAppState(restoredState);
