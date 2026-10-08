@@ -19,7 +19,7 @@ import {
   FileKey
 } from 'lucide-react';
 import { AppState } from '../types';
-import { saveAppState, resetToDefaults, resetToZero } from '../utils/storage';
+import { saveAppState, resetToDefaults, resetToZero, cleanAndRestoreBackup } from '../utils/storage';
 import { encryptData, decryptData, hashPassword } from '../utils/crypto';
 import { APP_VERSION } from '../version';
 
@@ -156,18 +156,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         // Standard unencrypted JSON backup
         if (parsed.accounts && parsed.transactions && parsed.categories) {
-          saveAppState(parsed);
-          onStateUpdated(parsed);
+          const cleaned = cleanAndRestoreBackup(parsed);
+          onStateUpdated(cleaned);
           setShowSuccessToast('Copia de seguridad restaurada correctamente con éxito.');
           setTimeout(() => {
             setShowSuccessToast(null);
             onClose();
           }, 1400);
         } else {
-          alert('El archivo no contiene una copia válida de ANSAMA Finanzas.');
+          setImportPasswordError('El archivo no contiene una copia válida de ANSAMA Finanzas.');
         }
       } catch (err) {
-        alert('Error al leer el archivo. Asegúrate de que no está dañado.');
+        setImportPasswordError('Error al leer el archivo. Asegúrate de que no está dañado.');
       }
     };
     reader.readAsText(file);
@@ -190,8 +190,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const parsed = JSON.parse(decryptedJsonStr);
 
       if (parsed.accounts && parsed.transactions && parsed.categories) {
-        saveAppState(parsed);
-        onStateUpdated(parsed);
+        const cleaned = cleanAndRestoreBackup(parsed);
+        onStateUpdated(cleaned);
         setPendingEncryptedContent(null);
         setImportPasswordInput('');
         setShowSuccessToast('¡Copia descifrada y restaurada correctamente con éxito!');

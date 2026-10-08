@@ -4,7 +4,7 @@ import {
   PiggyBank, 
   ArrowUpRight, 
   ArrowDownRight, 
-  CreditCard,
+  Wallet,
   ShieldCheck,
   Calendar
 } from 'lucide-react';
@@ -147,19 +147,35 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({
             </div>
           </div>
 
-          {/* Pasivos / Tarjetas */}
-          <div className="p-4 rounded-xl bg-white border-2 border-zinc-200/90 shadow-2xs hover:border-zinc-300 transition-all flex flex-col justify-between">
-            <div className="flex items-center justify-between text-zinc-500 mb-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">Deuda / Tarjetas</span>
-              <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
-                <CreditCard className="w-4 h-4" />
+          {/* Ahorro Neto del Mes */}
+          <div className={`p-4 rounded-xl border-2 shadow-2xs transition-all flex flex-col justify-between ${
+            monthlySavings >= 0 
+              ? 'bg-emerald-50/40 border-emerald-600/35 hover:border-emerald-600/70' 
+              : 'bg-rose-50/30 border-rose-300/80 hover:border-rose-400'
+          }`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className={`text-[11px] font-bold uppercase tracking-wider ${
+                monthlySavings >= 0 ? 'text-emerald-900' : 'text-rose-700'
+              }`}>
+                Ahorro Neto (Mes)
+              </span>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${
+                monthlySavings >= 0 
+                  ? 'bg-emerald-100/90 border-emerald-300 text-[#0E6A3B]' 
+                  : 'bg-rose-100 border-rose-300 text-rose-600'
+              }`}>
+                <Wallet className="w-4 h-4" />
               </div>
             </div>
             <div>
-              <div className="text-2xl font-bold text-rose-600 tracking-tight font-feature-settings-tnum">
-                {formatCurrency(totalLiabilities)}
+              <div className={`text-2xl font-black tracking-tight font-feature-settings-tnum ${
+                monthlySavings >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
+              }`}>
+                {monthlySavings >= 0 ? '+' : ''}{formatCurrency(monthlySavings)}
               </div>
-              <p className="text-xs text-zinc-500 mt-1 font-medium">Dispuesto en tarjetas de crédito</p>
+              <p className="text-xs text-zinc-500 mt-1 font-medium">
+                {monthlySavings >= 0 ? `Superávit (${savingsRate.toFixed(1)}% tasa ahorro)` : 'Déficit en el periodo'}
+              </p>
             </div>
           </div>
 
@@ -191,12 +207,7 @@ export const NetWorthCard: React.FC<NetWorthCardProps> = ({
               <div className="text-2xl font-bold text-zinc-900 tracking-tight font-feature-settings-tnum">
                 {formatCurrency(monthlyExpense)}
               </div>
-              <div className="flex items-center justify-between mt-1 text-xs">
-                <span className="text-zinc-500 font-medium">Margen libre:</span>
-                <span className={`font-bold ${monthlySavings >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}`}>
-                  {monthlySavings >= 0 ? '+' : ''}{formatCurrency(monthlySavings)}
-                </span>
-              </div>
+              <p className="text-xs text-zinc-500 mt-1 font-medium">Cargos en cuenta y tarjetas débito</p>
             </div>
           </div>
 

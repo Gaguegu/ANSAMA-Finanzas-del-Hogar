@@ -5,6 +5,26 @@ import { reconcileAndCategorizeAll } from './reconciliation';
 
 const STORAGE_KEY = 'ansama_finanzas_hogar_v1';
 
+export const DEMO_ACCOUNT_IDS = new Set([
+  'acc-bbva-tarjeta',
+  'acc-bbva-nomina',
+  'acc-santander-one',
+  'acc-santander-ahorro',
+  'acc-bankinter',
+  'acc-trade-republic',
+  'acc-openbank',
+  'acc-ing-naranja',
+  'acc-ing-nomina',
+  'acc-1',
+  'acc-2',
+  'acc-3',
+  'acc-4'
+]);
+
+export function isDemoAccountId(id: string): boolean {
+  return DEMO_ACCOUNT_IDS.has(id);
+}
+
 export function loadAppState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -113,8 +133,8 @@ export function loadAppState(): AppState {
             }
             return y;
           });
-      } else {
-        // Si no figuraba, incorporar el apunte oficial verificado de ING
+      } else if (Array.isArray(parsed.accounts) && parsed.accounts.some((a: BankAccount) => a.id === 'acc-ing-naranja')) {
+        // Si no figuraba, incorporar el apunte oficial verificado de ING solo si el usuario tiene esa cuenta
         parsed.yieldRecords.push({
           id: 'yd-2026-ing-1',
           type: 'interest',
@@ -203,20 +223,23 @@ export function loadAppState(): AppState {
         return updated;
       });
 
-      // Eliminar cualquier tarjeta de crédito de demostración ('acc-bbva-tarjeta' / tipo credit)
-      // ya que el usuario únicamente opera con tarjetas de débito con cargos en cuenta corriente
-      if (parsed.accounts.some((a: BankAccount) => a.id === 'acc-bbva-tarjeta' || a.type === 'credit')) {
-        parsed.accounts = parsed.accounts.filter((a: BankAccount) => a.id !== 'acc-bbva-tarjeta' && a.type !== 'credit');
-        hasRepairedAccount = true;
-      }
+      // Eliminar cuentas de demostración (BBVA, Santander, ING de muestra, tarjetas de crédito ficticias)
+      // si el usuario tiene sus propias cuentas reales auténticas
+      const hasRealUserAccounts = parsed.accounts.some((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
+      if (hasRealUserAccounts) {
+        const initialCount = parsed.accounts.length;
+        parsed.accounts = parsed.accounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit');
+        if (parsed.accounts.length !== initialCount) {
+          hasRepairedAccount = true;
+        }
 
-      // Asegurar que todas las entidades con movimientos o rendimientos (Bankinter, Trade Republic, Openbank, ING)
-      // estén presentes en la lista de cuentas para poder filtrar por ellas
-      const existingAccIds = new Set(parsed.accounts.map((a: BankAccount) => a.id));
-      const missingAccounts = DEFAULT_ACCOUNTS.filter(def => !existingAccIds.has(def.id) && def.id !== 'acc-bbva-tarjeta' && def.type !== 'credit');
-      if (missingAccounts.length > 0) {
-        parsed.accounts = [...parsed.accounts, ...missingAccounts];
-        hasRepairedAccount = true;
+        // Purgar también transacciones y rendimientos huérfanos asociados a cuentas demo
+        if (Array.isArray(parsed.transactions)) {
+          parsed.transactions = parsed.transactions.filter((t: Transaction) => !DEMO_ACCOUNT_IDS.has(t.accountId));
+        }
+        if (Array.isArray(parsed.yieldRecords)) {
+          parsed.yieldRecords = parsed.yieldRecords.filter((y: YieldRecord) => !DEMO_ACCOUNT_IDS.has(y.accountId));
+        }
       }
     }
 
@@ -336,16 +359,22 @@ export function loadAppState(): AppState {
             titleLower.includes('extraccion') ||
             titleLower.includes('extracción');
 
-          if (
-            isActuallyExpense &&
-            !titleLower.includes('bonificacion') &&
-            !titleLower.includes('bonificación') &&
-            !titleLower.includes('abono de intereses') &&
-            !titleLower.includes('anulacion') &&
-            !titleLower.includes('anulación') &&
-            !titleLower.includes('devolucion') &&
-            !titleLower.includes('devolución')
-          ) {
+          const isLegitimateIncome = 
+            titleLower.includes('interes') ||
+            titleLower.includes('interés') ||
+            titleLower.includes('bonificacion') ||
+            titleLower.includes('bonificación') ||
+            titleLower.includes('nomina') ||
+            titleLower.includes('nómina') ||
+            titleLower.includes('recibida') ||
+            titleLower.includes('recibido') ||
+            titleLower.includes('dividendo') ||
+            titleLower.includes('anulacion') ||
+            titleLower.includes('anulación') ||
+            titleLower.includes('devolucion') ||
+            titleLower.includes('devolución');
+
+          if (isActuallyExpense && !isLegitimateIncome) {
             hasRepairedTransactions = true;
             let newCat = tx.categoryId;
             if (tx.categoryId === 'cat-traspaso-ingreso') {
@@ -740,6 +769,57 @@ export function resetToDefaults(): AppState {
   return INITIAL_STATE;
 }
 
+export function purgeDemoAccounts(currentState: AppState): AppState {
+  const cleanedAccounts = (currentState.accounts || []).filter(
+    (a) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit'
+  );
+  const cleanedTransactions = (currentState.transactions || []).filter(
+    (t) => !DEMO_ACCOUNT_IDS.has(t.accountId)
+  );
+  const cleanedYields = (currentState.yieldRecords || []).filter(
+    (y) => !DEMO_ACCOUNT_IDS.has(y.accountId)
+  );
+
+  const cleanedState: AppState = {
+    ...currentState,
+    accounts: cleanedAccounts,
+    transactions: cleanedTransactions,
+    yieldRecords: cleanedYields
+  };
+
+  saveAppState(cleanedState);
+  return cleanedState;
+}
+
+export function cleanAndRestoreBackup(parsed: any): AppState {
+  if (!parsed || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.categories)) {
+    throw new Error('El archivo no contiene un formato válido de copia de seguridad.');
+  }
+
+  // Si la copia contiene cuentas reales, eliminar cualquier cuenta de demostración o tarjeta de crédito
+  const hasRealAccounts = parsed.accounts.some((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
+  
+  let finalAccounts = parsed.accounts;
+  let finalTransactions = parsed.transactions;
+  let finalYields = parsed.yieldRecords || [];
+
+  if (hasRealAccounts) {
+    finalAccounts = finalAccounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit');
+    finalTransactions = finalTransactions.filter((t: Transaction) => !DEMO_ACCOUNT_IDS.has(t.accountId));
+    finalYields = finalYields.filter((y: YieldRecord) => !DEMO_ACCOUNT_IDS.has(y.accountId));
+  }
+
+  const restoredState: AppState = {
+    ...parsed,
+    accounts: finalAccounts,
+    transactions: finalTransactions,
+    yieldRecords: finalYields
+  };
+
+  saveAppState(restoredState);
+  return restoredState;
+}
+
 export function resetToZero(
   currentState?: AppState, 
   clearAccountsMode: 'keep' | 'clearDemo' | 'clearAll' = 'clearDemo'
@@ -749,10 +829,9 @@ export function resetToZero(
   if (clearAccountsMode === 'clearAll') {
     finalAccounts = [];
   } else if (clearAccountsMode === 'clearDemo') {
-    // Remove default demo accounts (acc-1, acc-2, acc-3, acc-4)
-    const demoIds = new Set(['acc-1', 'acc-2', 'acc-3', 'acc-4']);
+    // Remove all demo accounts
     finalAccounts = (currentState?.accounts || [])
-      .filter((a) => !demoIds.has(a.id))
+      .filter((a) => !DEMO_ACCOUNT_IDS.has(a.id) && a.type !== 'credit')
       .map((acc) => ({
         ...acc,
         balance: 0,

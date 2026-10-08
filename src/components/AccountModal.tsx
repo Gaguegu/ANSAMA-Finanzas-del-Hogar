@@ -275,7 +275,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 <option value="savings">Cuenta de Ahorro</option>
                 <option value="deposit">🏦 Depósito a Plazo Fijo</option>
                 <option value="investment">📈 Cuenta de Valores</option>
-                <option value="credit">Tarjeta de Crédito</option>
               </select>
             </div>
 

@@ -20,10 +20,11 @@ import {
   Calendar,
   FileSpreadsheet,
   Info,
-  Eye
+  Eye,
+  Upload
 } from 'lucide-react';
 import { BankAccount, Transaction, AccountType, MonthClosure } from '../types';
-import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth } from '../utils/storage';
+import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth, isDemoAccountId } from '../utils/storage';
 import { SyncAccountBalanceModal } from './SyncAccountBalanceModal';
 
 interface BankAccountsListProps {
@@ -36,6 +37,8 @@ interface BankAccountsListProps {
   onDeleteAccount?: (accountId: string, accountName?: string) => void;
   onDeleteBank?: (bankId: string, bankName: string, accountIds: string[]) => void;
   onOpenImportModal?: (targetAccountId?: string) => void;
+  onPurgeDemoAccounts?: () => void;
+  onDirectRestoreFile?: (file: File) => void;
   isSyncing: boolean;
   selectedMonth?: string;
   monthlyClosures?: MonthClosure[];
@@ -51,12 +54,15 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   onDeleteAccount,
   onDeleteBank,
   onOpenImportModal,
+  onPurgeDemoAccounts,
+  onDirectRestoreFile,
   isSyncing,
   selectedMonth,
   monthlyClosures = []
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [accountToSyncBalance, setAccountToSyncBalance] = useState<BankAccount | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<BankAccount | null>(null);
   const [bankToDelete, setBankToDelete] = useState<{
     bankId: string;
     bankName: string;
@@ -64,6 +70,10 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
     accounts: BankAccount[];
     total: number;
   } | null>(null);
+
+  const hasDemoAccounts = useMemo(() => {
+    return accounts.some((a) => isDemoAccountId(a.id));
+  }, [accounts]);
 
   // Cuentas cuyo aviso de movimientos posteriores ha sido descartado por el usuario
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(() => {
@@ -300,13 +310,15 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
+              {isDemoAccountId(account.id) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full" title="Cuenta de demostración que puedes eliminar">
+                  Ejemplo
+                </span>
+              )}
               {onDeleteAccount && (
                 <button
-                  onClick={() => {
-                    if (window.confirm(`¿Seguro que deseas eliminar la cuenta "${account.accountName}"?`)) {
-                      onDeleteAccount(account.id, account.accountName);
-                    }
-                  }}
+                  type="button"
+                  onClick={() => setAccountToDelete(account)}
                   className="p-1 text-zinc-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer"
                   title="Eliminar cuenta"
                 >
@@ -466,6 +478,56 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   return (
     <div id="section-bank-accounts" className="space-y-6">
       
+      {/* Banner de Recuperación de Copia de Seguridad del 2 de Octubre */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 text-white rounded-2xl p-5 border-2 border-emerald-500/30 shadow-lg">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              </span>
+              <h3 className="font-bold text-base text-white">
+                Restaura aquí tu copia de seguridad del 2 de Octubre
+              </h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+              Carga tu archivo de copia (<span className="text-emerald-300 font-mono font-semibold">.json</span> o <span className="text-emerald-300 font-mono font-semibold">.ansama</span>) que guardaste el 2 de octubre. Recuperarás inmediatamente todas tus cuentas, movimientos y saldos auténticos, y el sistema limpiará cualquier cuenta de muestra o tarjeta de crédito ficticia.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto shrink-0">
+            <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 active:scale-95 rounded-xl transition-all shadow-md cursor-pointer">
+              <Upload className="w-4 h-4 text-slate-950" />
+              <span>Restaurar Copia del 2 de Octubre</span>
+              <input
+                type="file"
+                accept=".json,.ansama"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && onDirectRestoreFile) {
+                    onDirectRestoreFile(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+
+            {hasDemoAccounts && onPurgeDemoAccounts && (
+              <button
+                type="button"
+                onClick={onPurgeDemoAccounts}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-rose-200 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-800/80 rounded-xl transition-all cursor-pointer shadow-sm"
+                title="Eliminar cuentas de muestra (BBVA, Santander, ING de ejemplo)"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Eliminar cuentas de ejemplo</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 p-4 sm:p-5 rounded-2xl border-2 border-[#0E6A3B]/45 shadow-xs ring-1 ring-emerald-950/5">
         <div className="flex items-center gap-3">
@@ -800,6 +862,50 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Sí, eliminar {bankToDelete.bankName}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación para eliminar cuenta individual */}
+      {accountToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-zinc-200">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-zinc-950">¿Eliminar esta cuenta?</h3>
+                <p className="text-xs text-zinc-500 font-medium">{accountToDelete.accountName} ({accountToDelete.bankName})</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 leading-relaxed mb-4">
+              Esta cuenta y sus movimientos asociados se eliminarán de tu panel. Si se trata de una cuenta que no es tuya o de una cuenta de prueba, puedes eliminarla con total seguridad.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setAccountToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-700 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200/80 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteAccount) {
+                    onDeleteAccount(accountToDelete.id, accountToDelete.accountName);
+                  }
+                  setAccountToDelete(null);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Sí, eliminar cuenta
               </button>
             </div>
           </div>

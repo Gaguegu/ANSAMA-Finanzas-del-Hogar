@@ -10,7 +10,9 @@ import {
   formatRelativeTime,
   syncAccountsWithClosures,
   getAvailableMonths,
-  getAccountBalanceForMonth
+  getAccountBalanceForMonth,
+  cleanAndRestoreBackup,
+  purgeDemoAccounts
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { reconcileAndCategorizeAll, normalizeConceptForMatching, areTransactionsSimilar } from './utils/reconciliation';
@@ -486,6 +488,40 @@ export default function App() {
     triggerNotification(`Entidad "${bankName}" y sus ${accountIds.length} cuenta(s) asociadas han sido eliminadas.`);
   };
 
+  // Eliminar todas las cuentas demo / ejemplo de golpe
+  const handlePurgeDemoAccounts = () => {
+    const cleaned = purgeDemoAccounts(appState);
+    setAppState(cleaned);
+    triggerNotification('Cuentas de demostración eliminadas. Solo quedan tus cuentas reales auténticas.');
+  };
+
+  // Restaurar directamente desde archivo de copia (.json o .ansama)
+  const handleDirectRestoreFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.app === 'ANSAMA_FINANZAS_PROTECTED' && parsed.ciphertext) {
+          setIsSettingsModalOpen(true);
+          triggerNotification('Tu copia está protegida con contraseña. Puedes descifrarla y restaurarla desde Ajustes.');
+          return;
+        }
+
+        if (parsed.accounts && parsed.transactions && parsed.categories) {
+          const cleaned = cleanAndRestoreBackup(parsed);
+          setAppState(cleaned);
+          triggerNotification('¡Copia de seguridad del 2 de Octubre restaurada correctamente con éxito!');
+        } else {
+          triggerNotification('El archivo no contiene un formato válido de copia de seguridad.');
+        }
+      } catch (err) {
+        triggerNotification('Error al leer el archivo de copia.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // Simulate bank synchronization
   const handleExecuteSync = async (targetBankId?: 'bbva' | 'santander') => {
     setIsSyncing(true);
@@ -848,6 +884,8 @@ export default function App() {
                   onDeleteAccount={handleDeleteAccount}
                   onDeleteBank={handleDeleteBank}
                   onOpenImportModal={handleOpenImportModal}
+                  onPurgeDemoAccounts={handlePurgeDemoAccounts}
+                  onDirectRestoreFile={handleDirectRestoreFile}
                   isSyncing={isSyncing}
                 />
               </div>
@@ -893,6 +931,8 @@ export default function App() {
               onDeleteAccount={handleDeleteAccount}
               onDeleteBank={handleDeleteBank}
               onOpenImportModal={handleOpenImportModal}
+              onPurgeDemoAccounts={handlePurgeDemoAccounts}
+              onDirectRestoreFile={handleDirectRestoreFile}
               isSyncing={isSyncing}
             />
 

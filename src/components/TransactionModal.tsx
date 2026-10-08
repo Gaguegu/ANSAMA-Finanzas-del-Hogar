@@ -202,7 +202,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           {/* Bank Account */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Cuenta o Tarjeta Bancaria
+              Cuenta Bancaria de Cargo
             </label>
             <select
               value={accountId}
