@@ -119,6 +119,40 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     textColor: '#ffffff',
     bgLight: '#fff5f0',
     borderColor: '#FD5300'
+  },
+  {
+    id: 'acc-ing-naranja',
+    bankId: 'ing',
+    bankName: 'ING',
+    accountName: 'Cuenta Naranja Ahorro',
+    iban: 'ES88 1465 •••• •••• 9812',
+    accountNumberMasked: 'ING •• Naranja',
+    type: 'savings',
+    balance: 221.82,
+    balanceDate: '2026-09-30',
+    currency: 'EUR',
+    lastSynced: new Date().toISOString(),
+    color: '#FF6200',
+    textColor: '#ffffff',
+    bgLight: '#fff7ed',
+    borderColor: '#FF6200'
+  },
+  {
+    id: 'acc-ing-nomina',
+    bankId: 'ing',
+    bankName: 'ING',
+    accountName: 'Cuenta Nómina Operativa',
+    iban: 'ES88 1465 •••• •••• 9811',
+    accountNumberMasked: 'ING •• Nómina',
+    type: 'checking',
+    balance: 101.00,
+    balanceDate: '2026-09-30',
+    currency: 'EUR',
+    lastSynced: new Date().toISOString(),
+    color: '#EA580C',
+    textColor: '#ffffff',
+    bgLight: '#fff7ed',
+    borderColor: '#EA580C'
   }
 ];
 
@@ -402,6 +436,16 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
     type: 'expense',
     categoryId: 'cat-alimentacion',
     note: 'Compra mensual no perecederos'
+  },
+  {
+    id: 'tx-13',
+    accountId: 'acc-ing-naranja',
+    date: '2026-08-31',
+    title: 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+    amount: 1.82,
+    type: 'income',
+    categoryId: 'cat-rendimientos',
+    note: 'Liquidación oficial de intereses agosto (devengo contable 31/08/2026)'
   }
 ];
 
@@ -703,6 +747,20 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     netAmount: 4.75,
     isinOrTicker: 'META',
     notes: 'Dividendo ordinario en efectivo Trade Republic',
+    status: 'verified'
+  },
+  // 4. ING - Liquidación Intereses Cuenta Naranja (Agosto 2026)
+  {
+    id: 'yd-2026-ing-1',
+    type: 'interest',
+    accountId: 'acc-ing-naranja',
+    date: '2026-08-31',
+    title: 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+    grossAmount: 2.25,
+    taxRatePercent: 19,
+    withholdingTax: 0.43,
+    netAmount: 1.82,
+    notes: 'Liquidación oficial de intereses Cuenta Naranja ING (devengo 31/08/2026)',
     status: 'verified'
   },
   // Rendimientos del Capital Mobiliario y Dividendos del Ejercicio 2025 (Auditados de tu documento oficial)
