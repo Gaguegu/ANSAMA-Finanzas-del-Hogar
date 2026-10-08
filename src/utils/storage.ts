@@ -81,10 +81,10 @@ export function loadAppState(): AppState {
         return true;
       });
 
-      // Conciliación, unificación y verificación definitiva de la liquidación de intereses de ING (1,82 € de Agosto 2026):
-      // En ING, los intereses de agosto se liquidan contablemente a fin de mes (fecha operación: 31/08/2026),
-      // pero en el extracto del banco la fecha valor puede anotarse el 01/09/2026.
-      // Se unifica cualquier apunte existente a la fecha oficial 31/08/2026, eliminando duplicados y fijándolo como VERIFICADO.
+      // Conciliación, unificación y verificación definitiva de la liquidación de intereses de ING (1,82 € con F. Valor 01/09/2026):
+      // Según el extracto bancario oficial de ING, el abono se practica con Fecha Valor 01/09/2026 y concepto "Intereses a tu favor".
+      // Se unifica cualquier apunte existente (31/08/2026 o 01/09/2026) en la fecha exacta del extracto: 01/09/2026,
+      // con título limpio "Intereses a tu favor", eliminando duplicados y fijándolo como COMPROBADO Y VERIFICADO (status: 'verified').
       const ingMatches = parsed.yieldRecords.filter((y: YieldRecord) => 
         (y.id === 'yd-2026-ing-1' ||
          ((y.date === '2026-08-31' || y.date === '2026-08-30' || y.date === '2026-09-01' || y.date === '2026-09-02') &&
@@ -100,32 +100,32 @@ export function loadAppState(): AppState {
             if (y.id === primaryId) {
               return {
                 ...y,
-                date: '2026-08-31',
-                title: y.title || 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+                date: '2026-09-01',
+                title: 'Intereses a tu favor',
                 grossAmount: 2.25,
                 taxRatePercent: 19,
                 withholdingTax: 0.43,
                 netAmount: 1.82,
                 status: 'verified' as YieldStatus,
                 autoDetected: false,
-                notes: 'Comprobado y verificado con el extracto bancario oficial de ING. Fecha de devengo contable oficial: 31/08/2026.'
+                notes: 'Liquidación de intereses según extracto oficial ING (F. Valor 01/09/2026)'
               };
             }
             return y;
           });
       } else {
-        // Si no figuraba, incorporar el apunte oficial auditado verificado de ING
+        // Si no figuraba, incorporar el apunte oficial verificado de ING
         parsed.yieldRecords.push({
           id: 'yd-2026-ing-1',
           type: 'interest',
           accountId: 'acc-ing-naranja',
-          date: '2026-08-31',
-          title: 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+          date: '2026-09-01',
+          title: 'Intereses a tu favor',
           grossAmount: 2.25,
           taxRatePercent: 19,
           withholdingTax: 0.43,
           netAmount: 1.82,
-          notes: 'Comprobado y verificado con el extracto bancario oficial de ING (devengo 31/08/2026)',
+          notes: 'Liquidación de intereses según extracto oficial ING (F. Valor 01/09/2026)',
           status: 'verified',
           autoDetected: false
         });
@@ -366,8 +366,8 @@ export function loadAppState(): AppState {
         return !isLegalDisclaimer;
       });
 
-      // Conciliar y unificar transacción de liquidación de intereses ING (1,82 € de Agosto 2026):
-      // Si existe un apunte con fecha 01/09/2026 o 31/08/2026, fijarlo unívocamente al 31/08/2026 y eliminar duplicados
+      // Conciliar y unificar transacción de liquidación de intereses ING (1,82 € con F. Valor 01/09/2026):
+      // Si existe un apunte con fecha 31/08/2026 o 01/09/2026, fijarlo con la fecha real del extracto: 01/09/2026 y eliminar duplicados
       const ingTxMatches = parsed.transactions.filter((t: Transaction) => 
         (t.date === '2026-08-31' || t.date === '2026-08-30' || t.date === '2026-09-01' || t.date === '2026-09-02') &&
         Math.abs(t.amount - 1.82) < 0.05 &&
@@ -382,9 +382,9 @@ export function loadAppState(): AppState {
             if (t.id === keepTxId) {
               return {
                 ...t,
-                date: '2026-08-31',
-                title: t.title || 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
-                note: 'Liquidación oficial de intereses agosto (devengo contable 31/08/2026)'
+                date: '2026-09-01',
+                title: 'Intereses a tu favor',
+                note: 'Abono de intereses Cuenta Naranja ING (F. Valor 01/09/2026)'
               };
             }
             return t;

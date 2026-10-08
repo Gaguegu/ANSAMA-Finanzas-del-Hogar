@@ -145,6 +145,11 @@ export function detectAccountTransfer(
   const isExpense = tx.type === 'expense';
   const targetCategory = isExpense ? 'cat-transferencias-gasto' : 'cat-traspaso-ingreso';
 
+  // Rendimientos, intereses y dividendos nunca son traspasos entre cuentas
+  if (fullText.includes('interes') || fullText.includes('dividendo') || fullText.includes('remuneracion') || fullText.includes('liq. propia')) {
+    return { isTransfer: false, category: null };
+  }
+
   // 1. COMPROBAR CONTRAPARTIDA: Si lo compruebas estará el cargo/abono en la otra cuenta registrada
   const txTime = new Date(tx.date).getTime();
   const oppositeType = isExpense ? 'income' : 'expense';

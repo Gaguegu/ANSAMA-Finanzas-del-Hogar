@@ -125,11 +125,11 @@ export const DEFAULT_ACCOUNTS: BankAccount[] = [
     bankId: 'ing',
     bankName: 'ING',
     accountName: 'Cuenta Naranja Ahorro',
-    iban: 'ES88 1465 •••• •••• 9812',
-    accountNumberMasked: 'ING •• Naranja',
+    iban: 'ES88 1465 0100 9820 0326 5962',
+    accountNumberMasked: '1465 •••• 5962',
     type: 'savings',
-    balance: 221.82,
-    balanceDate: '2026-09-30',
+    balance: 9038.02,
+    balanceDate: '2026-09-01',
     currency: 'EUR',
     lastSynced: new Date().toISOString(),
     color: '#FF6200',
@@ -440,12 +440,12 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
   {
     id: 'tx-13',
     accountId: 'acc-ing-naranja',
-    date: '2026-08-31',
-    title: 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+    date: '2026-09-01',
+    title: 'Intereses a tu favor',
     amount: 1.82,
     type: 'income',
     categoryId: 'cat-rendimientos',
-    note: 'Liquidación oficial de intereses agosto (devengo contable 31/08/2026)'
+    note: 'Abono de intereses Cuenta Naranja ING (F. Valor 01/09/2026)'
   }
 ];
 
@@ -749,18 +749,18 @@ export const DEFAULT_YIELDS: YieldRecord[] = [
     notes: 'Dividendo ordinario en efectivo Trade Republic',
     status: 'verified'
   },
-  // 4. ING - Liquidación Intereses Cuenta Naranja (Agosto 2026)
+  // 4. ING - Liquidación Intereses Cuenta Naranja (Septiembre 2026 / F. Valor 01/09/2026)
   {
     id: 'yd-2026-ing-1',
     type: 'interest',
     accountId: 'acc-ing-naranja',
-    date: '2026-08-31',
-    title: 'Liquidación Intereses Cuenta Naranja ING (Agosto)',
+    date: '2026-09-01',
+    title: 'Intereses a tu favor',
     grossAmount: 2.25,
     taxRatePercent: 19,
     withholdingTax: 0.43,
     netAmount: 1.82,
-    notes: 'Liquidación oficial de intereses Cuenta Naranja ING (devengo 31/08/2026)',
+    notes: 'Liquidación de intereses según extracto oficial ING (F. Valor 01/09/2026)',
     status: 'verified'
   },
   // Rendimientos del Capital Mobiliario y Dividendos del Ejercicio 2025 (Auditados de tu documento oficial)
