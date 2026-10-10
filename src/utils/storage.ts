@@ -6,15 +6,8 @@ import { reconcileAndCategorizeAll } from './reconciliation';
 const STORAGE_KEY = 'ansama_finanzas_hogar_v1';
 
 export const DEMO_ACCOUNT_IDS = new Set([
-  'acc-bbva-tarjeta',
-  'acc-bbva-nomina',
   'acc-santander-one',
   'acc-santander-ahorro',
-  'acc-bankinter',
-  'acc-trade-republic',
-  'acc-openbank',
-  'acc-ing-naranja',
-  'acc-ing-nomina',
   'acc-1',
   'acc-2',
   'acc-3',
@@ -228,24 +221,6 @@ export function loadAppState(): AppState {
       parsed.accounts = parsed.accounts.filter((a: BankAccount) => a.type !== 'credit' && a.id !== 'acc-bbva-tarjeta');
       if (parsed.accounts.length !== creditCountBefore) {
         hasRepairedAccount = true;
-      }
-
-      // Eliminar cuentas de demostración inyectadas si el usuario ya tiene sus propias cuentas reales
-      const hasRealUserAccounts = parsed.accounts.some((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
-      if (hasRealUserAccounts) {
-        const initialCount = parsed.accounts.length;
-        parsed.accounts = parsed.accounts.filter((a: BankAccount) => !DEMO_ACCOUNT_IDS.has(a.id));
-        if (parsed.accounts.length !== initialCount) {
-          hasRepairedAccount = true;
-        }
-
-        // Purgar también transacciones y rendimientos huérfanos asociados a cuentas demo
-        if (Array.isArray(parsed.transactions)) {
-          parsed.transactions = parsed.transactions.filter((t: Transaction) => !DEMO_ACCOUNT_IDS.has(t.accountId));
-        }
-        if (Array.isArray(parsed.yieldRecords)) {
-          parsed.yieldRecords = parsed.yieldRecords.filter((y: YieldRecord) => !DEMO_ACCOUNT_IDS.has(y.accountId));
-        }
       }
     }
 
@@ -725,30 +700,6 @@ export function loadAppState(): AppState {
         }
         return acc;
       });
-    }
-
-    // 5. Sincronizar cuentas con los cierres auditados más recientes
-    // (garantiza que la pantalla de Patrimonio y Bancos reflejen los saldos de cierre ajustados)
-    if (Array.isArray(parsed.monthlyClosures) && parsed.monthlyClosures.length > 0 && Array.isArray(parsed.accounts)) {
-      const synced = syncAccountsWithClosures(
-        parsed.accounts,
-        parsed.monthlyClosures,
-        parsed.transactions || []
-      );
-      let changed = false;
-      for (let i = 0; i < parsed.accounts.length; i++) {
-        if (
-          parsed.accounts[i].balance !== synced[i]?.balance ||
-          parsed.accounts[i].balanceDate !== synced[i]?.balanceDate
-        ) {
-          changed = true;
-          break;
-        }
-      }
-      if (changed) {
-        parsed.accounts = synced;
-        hasRepairedAccount = true;
-      }
     }
 
     if (hasRepairedAccount || hasRepairedTransactions) {

@@ -83,7 +83,55 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       const monthKey = `${selectedYear}-${monthNum}`;
       const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
 
-      // Si estamos en modo de ahorro real y el ejercicio tiene benchmark auditado, cargamos los datos auditados exactos
+      // Flujos de movimientos de estas cuentas en este mes
+      const txsInMonth = yearTransactions.filter(
+        (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
+      );
+
+      const grossInc = txsInMonth.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+      const grossExp = txsInMonth.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      grossNets.push(grossInc - grossExp);
+
+      // 1. PRIORIDAD ABSOLUTA: Si el mes está cerrado o tiene saldos auditados por el usuario en appState.monthlyClosures
+      const hasAuditedInClosure = closure?.auditedBalances && accounts.some((a) => closure.auditedBalances?.[a.id] !== undefined);
+      if (closure && (closure.isClosed || hasAuditedInClosure)) {
+        const auditedSum = accounts.reduce((sum, a) => {
+          return sum + (closure.auditedBalances?.[a.id] ?? a.balance);
+        }, 0);
+        monthlyBalances.push(Math.round(auditedSum * 100) / 100);
+
+        let inc = txsInMonth
+          .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((sum, t) => sum + t.amount, 0);
+        let exp = txsInMonth
+          .filter((t) => t.type === 'expense' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        if (closure.auditedByBank) {
+          let bInc = 0;
+          let bExp = 0;
+          let hasBankData = false;
+          for (const a of accounts) {
+            const key = matchAccountToBenchmarkKey(a);
+            if (key && closure.auditedByBank[key]) {
+              bInc += closure.auditedByBank[key].income;
+              bExp += closure.auditedByBank[key].expense;
+              hasBankData = true;
+            }
+          }
+          if (hasBankData) {
+            inc = bInc;
+            exp = bExp;
+          }
+        }
+
+        monthlyIncomes.push(Math.round(inc * 100) / 100);
+        monthlyExpenses.push(Math.round(exp * 100) / 100);
+        monthlyNets.push(Math.round((inc - exp) * 100) / 100);
+        continue;
+      }
+
+      // 2. PRIORIDAD SECUNDARIA: Si no hay cierre de usuario pero el ejercicio tiene benchmark histórico con saldo real
       if (savingsViewMode === 'real' && currentBenchmark) {
         const benchMonth = currentBenchmark.months.find((bm) => bm.monthIndex === m);
         if (benchMonth) {
@@ -92,6 +140,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
           let bNet = 0;
           let bBal = 0;
           let hasMatched = false;
+          let hasRealBenchmarkBalance = false;
 
           for (const a of accounts) {
             const key = matchAccountToBenchmarkKey(a);
@@ -99,33 +148,25 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
               bInc += benchMonth.byBank[key].income;
               bExp += benchMonth.byBank[key].expense;
               bNet += benchMonth.byBank[key].net;
-              bBal += benchMonth.byBank[key].balance ?? a.balance;
+              if (benchMonth.byBank[key].balance !== undefined && benchMonth.byBank[key].balance !== null) {
+                bBal += benchMonth.byBank[key].balance!;
+                hasRealBenchmarkBalance = true;
+              }
               hasMatched = true;
             }
           }
 
-          if (hasMatched) {
+          if (hasMatched && hasRealBenchmarkBalance) {
             monthlyIncomes.push(Math.round(bInc * 100) / 100);
             monthlyExpenses.push(Math.round(bExp * 100) / 100);
             monthlyNets.push(Math.round(bNet * 100) / 100);
             monthlyBalances.push(Math.round(bBal * 100) / 100);
-            grossNets.push(Math.round(bNet * 100) / 100);
             continue;
           }
         }
       }
 
-      // Flujos de ingresos y gastos de estas cuentas en este mes
-      const txsInMonth = yearTransactions.filter(
-        (tx) => accIds.includes(tx.accountId) && tx.date.startsWith(`${selectedYear}-${monthNum}`)
-      );
-
-      // Flujo bancario bruto del mes (para conciliar saldos bancarios y retrocesión exacta)
-      const grossInc = txsInMonth.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const grossExp = txsInMonth.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-      grossNets.push(grossInc - grossExp);
-
-      // Flujo operativo / ahorro según el modo activo
+      // 3. CÁLCULO DINÁMICO: Basado en los movimientos reales y saldo actual
       const inc = txsInMonth
         .filter((t) => t.type === 'income' && (savingsViewMode === 'gross' || !isCapitalTransfer(t)))
         .reduce((sum, t) => sum + t.amount, 0);
@@ -136,15 +177,6 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
       monthlyIncomes.push(Math.round(inc * 100) / 100);
       monthlyExpenses.push(Math.round(exp * 100) / 100);
       monthlyNets.push(Math.round((inc - exp) * 100) / 100);
-
-      // Si el mes está cerrado y tiene saldos auditados para estas cuentas, usamos esos saldos exactos
-      if (closure?.isClosed && closure.auditedBalances) {
-        const auditedSum = accounts.reduce((sum, a) => {
-          return sum + (closure.auditedBalances?.[a.id] ?? a.balance);
-        }, 0);
-        monthlyBalances.push(Math.round(auditedSum * 100) / 100);
-        continue;
-      }
 
       // Si no está auditado, calculamos retrocediendo los movimientos posteriores al fin de mes
       const lastDayOfMonth = new Date(selectedYear, m + 1, 0).getDate();
