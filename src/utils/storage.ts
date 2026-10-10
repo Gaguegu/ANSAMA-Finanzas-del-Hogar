@@ -210,6 +210,18 @@ export function loadAppState(): AppState {
           modified = true;
         }
 
+        // Alinear la fecha del saldo de Openbank con el resto de bancos (2026-09-30) si no hay movimientos en octubre
+        const isOB = updated.bankId === 'openbank' || updated.bankName?.toLowerCase().includes('openbank');
+        if (isOB && updated.balanceDate && updated.balanceDate > '2026-09-30') {
+          const hasPostSeptTx = Array.isArray(parsed.transactions) && parsed.transactions.some(
+            (t: Transaction) => t.accountId === updated.id && t.date > '2026-09-30'
+          );
+          if (!hasPostSeptTx) {
+            updated.balanceDate = '2026-09-30';
+            modified = true;
+          }
+        }
+
         if (modified) {
           hasRepairedAccount = true;
         }
@@ -236,135 +248,6 @@ export function loadAppState(): AppState {
             ...tx,
             accountId: 'acc-bbva-nomina'
           };
-        }
-
-        const titleLower = (tx.title || '').toLowerCase();
-
-        // A. RETENCIONES FISCALES (Hacienda, IRPF sobre intereses/rendimientos):
-        // SIEMPRE son gasto / cargo fiscal, aunque el concepto contenga "devolución" o "abono"
-        if (titleLower.includes('retencion') || titleLower.includes('retención')) {
-          if (tx.type === 'income') {
-            hasRepairedTransactions = true;
-            return {
-              ...tx,
-              type: 'expense',
-              categoryId: tx.categoryId === 'cat-otros-ingresos' || tx.categoryId === 'cat-rendimientos' || !tx.categoryId ? 'cat-otros-gastos' : tx.categoryId
-            };
-          }
-        }
-
-        // B. BONIFICACIONES, INTERESES Y DIVIDENDOS:
-        // SIEMPRE son ingreso / abono positivo (rendimientos de cuentas/recibos), aunque contengan la palabra "recibos"
-        if (
-          titleLower.includes('bonificacion') ||
-          titleLower.includes('bonificación') ||
-          titleLower.includes('abono intereses') ||
-          titleLower.includes('abono de intereses') ||
-          titleLower.includes('intereses acreedores') ||
-          titleLower.includes('saveback') ||
-          titleLower.includes('dividendo') ||
-          titleLower.includes('dividend')
-        ) {
-          if (tx.type === 'expense' || tx.categoryId === 'cat-nomina') {
-            hasRepairedTransactions = true;
-            return {
-              ...tx,
-              type: 'income',
-              categoryId: 'cat-rendimientos'
-            };
-          }
-        }
-
-        // C. Si es gasto pero es genuinamente un abono de dividendos, intereses o saveback:
-        if (tx.type === 'expense') {
-          if (
-            titleLower.includes('dividendo') ||
-            titleLower.includes('dividend') ||
-            titleLower.includes('saveback') ||
-            titleLower.includes('interes') ||
-            titleLower.includes('interest') ||
-            titleLower.includes('zinsen') ||
-            titleLower.includes('rentabilidad') ||
-            titleLower.includes('rendimiento') ||
-            titleLower.includes('pay-in') ||
-            titleLower.includes('pay in') ||
-            titleLower.includes('einzahlung')
-          ) {
-            hasRepairedTransactions = true;
-            return { ...tx, type: 'income', categoryId: 'cat-rendimientos' };
-          }
-        }
-
-        // E. Si fue erróneamente marcada como ingreso pero es una salida de dinero (imposición a plazo fijo, traspaso enviado, adeudo, compra, cargo, transferencia a favor):
-        if (tx.type === 'income') {
-          const isActuallyExpense =
-            titleLower.includes('imposicion') ||
-            titleLower.includes('imposición') ||
-            titleLower.includes('constitucion') ||
-            titleLower.includes('constitución') ||
-            titleLower.includes('deposito a plazo') ||
-            titleLower.includes('depósito a plazo') ||
-            titleLower.includes('plazo fijo') ||
-            titleLower.includes('a favor de') ||
-            titleLower.includes('a favor') ||
-            titleLower.includes('traspaso a ') ||
-            titleLower.includes('traspaso hacia') ||
-            titleLower.includes('traspaso enviado') ||
-            titleLower.includes('traspaso emitido') ||
-            titleLower.includes('transferencia a ') ||
-            titleLower.includes('transferencia a') ||
-            titleLower.includes('transf. a') ||
-            titleLower.includes('transferencia inmediata a') ||
-            titleLower.includes('transf. inmediata') ||
-            titleLower.includes('transferencia enviada') ||
-            titleLower.includes('transferencia emitida') ||
-            titleLower.includes('transferencia realizada') ||
-            titleLower.includes('transf. realizada') ||
-            titleLower.includes('transferencia ordenada') ||
-            titleLower.includes('envio bizum') ||
-            titleLower.includes('bizum enviado') ||
-            titleLower.includes('bizum emitido') ||
-            titleLower.includes('pago bizum') ||
-            titleLower.includes('pago a favor') ||
-            titleLower.includes('abono a favor') ||
-            titleLower.includes('cargo') ||
-            titleLower.includes('adeudo') ||
-            titleLower.includes('recibo') ||
-            titleLower.includes('compra') ||
-            titleLower.includes('tarjeta') ||
-            titleLower.includes('pago') ||
-            titleLower.includes('cuota') ||
-            titleLower.includes('comision') ||
-            titleLower.includes('comisión') ||
-            titleLower.includes('reintegro') ||
-            titleLower.includes('extraccion') ||
-            titleLower.includes('extracción');
-
-          const isLegitimateIncome = 
-            titleLower.includes('interes') ||
-            titleLower.includes('interés') ||
-            titleLower.includes('bonificacion') ||
-            titleLower.includes('bonificación') ||
-            titleLower.includes('nomina') ||
-            titleLower.includes('nómina') ||
-            titleLower.includes('recibida') ||
-            titleLower.includes('recibido') ||
-            titleLower.includes('dividendo') ||
-            titleLower.includes('anulacion') ||
-            titleLower.includes('anulación') ||
-            titleLower.includes('devolucion') ||
-            titleLower.includes('devolución');
-
-          if (isActuallyExpense && !isLegitimateIncome) {
-            hasRepairedTransactions = true;
-            let newCat = tx.categoryId;
-            if (tx.categoryId === 'cat-traspaso-ingreso') {
-              newCat = 'cat-transferencias-gasto';
-            } else if (tx.categoryId === 'cat-otros-ingresos') {
-              newCat = 'cat-otros-gastos';
-            }
-            return { ...tx, type: 'expense', categoryId: newCat };
-          }
         }
 
         return tx;
@@ -486,220 +369,6 @@ export function loadAppState(): AppState {
           }
         });
       }
-
-      // 5. Corregir y afinar categorías de transacciones históricas según apuntes y patrones de BBVA/Bancos
-      let hasRecategorized = false;
-      parsed.transactions = parsed.transactions.map((tx: Transaction) => {
-        // Respetar siempre excepciones manuales fijadas por el usuario
-        if (tx.isManualCategory) {
-          return tx;
-        }
-
-        const titleNorm = (tx.title || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        let newCategoryId = tx.categoryId;
-
-        // A. Liquidación de cuentas son intereses/rendimientos (NUNCA nóminas, alquileres ni hipotecas)
-        if (
-          titleNorm.includes('liquidacion cuenta') ||
-          titleNorm.includes('liquidacion de cuenta') ||
-          titleNorm.includes('liquidacion contrato') ||
-          titleNorm.includes('intereses acreedores') ||
-          titleNorm.includes('abono intereses') ||
-          titleNorm.includes('rendimiento cuenta') ||
-          titleNorm.includes('retribucion cuenta') ||
-          (titleNorm.includes('liquidacion') && !titleNorm.includes('alquiler') && !titleNorm.includes('arrendamiento'))
-        ) {
-          if (tx.categoryId === 'cat-nomina' || tx.categoryId === 'cat-vivienda') {
-            newCategoryId = 'cat-rendimientos';
-          }
-        }
-
-        // B. Retirada de efectivo en cajeros automáticos (NUNCA vivienda ni hipoteca)
-        if (
-          titleNorm.includes('ret. efectivo') ||
-          titleNorm.includes('retirada efectivo') ||
-          titleNorm.includes('debito con tarj. en cajero') ||
-          titleNorm.includes('debito con tarj en cajero') ||
-          titleNorm.includes('cajero. aut') ||
-          titleNorm.includes('cajero aut') ||
-          titleNorm.includes('cajero autom') ||
-          titleNorm.includes('extraccion efectivo') ||
-          titleNorm.includes('reintegro cajero')
-        ) {
-          newCategoryId = 'cat-efectivo';
-        }
-
-        // C. Ferretería, bricolaje y mantenimiento
-        else if (
-          titleNorm.includes('ferreteria') ||
-          titleNorm.includes('ferreteria san jose') ||
-          titleNorm.includes('leroy') ||
-          titleNorm.includes('bricomart')
-        ) {
-          newCategoryId = 'cat-hogar';
-        }
-
-        // D. Suministros (Energía y Agua: Visalia, Aquajerez, Aguas del Puerto, Recursos Energéticos, Endesa, etc.)
-        else if (
-          titleNorm.includes('visalia') ||
-          titleNorm.includes('aquajerez') ||
-          titleNorm.includes('aguas del puerto') ||
-          titleNorm.includes('recursos energet') ||
-          titleNorm.includes('endesa') ||
-          titleNorm.includes('iberdrola') ||
-          titleNorm.includes('naturgy')
-        ) {
-          newCategoryId = 'cat-suministros';
-        }
-
-        // E. Seguros y Pólizas (Occident GCO, La Fe Compañía de Seguros, Mapfre, etc.)
-        else if (
-          titleNorm.includes('occident') ||
-          titleNorm.includes('gco s.a.u') ||
-          titleNorm.includes('catalana occidente') ||
-          titleNorm.includes('la fe compania') ||
-          titleNorm.includes('la fe seguro') ||
-          (titleNorm.includes('compania de seguros') && !titleNorm.includes('hipoteca')) ||
-          titleNorm.includes('linea directa') ||
-          titleNorm.includes('santa lucia') ||
-          titleNorm.includes('pelayo')
-        ) {
-          newCategoryId = 'cat-seguros';
-        }
-
-        // F. Comunidad de Propietarios (Parque Chapín, Valparaíso, Residencial Chapín, etc.)
-        else if (
-          titleNorm.includes('parque chapin') ||
-          titleNorm.includes('chapin ii') ||
-          titleNorm.includes('chapin') ||
-          titleNorm.includes('valparaiso') ||
-          titleNorm.includes('c.p.') ||
-          titleNorm.includes('c p valparaiso') ||
-          titleNorm.includes('comunidad propietarios') ||
-          titleNorm.includes('cuota comunidad')
-        ) {
-          newCategoryId = 'cat-comunidad';
-        }
-
-        // G. Restaurantes, Tapas y Ocio (100 Montaditos, Doña Pepa, Venezzia, etc.)
-        else if (
-          titleNorm.includes('100 montaditos') ||
-          titleNorm.includes('montaditos') ||
-          titleNorm.includes('dona pepa') ||
-          titleNorm.includes('venezzia')
-        ) {
-          newCategoryId = 'cat-ocio';
-        }
-
-        // H. Salidas por transferencia enviada o traspaso a otras cuentas
-        else if (
-          titleNorm.includes('transferencia realizada') ||
-          titleNorm.includes('transf. realizada') ||
-          titleNorm.includes('transferencia emitida') ||
-          titleNorm.includes('transferencia enviada') ||
-          titleNorm.includes('traspaso a') ||
-          titleNorm.includes('traspaso hacia') ||
-          titleNorm.includes('transferencia propia') ||
-          titleNorm.includes('transferencia interna') ||
-          titleNorm.includes('entre mis cuentas')
-        ) {
-          newCategoryId = 'cat-transferencias-gasto';
-        }
-
-        // I. Si estaba en Vivienda e Hipoteca pero no es hipoteca real, reclasificar
-        if (newCategoryId === 'cat-vivienda') {
-          const isRealMortgage =
-            titleNorm.includes('hipoteca') ||
-            titleNorm.includes('prestamo hipotecario') ||
-            titleNorm.includes('cuota hipoteca') ||
-            titleNorm.includes('amortizacion hipoteca');
-
-          if (!isRealMortgage) {
-            // Si es un recibo general o compra no identificada
-            newCategoryId = 'cat-otros-gastos';
-          }
-        }
-
-        // J. Ingresos de liquidación de alquiler en BBVA (años 2025 y 2026):
-        // En BBVA, las transferencias mensuales recibidas de ~390€ a ~510€ son la liquidación periódica del alquiler
-        // Los importes grandes de +2.170,00 € son nóminas/traspasos principales y no alquiler
-        const isBBVAAccount = (tx.accountId || '').toLowerCase().includes('bbva');
-        const noteNorm = (tx.note || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-        const isRentalIncome =
-          tx.type === 'income' && (
-            titleNorm.includes('alquiler') ||
-            titleNorm.includes('arrendamiento') ||
-            noteNorm.includes('alquiler') ||
-            (isBBVAAccount && tx.amount >= 300 && tx.amount <= 750 && (
-              titleNorm.includes('transferencia') ||
-              titleNorm.includes('abono')
-            ))
-          );
-
-        if (isRentalIncome) {
-          newCategoryId = 'cat-nomina';
-        }
-
-        // Enriquecer el título para mostrar claramente el concepto de liquidación de alquiler solo para los alquileres reales
-        let finalTitle = tx.title;
-        if (
-          isRentalIncome &&
-          (titleNorm === 'transferencia recibida' || titleNorm === 'transferencia' || !titleNorm.includes('alquiler'))
-        ) {
-          finalTitle = 'Transferencia recibida - Liquidación alquiler';
-        } else if (tx.amount > 1000 && (titleNorm.includes('liquidacion alquiler') || titleNorm.includes('alquiler'))) {
-          // Limpiar título de los importes grandes que no son alquiler (ej: 2.170 €)
-          finalTitle = tx.title.replace(/\s*[-–]\s*Liquidaci[oó]n alquiler/gi, '').trim();
-        }
-
-        // Si es liquidación de alquiler, protegerlo como categoría fija
-        let finalManual = tx.isManualCategory;
-        if (isRentalIncome) {
-          finalManual = true;
-        }
-
-        if (newCategoryId !== tx.categoryId || finalTitle !== tx.title || finalManual !== tx.isManualCategory) {
-          hasRecategorized = true;
-          hasRepairedTransactions = true;
-          return { ...tx, categoryId: newCategoryId, title: finalTitle, isManualCategory: finalManual };
-        }
-        return tx;
-      });
-
-      // 6. Conciliación automática de Traspasos entre cuentas registradas y propagación inteligente de categorías aprendidas de BBVA y demás entidades
-      const reconResult = reconcileAndCategorizeAll(
-        parsed.transactions,
-        parsed.accounts || [],
-        parsed.categories || []
-      );
-      if (reconResult.stats.totalUpdated > 0) {
-        parsed.transactions = reconResult.updatedTransactions;
-        hasRepairedTransactions = true;
-      }
-    }
-
-    // 4. Si la cuenta Trade Republic tiene balanceDate de emisión (ej: 2026) mientras sus movimientos son de 2025
-    if (Array.isArray(parsed.accounts)) {
-      parsed.accounts = parsed.accounts.map((acc: BankAccount) => {
-        if (
-          acc.bankName.toLowerCase().includes('trade') &&
-          acc.balanceDate &&
-          acc.balanceDate.startsWith('2026')
-        ) {
-          const accTxs = (parsed.transactions || [])
-            .filter((t: Transaction) => t.accountId === acc.id)
-            .sort((a: Transaction, b: Transaction) => b.date.localeCompare(a.date));
-          if (accTxs.length > 0 && accTxs[0].date.startsWith('2025')) {
-            hasRepairedAccount = true;
-            return {
-              ...acc,
-              balanceDate: accTxs[0].date
-            };
-          }
-        }
-        return acc;
-      });
     }
 
     if (hasRepairedAccount || hasRepairedTransactions) {
@@ -983,6 +652,22 @@ export function normalizeAndDeduplicateYieldsAndTransactions(state: AppState): A
     const removeIds = new Set(trAugTxs.slice(1).map((t) => t.id));
     txs = txs.filter((t) => !removeIds.has(t.id));
   }
+
+  // C. Openbank: Si la fecha del saldo está fijada en octubre (ej: 2026-10-31) pero los extractos y movimientos
+  // están metidos hasta el 30 de septiembre (sin movimientos en octubre), alinear la fecha oficial del saldo a 2026-09-30 (igual que todos los demás bancos).
+  accounts = accounts.map((acc) => {
+    const isOB = acc.bankId === 'openbank' || acc.bankName?.toLowerCase().includes('openbank');
+    if (isOB && acc.balanceDate && acc.balanceDate > '2026-09-30') {
+      const hasPostSeptTx = txs.some((t) => t.accountId === acc.id && t.date > '2026-09-30');
+      if (!hasPostSeptTx) {
+        return {
+          ...acc,
+          balanceDate: '2026-09-30'
+        };
+      }
+    }
+    return acc;
+  });
 
   return {
     ...state,
@@ -1936,21 +1621,23 @@ export function getAccountBalanceForMonth(
   const latestPrior = priorClosures[0];
   if (latestPrior && latestPrior.auditedBalances) {
     const priorBalance = latestPrior.auditedBalances[acc.id];
+    const [pYear, pMonth] = latestPrior.month.split('-');
+    const pLastDay = new Date(parseInt(pYear, 10), parseInt(pMonth, 10), 0).getDate();
+    const pEndStr = `${latestPrior.month}-${String(pLastDay).padStart(2, '0')}`;
 
     if (acc.type === 'deposit' || acc.type === 'investment') {
+      const priorDate = latestPrior.closedAt ? latestPrior.closedAt.split('T')[0] : pEndStr;
       return {
         accountId: acc.id,
         balance: Math.round(priorBalance * 100) / 100,
-        balanceDate: lastDayOfMonthStr,
+        balanceDate: (acc.balanceDate && acc.balanceDate <= lastDayOfMonthStr)
+          ? acc.balanceDate
+          : (priorDate <= lastDayOfMonthStr ? priorDate : lastDayOfMonthStr),
         source: 'audited',
         isAudited: false,
         label: 'Arrastrado de cierre previo'
       };
     }
-
-    const [pYear, pMonth] = latestPrior.month.split('-');
-    const pLastDay = new Date(parseInt(pYear, 10), parseInt(pMonth, 10), 0).getDate();
-    const pEndStr = `${latestPrior.month}-${String(pLastDay).padStart(2, '0')}`;
 
     const intervalTxs = transactions.filter(
       (tx) => tx.accountId === acc.id && tx.date > pEndStr && tx.date <= lastDayOfMonthStr
@@ -1958,10 +1645,10 @@ export function getAccountBalanceForMonth(
     const inc = intervalTxs.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const exp = intervalTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     
-    // Fecha del último movimiento en el mes o fin de mes
+    // Fecha del último movimiento en el mes o fecha conocida del saldo/cierre previo
     const lastTxDate = intervalTxs.length > 0
       ? intervalTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), '')
-      : lastDayOfMonthStr;
+      : (acc.balanceDate && acc.balanceDate <= lastDayOfMonthStr ? acc.balanceDate : (pEndStr <= lastDayOfMonthStr ? pEndStr : lastDayOfMonthStr));
 
     const net = inc - exp;
     const calcBal = acc.type === 'credit'
@@ -1983,7 +1670,7 @@ export function getAccountBalanceForMonth(
     return {
       accountId: acc.id,
       balance: Math.round(acc.balance * 100) / 100,
-      balanceDate: acc.balanceDate || lastDayOfMonthStr,
+      balanceDate: (acc.balanceDate && acc.balanceDate <= lastDayOfMonthStr) ? acc.balanceDate : (acc.balanceDate || lastDayOfMonthStr),
       source: 'current',
       isAudited: false,
       label: 'Saldo actual'
@@ -2000,16 +1687,16 @@ export function getAccountBalanceForMonth(
     ? acc.balance + netFuture
     : acc.balance - netFuture;
 
-  // Fecha del saldo: última transacción dentro o antes de ese mes
+  // Fecha del saldo: última transacción dentro o antes de ese mes, o la fecha oficial de saldo de la cuenta
   const pastTxs = transactions.filter((tx) => tx.accountId === acc.id && tx.date <= lastDayOfMonthStr);
   const lastPastDate = pastTxs.length > 0
     ? pastTxs.reduce((latest, t) => (t.date > latest ? t.date : latest), '')
-    : lastDayOfMonthStr;
+    : (acc.balanceDate && acc.balanceDate <= lastDayOfMonthStr ? acc.balanceDate : lastDayOfMonthStr);
 
   return {
     accountId: acc.id,
     balance: Math.round(calculated * 100) / 100,
-    balanceDate: lastPastDate || lastDayOfMonthStr,
+    balanceDate: lastPastDate || (acc.balanceDate && acc.balanceDate <= lastDayOfMonthStr ? acc.balanceDate : lastDayOfMonthStr),
     source: 'calculated',
     isAudited: false,
     label: 'Calculado a fin de mes'
