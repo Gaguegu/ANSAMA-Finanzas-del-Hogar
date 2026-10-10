@@ -73,12 +73,46 @@ export function loadAppState(): AppState {
         parsed.yieldRecords = [...withoutDummy2026, ...toAdd2026];
       }
 
+      // Asegurar que todos los rendimientos oficiales de Trade Republic 2026 (Enero a Septiembre)
+      // estén presentes, verificados y alineados a su mes de devengo real para coincidir con el Excel del usuario:
+      const authenticTr2026 = (INITIAL_STATE.yieldRecords || []).filter((y: YieldRecord) =>
+        y.id.startsWith('yd-2026-tr-')
+      );
+      const existingYieldIds = new Set(parsed.yieldRecords.map((y: YieldRecord) => y.id));
+      for (const trRecord of authenticTr2026) {
+        if (!existingYieldIds.has(trRecord.id)) {
+          parsed.yieldRecords.push(trRecord);
+          existingYieldIds.add(trRecord.id);
+        }
+      }
+
+      // Sincronizar fechas y títulos oficiales de Trade Republic 2026 al mes de devengo contable
+      const trDatesMap: Record<string, { date: string; title: string }> = {
+        'yd-2026-tr-1': { date: '2026-01-31', title: 'Intereses Cuenta Efectivo Trade Republic (Enero)' },
+        'yd-2026-tr-2': { date: '2026-02-28', title: 'Intereses Cuenta Efectivo Trade Republic (Febrero)' },
+        'yd-2026-tr-3': { date: '2026-03-31', title: 'Intereses Cuenta Efectivo Trade Republic (Marzo)' },
+        'yd-2026-tr-4': { date: '2026-04-30', title: 'Intereses Cuenta Efectivo Trade Republic (Abril)' },
+        'yd-2026-tr-5': { date: '2026-05-31', title: 'Intereses Cuenta Efectivo Trade Republic (Mayo)' },
+        'yd-2026-tr-6': { date: '2026-06-30', title: 'Intereses Cuenta Efectivo Trade Republic (Junio)' },
+        'yd-2026-tr-7': { date: '2026-07-31', title: 'Intereses Cuenta Efectivo Trade Republic (Julio)' },
+        'yd-2026-tr-8': { date: '2026-08-31', title: 'Intereses Cuenta Efectivo Trade Republic (Agosto)' },
+        'yd-2026-tr-9': { date: '2026-09-30', title: 'Intereses Cuenta Efectivo Trade Republic (Septiembre)' }
+      };
+
+      parsed.yieldRecords = parsed.yieldRecords.map((y: YieldRecord) => {
+        if (trDatesMap[y.id]) {
+          return {
+            ...y,
+            date: trDatesMap[y.id].date,
+            title: trDatesMap[y.id].title,
+            status: 'verified' as YieldStatus
+          };
+        }
+        return y;
+      });
+
       // Eliminar posibles rendimientos auto-detectados duplicados en 2026 para los que ya existe el apunte oficial auditado
       parsed.yieldRecords = parsed.yieldRecords.filter((y: YieldRecord) => {
-        // En enero 2026 Trade Republic no tuvo ningún abono de intereses (el primero es el 01/02/2026)
-        if (y.date && y.date.startsWith('2026-01') && y.accountId === 'acc-trade-republic') {
-          return false;
-        }
         // Descartar rendimientos con fechas antiguas (< 2025)
         if (y.date && y.date.length >= 4) {
           const yr = parseInt(y.date.substring(0, 4), 10);
@@ -482,88 +516,31 @@ export function normalizeAndDeduplicateYieldsAndTransactions(state: AppState): A
   }
 
   // B. Trade Republic:
-  // En julio 2026 (01/07/2026): 111,40 € bruto / 90,23 € neto. Si hay duplicados, conservar solo uno.
-  const trJulyMatches = yields.filter((y) =>
-    (trAccounts.has(y.accountId) || y.title.toLowerCase().includes('trade') || y.title.toLowerCase().includes('interest payment')) &&
-    y.date.startsWith('2026-07') &&
-    Math.abs(y.netAmount - 90.23) < 0.1
-  );
-  if (trJulyMatches.length > 1) {
-    const keepId = trJulyMatches.find((y) => y.id.startsWith('yd-2026-'))?.id || trJulyMatches[0].id;
-    const removeIds = new Set(trJulyMatches.filter((y) => y.id !== keepId).map((y) => y.id));
-    yields = yields
-      .filter((y) => !removeIds.has(y.id))
-      .map((y) => {
-        if (y.id === keepId) {
-          return {
-            ...y,
-            date: '2026-07-01',
-            title: 'Liquidación Intereses IPF Trade Republic',
-            grossAmount: 111.40,
-            taxRatePercent: 19,
-            withholdingTax: 21.17,
-            netAmount: 90.23,
-            status: 'verified' as YieldStatus,
-            autoDetected: false,
-            notes: 'Liquidación remuneración Trade Republic'
-          };
-        }
-        return y;
-      });
-  }
+  // Conservar los apuntes oficiales verificados de Trade Republic devengados en 2026 (yd-2026-tr-1 a 9)
+  // eliminando posibles apuntes manuales o detectados duplicados con el mismo importe
+  const trTargetAmounts = [
+    { id: 'yd-2026-tr-1', date: '2026-01-31', amount: 0.87, gross: 1.08, tax: 0.21, title: 'Intereses Cuenta Efectivo Trade Republic (Enero)' },
+    { id: 'yd-2026-tr-2', date: '2026-02-28', amount: 0.79, gross: 0.98, tax: 0.19, title: 'Intereses Cuenta Efectivo Trade Republic (Febrero)' },
+    { id: 'yd-2026-tr-3', date: '2026-03-31', amount: 22.03, gross: 27.20, tax: 5.17, title: 'Intereses Cuenta Efectivo Trade Republic (Marzo)' },
+    { id: 'yd-2026-tr-4', date: '2026-04-30', amount: 30.82, gross: 38.05, tax: 7.23, title: 'Intereses Cuenta Efectivo Trade Republic (Abril)' },
+    { id: 'yd-2026-tr-5', date: '2026-05-31', amount: 1.54, gross: 1.90, tax: 0.36, title: 'Intereses Cuenta Efectivo Trade Republic (Mayo)' },
+    { id: 'yd-2026-tr-6', date: '2026-06-30', amount: 90.23, gross: 111.39, tax: 21.16, title: 'Intereses Cuenta Efectivo Trade Republic (Junio)' },
+    { id: 'yd-2026-tr-7', date: '2026-07-31', amount: 135.04, gross: 166.72, tax: 31.68, title: 'Intereses Cuenta Efectivo Trade Republic (Julio)' },
+    { id: 'yd-2026-tr-8', date: '2026-08-31', amount: 135.25, gross: 166.98, tax: 31.73, title: 'Intereses Cuenta Efectivo Trade Republic (Agosto)' },
+    { id: 'yd-2026-tr-9', date: '2026-09-30', amount: 136.74, gross: 168.81, tax: 32.07, title: 'Intereses Cuenta Efectivo Trade Republic (Septiembre)' }
+  ];
 
-  // En agosto 2026 (01/08/2026): 166,72 € bruto / 135,04 € neto. Si hay duplicados, conservar solo uno.
-  const trAugMatches = yields.filter((y) =>
-    (trAccounts.has(y.accountId) || y.title.toLowerCase().includes('trade') || y.title.toLowerCase().includes('interest payment')) &&
-    y.date.startsWith('2026-08') &&
-    Math.abs(y.netAmount - 135.04) < 0.1
-  );
-  if (trAugMatches.length > 1) {
-    const keepId = trAugMatches.find((y) => y.id.startsWith('yd-2026-'))?.id || trAugMatches[0].id;
-    const removeIds = new Set(trAugMatches.filter((y) => y.id !== keepId).map((y) => y.id));
-    yields = yields
-      .filter((y) => !removeIds.has(y.id))
-      .map((y) => {
-        if (y.id === keepId) {
-          return {
-            ...y,
-            date: '2026-08-01',
-            title: 'Liquidación Intereses IPF Trade Republic',
-            grossAmount: 166.72,
-            taxRatePercent: 19,
-            withholdingTax: 31.68,
-            netAmount: 135.04,
-            status: 'verified' as YieldStatus,
-            autoDetected: false,
-            notes: 'Liquidación remuneración Trade Republic'
-          };
-        }
-        return y;
-      });
-  }
-
-  // En septiembre 2026 (01/09/2026): 166,98 € bruto / 135,25 € neto. Normalizar a verificado.
-  yields = yields.map((y) => {
-    if (
+  for (const item of trTargetAmounts) {
+    const matches = yields.filter((y) =>
       (trAccounts.has(y.accountId) || y.title.toLowerCase().includes('trade')) &&
-      y.date.startsWith('2026-09') &&
-      Math.abs(y.netAmount - 135.25) < 0.1
-    ) {
-      return {
-        ...y,
-        date: '2026-09-01',
-        title: 'Liquidación Intereses IPF Trade Republic',
-        grossAmount: 166.98,
-        taxRatePercent: 19,
-        withholdingTax: 31.73,
-        netAmount: 135.25,
-        status: 'verified' as YieldStatus,
-        autoDetected: false,
-        notes: 'Liquidación remuneración Trade Republic'
-      };
+      Math.abs(y.netAmount - item.amount) < 0.05
+    );
+    if (matches.length > 1) {
+      const keep = matches.find((y) => y.id === item.id) || matches[0];
+      const removeIds = new Set(matches.filter((y) => y !== keep).map((y) => y.id));
+      yields = yields.filter((y) => !removeIds.has(y.id));
     }
-    return y;
-  });
+  }
 
   // C. Deduplicación genérica estricta:
   // Si en la misma cuenta y en el mismo mes hay dos rendimientos con idéntico importe neto (+- 0.05 €), conservar solo uno.
