@@ -44,7 +44,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   
   // Selector de Mes y Año para consultar el Patrimonio y saldos bancarios a esa fecha
-  const [patrimonioMonth, setPatrimonioMonth] = useState<string>(() => new Date().toISOString().substring(0, 7));
+  // Se sitúa por defecto en el último mes con extractos oficiales importados (Septiembre 2026)
+  const [patrimonioMonth, setPatrimonioMonth] = useState<string>('2026-09');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
@@ -742,11 +743,11 @@ export default function App() {
 
   // Lista ordenada de meses disponibles para el selector de Patrimonio
   const availableMonths = useMemo(() => {
-    return getAvailableMonths(appState.transactions, appState.monthlyClosures);
-  }, [appState.transactions, appState.monthlyClosures]);
+    return getAvailableMonths(appState.transactions, appState.monthlyClosures, appState.accounts);
+  }, [appState.transactions, appState.monthlyClosures, appState.accounts]);
 
-  const currentMonthStr = new Date().toISOString().substring(0, 7);
-  const isCurrentPatrimonioMonth = patrimonioMonth === currentMonthStr;
+  const latestAvailableMonth = availableMonths[0] || '2026-09';
+  const isCurrentPatrimonioMonth = patrimonioMonth === latestAvailableMonth;
 
   // Cuentas con saldos y fechas reconstruidos para el mes seleccionado en Patrimonio
   const effectivePatrimonioAccounts = useMemo(() => {
@@ -833,14 +834,14 @@ export default function App() {
               availableMonths={availableMonths}
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
             />
 
             <NetWorthCard 
               accounts={effectivePatrimonioAccounts} 
               transactions={appState.transactions}
               selectedMonth={patrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -888,7 +889,7 @@ export default function App() {
               availableMonths={availableMonths}
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(currentMonthStr)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
             />
 
             <BankAccountsList

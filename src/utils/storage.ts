@@ -1686,23 +1686,24 @@ export function getAccountBalanceForMonth(
  */
 export function getAvailableMonths(
   transactions: Transaction[] = [],
-  monthlyClosures: MonthClosure[] = []
+  monthlyClosures: MonthClosure[] = [],
+  accounts: BankAccount[] = []
 ): string[] {
   const monthSet = new Set<string>();
-  
-  // Mes actual garantizado
-  const currentMonth = new Date().toISOString().substring(0, 7);
-  monthSet.add(currentMonth);
 
-  // Incluir siempre todos los meses del ejercicio 2025, 2026 y del próximo año (2027)
+  // Ejercicio histórico 2025 completo (Enero a Diciembre)
   for (let m = 1; m <= 12; m++) {
     const mStr = String(m).padStart(2, '0');
     monthSet.add(`2025-${mStr}`);
-    monthSet.add(`2026-${mStr}`);
-    monthSet.add(`2027-${mStr}`);
   }
 
-  // De los cierres mensuales
+  // De los meses oficiales del benchmark 2026 (Enero a Septiembre 2026 con extractos reales)
+  for (let m = 1; m <= 9; m++) {
+    const mStr = String(m).padStart(2, '0');
+    monthSet.add(`2026-${mStr}`);
+  }
+
+  // De los cierres mensuales registrados
   if (Array.isArray(monthlyClosures)) {
     monthlyClosures.forEach((c) => {
       if (c.month && c.month.length === 7) {
@@ -1711,11 +1712,20 @@ export function getAvailableMonths(
     });
   }
 
-  // De las transacciones
+  // De las transacciones reales
   if (Array.isArray(transactions)) {
     transactions.forEach((t) => {
       if (t.date && t.date.length >= 7) {
         monthSet.add(t.date.substring(0, 7));
+      }
+    });
+  }
+
+  // De las fechas de saldo de las cuentas
+  if (Array.isArray(accounts)) {
+    accounts.forEach((a) => {
+      if (a.balanceDate && a.balanceDate.length >= 7) {
+        monthSet.add(a.balanceDate.substring(0, 7));
       }
     });
   }

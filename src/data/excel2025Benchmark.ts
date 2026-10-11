@@ -258,18 +258,18 @@ export const EXCEL_2025_BENCHMARK: YearBenchmark = {
 
 export const EXCEL_2026_BENCHMARK: YearBenchmark = {
   year: 2026,
-  yearIncome: 253792.31,
-  yearExpense: 160797.51,
-  yearNet: 92994.80,
-  averageMonthNet: 10332.76,
+  yearIncome: 253533.97,
+  yearExpense: 161217.51,
+  yearNet: 92316.46,
+  averageMonthNet: 10257.38,
   bankTotals: {
-    bbva: { income: 23752.49, expense: 24505.56, net: -753.07 },
+    bbva: { income: 23752.52, expense: 24505.58, net: -753.06 },
     openbank_cte: { income: 35548.26, expense: 34077.86, net: 1470.40 },
     openbank_fija: { income: 13483.42, expense: 7720.00, net: 5763.42 },
     ing_nomina: { income: 1575.00, expense: 662.42, net: 912.58 },
     ing_naranja: { income: 5989.00, expense: 0.00, net: 5989.00 },
-    trade_republic: { income: 86621.20, expense: 8113.96, net: 78507.24 },
-    bankinter: { income: 1813.42, expense: 136.49, net: 1676.93 },
+    trade_republic: { income: 86362.86, expense: 8113.96, net: 78248.90 },
+    bankinter: { income: 1822.91, expense: 137.69, net: 1685.22 },
     imagin: { income: 85000.00, expense: 86000.00, net: -1000.00 }
   },
   months: [
@@ -295,16 +295,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 1,
       monthName: 'Feb',
       fullMonthName: 'Febrero',
-      income: 7632.87,
+      income: 7632.95,
       expense: 5863.52,
-      net: 1769.35,
+      net: 1769.43,
       byBank: {
         bbva: { income: 2642.11, expense: 2124.78, net: 517.33 },
         openbank_cte: { income: 3554.61, expense: 2873.74, net: 680.87 },
         openbank_fija: { income: 831.25, expense: 780.00, net: 51.25 },
         ing_nomina: { income: 175.00, expense: 70.00, net: 105.00 },
         ing_naranja: { income: 220.68, expense: 0.00, net: 220.68 },
-        trade_republic: { income: 0.79, expense: 0.00, net: 0.79 },
+        trade_republic: { income: 0.87, expense: 0.00, net: 0.87 },
         bankinter: { income: 208.43, expense: 15.00, net: 193.43 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -313,16 +313,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 2,
       monthName: 'Mar',
       fullMonthName: 'Marzo',
-      income: 7661.05,
-      expense: 14056.22,
-      net: -6395.17,
+      income: 7639.81,
+      expense: 5942.26,
+      net: 1697.55,
       byBank: {
         bbva: { income: 2677.91, expense: 2255.66, net: 422.25 },
         openbank_cte: { income: 3554.59, expense: 2858.60, net: 695.99 },
         openbank_fija: { income: 831.13, expense: 780.00, net: 51.13 },
         ing_nomina: { income: 175.00, expense: 48.00, net: 127.00 },
         ing_naranja: { income: 220.66, expense: 0.00, net: 220.66 },
-        trade_republic: { income: 22.03, expense: 8113.96, net: -8091.93 },
+        trade_republic: { income: 0.79, expense: 0.00, net: 0.79 },
         bankinter: { income: 179.73, expense: 0.00, net: 179.73 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -331,16 +331,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 3,
       monthName: 'Abr',
       fullMonthName: 'Abril',
-      income: 7587.91,
+      income: 7579.12,
       expense: 6032.69,
-      net: 1555.22,
+      net: 1546.43,
       byBank: {
         bbva: { income: 2561.34, expense: 2288.32, net: 273.02 },
         openbank_cte: { income: 3569.50, expense: 2902.37, net: 667.13 },
         openbank_fija: { income: 831.25, expense: 780.00, net: 51.25 },
         ing_nomina: { income: 175.00, expense: 62.00, net: 113.00 },
         ing_naranja: { income: 220.77, expense: 0.00, net: 220.77 },
-        trade_republic: { income: 30.82, expense: 0.00, net: 30.82 },
+        trade_republic: { income: 22.03, expense: 0.00, net: 22.03 },
         bankinter: { income: 199.23, expense: 0.00, net: 199.23 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -349,16 +349,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 4,
       monthName: 'May',
       fullMonthName: 'Mayo',
-      income: 7642.27,
+      income: 7671.55,
       expense: 6340.29,
-      net: 1301.98,
+      net: 1331.26,
       byBank: {
         bbva: { income: 2666.13, expense: 2189.55, net: 476.58 },
         openbank_cte: { income: 3554.52, expense: 3287.43, net: 267.09 },
         openbank_fija: { income: 831.23, expense: 780.00, net: 51.23 },
         ing_nomina: { income: 175.00, expense: 64.82, net: 110.18 },
         ing_naranja: { income: 220.79, expense: 0.00, net: 220.79 },
-        trade_republic: { income: 1.54, expense: 0.00, net: 1.54 },
+        trade_republic: { income: 30.82, expense: 0.00, net: 30.82 },
         bankinter: { income: 193.06, expense: 18.49, net: 174.57 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -367,16 +367,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 5,
       monthName: 'Jun',
       fullMonthName: 'Junio',
-      income: 191649.39,
-      expense: 102679.62,
-      net: 88969.77,
+      income: 191560.70,
+      expense: 110793.58,
+      net: 80767.12,
       byBank: {
         bbva: { income: 2601.24, expense: 6454.18, net: -3852.94 },
         openbank_cte: { income: 6496.90, expense: 9199.40, net: -2702.50 },
         openbank_fija: { income: 6831.30, expense: 880.00, net: 5951.30 },
         ing_nomina: { income: 175.00, expense: 146.04, net: 28.96 },
         ing_naranja: { income: 4220.87, expense: 0.00, net: 4220.87 },
-        trade_republic: { income: 86124.34, expense: 0.00, net: 86124.34 },
+        trade_republic: { income: 86035.65, expense: 8113.96, net: 77921.69 },
         bankinter: { income: 199.74, expense: 0.00, net: 199.74 },
         imagin: { income: 85000.00, expense: 86000.00, net: -1000.00 }
       }
@@ -385,16 +385,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 6,
       monthName: 'Jul',
       fullMonthName: 'Julio',
-      income: 8374.85,
+      income: 8241.35,
       expense: 7643.75,
-      net: 731.10,
+      net: 597.60,
       byBank: {
         bbva: { income: 2663.75, expense: 2251.11, net: 412.64 },
         openbank_cte: { income: 4154.52, expense: 3965.58, net: 188.94 },
         openbank_fija: { income: 831.98, expense: 1380.00, net: -548.02 },
         ing_nomina: { income: 175.00, expense: 40.56, net: 134.44 },
         ing_naranja: { income: 221.00, expense: 0.00, net: 221.00 },
-        trade_republic: { income: 135.04, expense: 0.00, net: 135.04 },
+        trade_republic: { income: 1.54, expense: 0.00, net: 1.54 },
         bankinter: { income: 193.56, expense: 6.50, net: 187.06 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -403,16 +403,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 7,
       monthName: 'Ago',
       fullMonthName: 'Agosto',
-      income: 7722.18,
+      income: 7721.97,
       expense: 6326.87,
-      net: 1395.31,
+      net: 1395.10,
       byBank: {
         bbva: { income: 2603.35, expense: 2262.94, net: 340.41 },
         openbank_cte: { income: 3554.52, expense: 3168.23, net: 386.29 },
         openbank_fija: { income: 832.02, expense: 780.00, net: 52.02 },
         ing_nomina: { income: 175.00, expense: 50.00, net: 125.00 },
         ing_naranja: { income: 221.78, expense: 0.00, net: 221.78 },
-        trade_republic: { income: 135.25, expense: 0.00, net: 135.25 },
+        trade_republic: { income: 135.04, expense: 0.00, net: 135.04 },
         bankinter: { income: 200.26, expense: 65.70, net: 134.56 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -421,16 +421,16 @@ export const EXCEL_2026_BENCHMARK: YearBenchmark = {
       monthIndex: 8,
       monthName: 'Sep',
       fullMonthName: 'Septiembre',
-      income: 7823.87,
+      income: 7788.60,
       expense: 6310.21,
-      net: 1513.66,
+      net: 1478.39,
       byBank: {
         bbva: { income: 2669.55, expense: 2419.37, net: 250.18 },
         openbank_cte: { income: 3554.52, expense: 3004.84, net: 549.68 },
         openbank_fija: { income: 832.02, expense: 780.00, net: 52.02 },
         ing_nomina: { income: 175.00, expense: 74.00, net: 101.00 },
         ing_naranja: { income: 221.82, expense: 0.00, net: 221.82 },
-        trade_republic: { income: 170.52, expense: 0.00, net: 170.52 },
+        trade_republic: { income: 135.25, expense: 0.00, net: 135.25 },
         bankinter: { income: 200.44, expense: 32.00, net: 168.44 },
         imagin: { income: 0.00, expense: 0.00, net: 0.00 }
       }
@@ -459,7 +459,7 @@ export function matchAccountToBenchmarkKey(acc: { id?: string; bankId?: string; 
   if (text.includes('trade') || text.includes('republic')) return 'trade_republic';
   if (text.includes('imagin') || text.includes('caixa')) return 'imagin';
   if (text.includes('openbank') || text.includes('ob')) {
-    if (text.includes('fija')) return 'openbank_fija';
+    if (text.includes('fij') || text.includes('plazo') || text.includes('deposito') || text.includes('imposicion')) return 'openbank_fija';
     return 'openbank_cte';
   }
   if (text.includes('ing')) {

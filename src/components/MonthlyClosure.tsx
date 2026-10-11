@@ -24,7 +24,7 @@ import {
   ListFilter
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer, getAvailableMonths } from '../utils/storage';
 import { getBenchmarkForYear } from '../data/excel2025Benchmark';
 
 interface MonthlyClosureProps {
@@ -38,10 +38,7 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   onUpdateClosure,
   onUpdateTransaction
 }) => {
-  const today = new Date();
-  const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  
-  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
+  const [selectedMonth, setSelectedMonth] = useState<string>('2026-09');
   const [notesText, setNotesText] = useState<string>('');
   
   // Estado para alternar vista de tabla: 'detailed' (todas las cuentas desglosadas) o 'grouped' (por entidad)
@@ -218,7 +215,13 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     return getAccountBalanceInfo(acc).balance;
   };
 
-  // Navigate months: estrictamente desde 2025-01 hasta 2030-12
+  const availableMonths = useMemo(() => {
+    return getAvailableMonths(appState.transactions, appState.monthlyClosures, appState.accounts);
+  }, [appState.transactions, appState.monthlyClosures, appState.accounts]);
+
+  const maxAvailableMonth = availableMonths[0] || '2026-09';
+
+  // Navigate months: estrictamente desde 2025-01 hasta el último mes disponible con extractos
   const handlePrevMonth = () => {
     const prevDate = new Date(year, month - 2, 1);
     const newY = prevDate.getFullYear();
@@ -230,9 +233,10 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   const handleNextMonth = () => {
     const nextDate = new Date(year, month, 1);
     const newY = nextDate.getFullYear();
-    if (newY > 2030) return;
     const newM = String(nextDate.getMonth() + 1).padStart(2, '0');
-    setSelectedMonth(`${newY}-${newM}`);
+    const target = `${newY}-${newM}`;
+    if (target > maxAvailableMonth) return;
+    setSelectedMonth(target);
   };
 
   // Filter transactions for selected month
@@ -568,11 +572,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             <button
               type="button"
               onClick={handleNextMonth}
-              disabled={selectedMonth === '2030-12'}
+              disabled={selectedMonth >= maxAvailableMonth}
               className={`w-10 h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
-                selectedMonth === '2030-12' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+                selectedMonth >= maxAvailableMonth ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
               }`}
-              title="Mes siguiente"
+              title={selectedMonth >= maxAvailableMonth ? 'Último mes con extractos importados (Septiembre 2026)' : 'Mes siguiente'}
             >
               <ChevronRight className="w-4 h-4" />
             </button>

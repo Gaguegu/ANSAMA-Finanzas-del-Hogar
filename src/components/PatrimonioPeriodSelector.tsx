@@ -41,7 +41,9 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
   const isClosed = Boolean(closure?.isClosed);
   const hasAuditedBalances = Boolean(closure?.auditedBalances && Object.keys(closure.auditedBalances).length > 0);
 
-  // Previous and next month handlers: estrictamente desde 2025-01 hasta 2030-12
+  const maxAvailableMonth = availableMonths[0] || '2026-09';
+
+  // Previous and next month handlers: estrictamente desde 2025-01 hasta el último mes con extractos
   const handlePrevMonth = () => {
     let prevM = month - 1;
     let prevY = year;
@@ -61,8 +63,8 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
       nextM = 1;
       nextY += 1;
     }
-    if (nextY > 2030) return;
     const nextStr = `${nextY}-${String(nextM).padStart(2, '0')}`;
+    if (nextStr > maxAvailableMonth) return;
     onSelectMonth(nextStr);
   };
 
@@ -165,11 +167,11 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
           <button
             type="button"
             onClick={handleNextMonth}
-            disabled={selectedMonth === '2030-12'}
+            disabled={selectedMonth >= maxAvailableMonth}
             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
-              selectedMonth === '2030-12' ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
+              selectedMonth >= maxAvailableMonth ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
             }`}
-            title="Mes siguiente (Mes +1)"
+            title={selectedMonth >= maxAvailableMonth ? 'Último mes con extractos importados (Septiembre 2026)' : 'Mes siguiente (Mes +1)'}
             aria-label="Mes siguiente"
           >
             <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-700" />
@@ -180,14 +182,14 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
             <input
               type="month"
               min="2025-01"
-              max="2030-12"
+              max={maxAvailableMonth}
               value={selectedMonth}
               onChange={(e) => {
                 if (e.target.value) {
                   onSelectMonth(e.target.value);
                 }
               }}
-              title="Elegir cualquier mes y año del calendario (2025-2030)"
+              title={`Elegir mes y año (2025-01 hasta ${maxAvailableMonth})`}
               className="w-full h-full opacity-0 absolute inset-0 cursor-pointer z-10"
             />
             <button
