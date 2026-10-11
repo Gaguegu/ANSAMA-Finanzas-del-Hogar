@@ -597,8 +597,19 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               <span className="text-[11px] font-semibold text-emerald-800 uppercase block tracking-wider truncate">
                 Periodo Mensual
               </span>
-              <span className="text-sm font-black text-emerald-950 truncate block">
-                {capitalizedMonth} {year}
+              <span className="text-sm font-black text-emerald-950 truncate flex items-center justify-center gap-1.5">
+                <span>{capitalizedMonth} {year}</span>
+                {currentClosure.isLocked ? (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-emerald-200/80 text-emerald-950 font-black border border-emerald-300" title="Mes Blindado">
+                    <Lock className="w-2.5 h-2.5 text-[#0E6A3B]" />
+                    <span>Blindado</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-900 font-black border border-amber-300" title="Mes Abierto">
+                    <Unlock className="w-2.5 h-2.5 text-amber-600" />
+                    <span>Abierto</span>
+                  </span>
+                )}
               </span>
             </div>
 

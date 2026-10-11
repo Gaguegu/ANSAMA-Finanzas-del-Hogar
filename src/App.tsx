@@ -1032,6 +1032,7 @@ export default function App() {
             <YearlyClosure
               appState={appState}
               onLockExercise={handleLockExercise}
+              onUpdateClosure={handleUpdateClosure}
             />
           </div>
         )}

@@ -20,13 +20,14 @@ import {
   Lock,
   Unlock
 } from 'lucide-react';
-import { AppState, BankAccount, Transaction } from '../types';
-import { formatCurrency, isCapitalTransfer } from '../utils/storage';
+import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
+import { formatCurrency, isCapitalTransfer, getAccountBalanceForMonth } from '../utils/storage';
 import { getBenchmarkForYear, matchAccountToBenchmarkKey } from '../data/excel2025Benchmark';
 
 interface YearlyClosureProps {
   appState: AppState;
   onLockExercise?: () => void;
+  onUpdateClosure?: (closure: MonthClosure) => void;
 }
 
 const MONTH_NAMES_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -35,7 +36,7 @@ const MONTH_NAMES_FULL = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockExercise }) => {
+export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockExercise, onUpdateClosure }) => {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
@@ -44,6 +45,70 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockEx
   const [cashflowAccountFilter, setCashflowAccountFilter] = useState<string>('all');
   const [cashflowViewMode, setCashflowViewMode] = useState<'selected' | 'all-accounts'>('selected');
   const [savingsViewMode, setSavingsViewMode] = useState<'real' | 'gross'>('real');
+
+  // Activar o desactivar blindaje contable de un mes específico
+  const handleToggleMonthLock = (
+    monthKey: string,
+    monthName: string,
+    isCurrentlyLocked: boolean,
+    monthCashflowData?: { income: number; expense: number; net: number }
+  ) => {
+    if (!onUpdateClosure) return;
+
+    if (isCurrentlyLocked) {
+      if (!window.confirm(`El mes de ${monthName} ${selectedYear} está blindado oficialmente para proteger los saldos de bancos y las Pérdidas y Ganancias contra descuadres.\n\n¿Estás seguro de que deseas desblindar y reabrir este mes para hacer modificaciones?`)) {
+        return;
+      }
+      const existing = appState.monthlyClosures?.find((c) => c.month === monthKey);
+      const updated: MonthClosure = {
+        month: monthKey,
+        isClosed: false,
+        isLocked: false,
+        closedAt: existing?.closedAt,
+        notes: existing?.notes,
+        auditedBalances: existing?.auditedBalances,
+        auditedIncome: existing?.auditedIncome,
+        auditedExpense: existing?.auditedExpense,
+        auditedNet: existing?.auditedNet,
+        auditedByBank: existing?.auditedByBank
+      };
+      onUpdateClosure(updated);
+    } else {
+      if (!window.confirm(`¿Deseas cerrar y blindar oficialmente el mes de ${monthName} ${selectedYear}?\n\nAl blindarlo, los saldos bancarios y las Pérdidas y Ganancias quedarán sellados e inmutables, protegiéndolos contra cualquier descuadre futuro por importación de extractos.`)) {
+        return;
+      }
+      const existing = appState.monthlyClosures?.find((c) => c.month === monthKey);
+
+      // Snapshot de saldos de cada cuenta bancaria para este mes
+      const auditedBalances: Record<string, number> = {
+        ...(existing?.auditedBalances || {})
+      };
+      appState.accounts.forEach((acc) => {
+        if (auditedBalances[acc.id] === undefined) {
+          const balInfo = getAccountBalanceForMonth(acc, monthKey, appState.transactions, appState.monthlyClosures);
+          auditedBalances[acc.id] = balInfo.balance;
+        }
+      });
+
+      const inc = monthCashflowData?.income ?? existing?.auditedIncome ?? 0;
+      const exp = monthCashflowData?.expense ?? existing?.auditedExpense ?? 0;
+      const net = monthCashflowData?.net ?? (inc - exp);
+
+      const updated: MonthClosure = {
+        month: monthKey,
+        isClosed: true,
+        isLocked: true,
+        closedAt: new Date().toISOString(),
+        notes: existing?.notes || `🔒 Cierre y blindaje oficial (${monthName} ${selectedYear})`,
+        auditedBalances,
+        auditedIncome: inc,
+        auditedExpense: exp,
+        auditedNet: net,
+        auditedByBank: existing?.auditedByBank
+      };
+      onUpdateClosure(updated);
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedEntities(prev => ({
@@ -1669,42 +1734,123 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockEx
 
             {/* Cuadrícula de 12 Meses + 13ª Tarjeta de Total Anual */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {activeCashflowData.months.map((m, idx) => (
-                <div 
-                  key={idx}
-                  className={`p-3.5 rounded-xl border transition-all ${
-                    m.hasActivity 
-                      ? 'bg-zinc-50 border-zinc-200 shadow-2xs hover:border-emerald-300 hover:bg-white' 
-                      : 'bg-zinc-50/50 border-zinc-100 opacity-60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-extrabold text-xs text-zinc-900">{m.fullMonth}</span>
-                    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                      m.net >= 0 ? 'bg-emerald-100 text-[#0E6A3B]' : 'bg-rose-100 text-rose-700'
-                    }`}>
-                      {m.net >= 0 ? 'Superávit' : 'Déficit'}
-                    </span>
-                  </div>
+              {activeCashflowData.months.map((m, idx) => {
+                const monthNum = String(idx + 1).padStart(2, '0');
+                const monthKey = `${selectedYear}-${monthNum}`;
+                const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
+                const isLocked = Boolean(
+                  closure?.isLocked || 
+                  (closure?.isClosed && closure.auditedBalances) ||
+                  (selectedYear === 2026 && idx < 9) || 
+                  (selectedYear === 2025 && idx < 12)
+                );
 
-                  <div className="space-y-1.5 text-xs font-feature-settings-tnum">
-                    <div className="flex justify-between text-emerald-800">
-                      <span className="text-[11px] text-zinc-500">Ingresos:</span>
-                      <span className="font-bold">+{formatCurrency(m.income)}</span>
+                return (
+                  <div 
+                    key={idx}
+                    className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between ${
+                      isLocked
+                        ? 'bg-white border-emerald-300 ring-1 ring-emerald-500/15 shadow-2xs'
+                        : m.hasActivity 
+                          ? 'bg-zinc-50 border-zinc-200 shadow-2xs hover:border-emerald-300 hover:bg-white' 
+                          : 'bg-zinc-50/50 border-zinc-200/80 opacity-75'
+                    }`}
+                  >
+                    <div>
+                      {/* Cabecera del Mes con Candado de Blindaje (Blindado vs Abierto) */}
+                      <div className="flex items-center justify-between mb-2 gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-extrabold text-xs text-zinc-950 truncate">{m.fullMonth}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMonthLock(monthKey, m.fullMonth, isLocked, m)}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer shrink-0 shadow-2xs ${
+                              isLocked
+                                ? 'bg-emerald-100 text-emerald-950 border-emerald-300 hover:bg-emerald-200 hover:border-emerald-400'
+                                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
+                            }`}
+                            title={
+                              isLocked
+                                ? `${m.fullMonth} ${selectedYear}: Mes Blindado. Haz clic si necesitas desblindarlo para hacer ajustes.`
+                                : `${m.fullMonth} ${selectedYear}: Mes Abierto. Haz clic para Cerrar y Blindar una vez que esté cuadrado.`
+                            }
+                          >
+                            {isLocked ? (
+                              <>
+                                <Lock className="w-2.5 h-2.5 text-[#0E6A3B]" />
+                                <span>Blindado</span>
+                              </>
+                            ) : (
+                              <>
+                                <Unlock className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Abierto</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                          m.net > 0 
+                            ? 'bg-emerald-100 text-[#0E6A3B]' 
+                            : m.net < 0 
+                              ? 'bg-rose-100 text-rose-700' 
+                              : 'bg-zinc-100 text-zinc-600'
+                        }`}>
+                          {m.net > 0 ? 'Superávit' : m.net < 0 ? 'Déficit' : 'Sin mov.'}
+                        </span>
+                      </div>
+
+                      {/* Desglose Ingresos, Gastos y Neto del Mes */}
+                      <div className="space-y-1.5 text-xs font-feature-settings-tnum">
+                        <div className="flex justify-between text-emerald-800">
+                          <span className="text-[11px] text-zinc-500">Ingresos:</span>
+                          <span className="font-bold">+{formatCurrency(m.income)}</span>
+                        </div>
+                        <div className="flex justify-between text-rose-600">
+                          <span className="text-[11px] text-zinc-500">Gastos:</span>
+                          <span className="font-bold">-{formatCurrency(m.expense)}</span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-zinc-200 font-extrabold">
+                          <span className="text-[11px] text-zinc-700">Neto:</span>
+                          <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
+                            {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-rose-600">
-                      <span className="text-[11px] text-zinc-500">Gastos:</span>
-                      <span className="font-bold">-{formatCurrency(m.expense)}</span>
-                    </div>
-                    <div className="flex justify-between pt-1 border-t border-zinc-200 font-extrabold">
-                      <span className="text-[11px] text-zinc-700">Neto:</span>
-                      <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
-                        {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
-                      </span>
+
+                    {/* Acción inferior: Estado y botón para Cerrar y Blindar cuando esté cuadrado */}
+                    <div className="mt-2.5 pt-1.5 border-t border-zinc-100">
+                      {isLocked ? (
+                        <div className="flex items-center justify-between text-[10px] text-emerald-800 font-semibold">
+                          <span className="flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-[#0E6A3B]" />
+                            <span className="text-[9px]">Cuadre blindado</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMonthLock(monthKey, m.fullMonth, true, m)}
+                            className="text-[9px] text-zinc-400 hover:text-zinc-700 underline cursor-pointer"
+                            title="Reabrir mes si necesitas modificar saldos o movimientos"
+                          >
+                            Reabrir
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMonthLock(monthKey, m.fullMonth, false, m)}
+                          className="w-full py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#0E6A3B] text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                          title={`Cerrar y blindar ${m.fullMonth} ${selectedYear} cuando esté cuadrado`}
+                        >
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>Cerrar y Blindar Mes</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {/* 13ª Tarjeta: TOTAL DEL AÑO */}
               <div className="p-3.5 rounded-xl border-2 border-emerald-600/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-100/50 shadow-xs flex flex-col justify-between">
