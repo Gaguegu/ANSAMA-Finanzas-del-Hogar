@@ -15,7 +15,10 @@ import {
   Percent,
   Info,
   Layers,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction } from '../types';
 import { formatCurrency, isCapitalTransfer } from '../utils/storage';
@@ -23,6 +26,7 @@ import { getBenchmarkForYear, matchAccountToBenchmarkKey } from '../data/excel20
 
 interface YearlyClosureProps {
   appState: AppState;
+  onLockExercise?: () => void;
 }
 
 const MONTH_NAMES_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -31,7 +35,7 @@ const MONTH_NAMES_FULL = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
+export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockExercise }) => {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
@@ -838,6 +842,48 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
         </div>
       </div>
 
+      {/* Tarjeta de Blindaje Oficial de los Ejercicios Históricos (2025 y 2026) */}
+      {(selectedYear === 2025 || selectedYear === 2026) && (
+        <div className="bg-gradient-to-r from-[#092B19] via-emerald-950 to-[#0A341F] rounded-2xl border-2 border-emerald-500/50 p-4 sm:p-5 shadow-sm text-white">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner">
+                <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    Blindaje Oficial del Ejercicio {selectedYear}
+                  </h3>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
+                    <Lock className="w-3 h-3 text-emerald-300" />
+                    {selectedYear === 2025 ? '12 Meses (Enero — Diciembre) Blindados' : 'Enero — Septiembre Blindados'}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-100/90 mt-1 max-w-3xl leading-relaxed">
+                  {selectedYear === 2025
+                    ? 'Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de los 12 meses de 2025 están blindados y sellados permanentemente con los datos de tus extractos y Excel oficial.'
+                    : 'Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de Enero a Septiembre están blindados y sellados permanentemente. La importación de futuros extractos bancarios (octubre en adelante) o nuevos movimientos nunca alterará estos datos históricos auditados.'}
+                </p>
+              </div>
+            </div>
+            {onLockExercise && (
+              <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={onLockExercise}
+                  className="px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-sm cursor-pointer transition-all flex items-center gap-2 active:scale-95"
+                  title="Verificar y sellar blindaje de los periodos auditados"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-950" />
+                  <span>Blindaje Activo</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Selector de Perspectiva Contable: Ahorro Familiar Real vs Tesorería Bruta */}
       <div className="bg-white rounded-2xl border-2 border-emerald-600/40 p-3.5 sm:p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1116,14 +1162,23 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState }) => {
                 <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
                   Entidad / Cuenta
                 </th>
-                {MONTH_NAMES_SHORT.map((m) => (
-                  <th 
-                    key={m} 
-                    className="px-3 py-3 text-right text-zinc-600 font-bold"
-                  >
-                    {m}
-                  </th>
-                ))}
+                {MONTH_NAMES_SHORT.map((m, idx) => {
+                  const monthPrefix = `${selectedYear}-${String(idx + 1).padStart(2, '0')}`;
+                  const closure = appState.monthlyClosures?.find((c) => c.month === monthPrefix);
+                  const isLockedMonth = closure?.isLocked || (selectedYear === 2026 && idx < 9) || (selectedYear === 2025 && idx < 12);
+                  return (
+                    <th 
+                      key={m} 
+                      className={`px-3 py-3 text-right ${isLockedMonth ? 'text-emerald-950 font-black' : 'text-zinc-600 font-bold'}`}
+                      title={isLockedMonth ? `${m}: Mes cerrado y blindado oficialmente (Saldos y P&L sellados)` : m}
+                    >
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        {m}
+                        {isLockedMonth && <Lock className="w-2.5 h-2.5 text-[#0E6A3B] inline" />}
+                      </span>
+                    </th>
+                  );
+                })}
                 
                 {/* Bloque Resumen Anual: CIERRE (31-DIC) / TOTAL ANUAL, SALDO MEDIO, VAR. ANUAL */}
                 <th 

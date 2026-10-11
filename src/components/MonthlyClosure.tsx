@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
-  ListFilter
+  ListFilter,
+  ShieldCheck
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
 import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer, getAvailableMonths } from '../utils/storage';
@@ -443,6 +444,11 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
 
   // Toggle close / open status (guarda foto fija de los saldos de cuentas de valores y bancos de ese mes)
   const handleToggleClose = () => {
+    if (currentClosure.isClosed && currentClosure.isLocked) {
+      if (!window.confirm(`Este mes (${capitalizedMonth} ${year}) está blindado oficialmente para proteger los saldos de bancos y las Pérdidas y Ganancias contra descuadres. ¿Estás seguro de que deseas reabrirlo?`)) {
+        return;
+      }
+    }
     const isClosing = !currentClosure.isClosed;
     const audited: Record<string, number> = isClosing
       ? appState.accounts.reduce((acc, a) => ({ ...acc, [a.id]: getAccountBalanceForMonth(a) }), {})
@@ -451,12 +457,32 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
     const updated: MonthClosure = {
       month: selectedMonth,
       isClosed: isClosing,
+      isLocked: isClosing, // Al cerrarse, queda sellado y blindado por defecto
       closedAt: isClosing ? new Date().toISOString() : undefined,
       notes: notesText,
       auditedBalances: audited,
       auditedIncome: isClosing ? monthIncome : undefined,
       auditedExpense: isClosing ? monthExpense : undefined,
-      auditedNet: isClosing ? (monthIncome - monthExpense) : undefined
+      auditedNet: isClosing ? (monthIncome - monthExpense) : undefined,
+      auditedByBank: isClosing ? (currentClosure.auditedByBank || monthBenchmark?.byBank) : undefined
+    };
+    onUpdateClosure(updated);
+  };
+
+  // Toggle blindaje específico del mes
+  const handleToggleLock = () => {
+    const nextLocked = !currentClosure.isLocked;
+    const updated: MonthClosure = {
+      ...currentClosure,
+      isClosed: true,
+      isLocked: nextLocked,
+      closedAt: currentClosure.closedAt || new Date().toISOString(),
+      notes: notesText || currentClosure.notes || `🔒 Cierre oficial (${capitalizedMonth} ${year})`,
+      auditedBalances: currentClosure.auditedBalances || appState.accounts.reduce((acc, a) => ({ ...acc, [a.id]: getAccountBalanceForMonth(a) }), {}),
+      auditedIncome: currentClosure.auditedIncome ?? monthIncome,
+      auditedExpense: currentClosure.auditedExpense ?? monthExpense,
+      auditedNet: currentClosure.auditedNet ?? (monthIncome - monthExpense),
+      auditedByBank: currentClosure.auditedByBank || monthBenchmark?.byBank
     };
     onUpdateClosure(updated);
   };
@@ -523,11 +549,18 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
                   Control y Cierre Mensual
                 </h2>
                 <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
-                  currentClosure.isClosed
-                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                    : 'bg-amber-50 text-amber-900 border-amber-300'
+                  currentClosure.isLocked
+                    ? 'bg-emerald-100 text-emerald-950 border-emerald-400 ring-1 ring-emerald-500/30 shadow-2xs'
+                    : currentClosure.isClosed
+                      ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                      : 'bg-amber-50 text-amber-900 border-amber-300'
                 }`}>
-                  {currentClosure.isClosed ? (
+                  {currentClosure.isLocked ? (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                      Mes Blindado & Sellado
+                    </>
+                  ) : currentClosure.isClosed ? (
                     <>
                       <Lock className="w-3 h-3 text-[#0E6A3B]" />
                       Mes Cerrado & Auditado
@@ -584,8 +617,13 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
             {/* Botón Ajustar Saldos al Cierre (ideal para poner los saldos de carteras de valores o meses pasados) */}
             <button
               onClick={handleOpenEditBalances}
-              title="Ajustar o revisar los saldos exactos de tus cuentas de valores o bancos al cierre de este mes"
-              className="px-3.5 py-2 h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 cursor-pointer shrink-0"
+              disabled={currentClosure.isLocked}
+              title={currentClosure.isLocked ? "Mes blindado: desblinda primero si necesitas ajustar saldos de este mes" : "Ajustar o revisar los saldos exactos de tus cuentas de valores o bancos al cierre de este mes"}
+              className={`px-3.5 py-2 h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 ${
+                currentClosure.isLocked
+                  ? 'bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed'
+                  : 'bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 cursor-pointer'
+              }`}
             >
               <Edit3 className="w-3.5 h-3.5 text-[#0E6A3B]" />
               <span className="hidden sm:inline">Ajustar Saldos Cierre</span>
@@ -626,6 +664,86 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Banner de Blindaje Contable Oficial del Periodo */}
+      {currentClosure.isClosed && (
+        <div className={`p-4 rounded-2xl border-2 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs animate-in fade-in ${
+          currentClosure.isLocked
+            ? 'bg-gradient-to-r from-emerald-950 via-[#092B19] to-emerald-900 border-emerald-500/60 text-white'
+            : 'bg-zinc-50 border-zinc-300 text-zinc-900'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-inner ${
+              currentClosure.isLocked
+                ? 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-300'
+                : 'bg-zinc-200 text-zinc-700'
+            }`}>
+              {currentClosure.isLocked ? (
+                <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              ) : (
+                <Lock className="w-5 h-5 text-zinc-700" />
+              )}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className={`text-sm sm:text-base font-black tracking-tight ${
+                  currentClosure.isLocked ? 'text-white' : 'text-zinc-950'
+                }`}>
+                  {currentClosure.isLocked ? 'Blindaje Contable Activo e Inmutable' : 'Mes Cerrado y Auditado'}
+                </h3>
+                <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                  currentClosure.isLocked
+                    ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400/40'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                }`}>
+                  <Lock className="w-2.5 h-2.5" />
+                  {currentClosure.isLocked ? 'Protegido contra descuadres' : 'Auditado'}
+                </span>
+              </div>
+              <p className={`text-xs mt-0.5 leading-relaxed ${
+                currentClosure.isLocked ? 'text-emerald-100/90' : 'text-zinc-600'
+              }`}>
+                {currentClosure.isLocked ? (
+                  <>
+                    Los <strong>Saldos por Banco</strong> (Total: {formatCurrency(totalBalanceMonth)}) y las <strong>Pérdidas y Ganancias</strong> (Ingresos: {formatCurrency(monthIncome)}, Gastos: {formatCurrency(monthExpense)}, Neto: {formatCurrency(monthNet)}) de <strong>{capitalizedMonth} {year}</strong> están blindados. Ninguna importación futura ni edición alterará este mes.
+                  </>
+                ) : (
+                  <>
+                    Este mes está cerrado. Puedes blindarlo para bloquear permanentemente cualquier alteración por importaciones de extractos o modificaciones accidentales.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            {currentClosure.isLocked ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`¿Seguro que deseas desblindar el mes de ${capitalizedMonth} ${year}? Solo debes hacerlo si necesitas corregir expresamente un saldo o movimiento histórico.`)) {
+                    handleToggleLock();
+                  }
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-100 bg-white/10 hover:bg-white/20 border border-white/20 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Desbloquear temporalmente el blindaje de este mes para ajustes"
+              >
+                <Unlock className="w-3.5 h-3.5 text-amber-300" />
+                <span>Desblindar para ajustes</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleToggleLock}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Blindar este mes para que ninguna importación futura lo altere"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Blindar Mes</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sugerencia inteligente de Nómina / Sueldo con fecha de primeros del mes siguiente (desfase Fecha Valor) */}
       {earlyNextMonthPayrolls.length > 0 && onUpdateTransaction && (

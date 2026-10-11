@@ -13,7 +13,9 @@ import {
   getAccountBalanceForMonth,
   cleanAndRestoreBackup,
   purgeDemoAccounts,
-  normalizeAndDeduplicateYieldsAndTransactions
+  normalizeAndDeduplicateYieldsAndTransactions,
+  lockHistoricalExercise,
+  isMonthLocked
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { reconcileAndCategorizeAll, normalizeConceptForMatching, areTransactionsSimilar } from './utils/reconciliation';
@@ -36,7 +38,7 @@ import { MobileNav } from './components/MobileNav';
 import { LockScreen } from './components/LockScreen';
 import { AutoUpdateNotification } from './components/AutoUpdateNotification';
 import { PatrimonioPeriodSelector } from './components/PatrimonioPeriodSelector';
-import { Sparkles, CheckCircle2, RefreshCw, Info } from 'lucide-react';
+import { Sparkles, CheckCircle2, RefreshCw, Info, AlertCircle } from 'lucide-react';
 import { usePWA } from './utils/usePWA';
 
 export default function App() {
@@ -58,7 +60,7 @@ export default function App() {
   const [editingYield, setEditingYield] = useState<YieldRecord | null>(null);
   const [accountToEdit, setAccountToEdit] = useState<BankAccount | null>(null);
   const [accountModalInitialType, setAccountModalInitialType] = useState<AccountType | undefined>(undefined);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   const handleOpenNewAccountModal = (initialType?: AccountType) => {
     setAccountToEdit(null);
@@ -77,7 +79,7 @@ export default function App() {
   const pwa = usePWA();
 
   // Show transient toast notification
-  const triggerNotification = (message: string, type: 'success' | 'info' = 'success') => {
+  const triggerNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(null);
@@ -104,6 +106,15 @@ export default function App() {
 
   // Add new transaction & update account balance
   const handleAddTransaction = (newTxData: Omit<Transaction, 'id'>) => {
+    const txMonth = newTxData.date.substring(0, 7);
+    if (isMonthLocked(txMonth, appState.monthlyClosures)) {
+      triggerNotification(
+        `El mes ${txMonth} está oficialmente blindado y cerrado contablemente. Para proteger la cuadratura de los saldos y Pérdidas y Ganancias, no se pueden añadir movimientos directos a periodos cerrados. Si necesitas modificarlo, reabre el mes en Control y Cierre Mensual.`,
+        'error'
+      );
+      return;
+    }
+
     const txId = `tx-${Date.now()}`;
     const newTx: Transaction = {
       ...newTxData,
@@ -154,6 +165,15 @@ export default function App() {
   const handleDeleteTransaction = (id: string) => {
     const txToDelete = appState.transactions.find((t) => t.id === id);
     if (!txToDelete) return;
+
+    const txMonth = txToDelete.date.substring(0, 7);
+    if (isMonthLocked(txMonth, appState.monthlyClosures)) {
+      triggerNotification(
+        `El movimiento pertenece al mes ${txMonth}, que está blindado y cerrado contablemente. Para proteger la integridad de los saldos y Pérdidas y Ganancias, no se pueden eliminar movimientos de meses cerrados sin reabrirlos antes.`,
+        'error'
+      );
+      return;
+    }
 
     const isDisclaimer =
       (txToDelete.title || '').toLowerCase().includes('cuentas colectivas') ||
@@ -360,6 +380,15 @@ export default function App() {
     const txsToDelete = appState.transactions.filter((t) => idSet.has(t.id));
     if (txsToDelete.length === 0) return;
 
+    const lockedTxs = txsToDelete.filter((t) => isMonthLocked(t.date.substring(0, 7), appState.monthlyClosures));
+    if (lockedTxs.length > 0) {
+      triggerNotification(
+        `No se pueden eliminar ${lockedTxs.length} movimiento(s) porque pertenecen a periodos oficialmente blindados. Para evitar descuadres, reabre los meses correspondientes si necesitas hacer correcciones.`,
+        'error'
+      );
+      return;
+    }
+
     let updatedAccounts = [...appState.accounts];
     if (revertBalances) {
       const deltasByAccount: Record<string, number> = {};
@@ -558,6 +587,16 @@ export default function App() {
       closure.isClosed 
         ? `Mes ${closure.month} auditado: los saldos se han actualizado en tu pantalla de Patrimonio.`
         : `Cierre del mes ${closure.month} guardado y sincronizado con Patrimonio.`,
+      'success'
+    );
+  };
+
+  // Blindar oficialmente los Ejercicios Históricos (2025 completo y 2026 Ene-Sep)
+  const handleLockExercise = () => {
+    const newState = lockHistoricalExercise(appState);
+    setAppState(newState);
+    triggerNotification(
+      '🛡️ Blindaje Contable Activo: Los ejercicios históricos (2025 completo y 2026 Enero–Septiembre) han quedado sellados. Los saldos bancarios y las Pérdidas y Ganancias están 100% blindados contra cualquier modificación futura.',
       'success'
     );
   };
@@ -772,9 +811,15 @@ export default function App() {
       {/* Toast Notification */}
       {notification && (
         <div className="fixed top-20 right-4 z-50 animate-in fade-in slide-in-from-top-3 duration-200 max-w-sm">
-          <div className="flex items-center gap-2.5 bg-slate-900/95 backdrop-blur text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-medium border border-slate-700/80">
+          <div className={`flex items-center gap-2.5 backdrop-blur text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-medium border ${
+            notification.type === 'error'
+              ? 'bg-rose-950/95 border-rose-700/80 text-rose-100'
+              : 'bg-slate-900/95 border-slate-700/80 text-white'
+          }`}>
             {notification.type === 'info' ? (
               <RefreshCw className="w-4 h-4 text-emerald-400 shrink-0 animate-spin" />
+            ) : notification.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             ) : (
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             )}
@@ -986,6 +1031,7 @@ export default function App() {
           <div className="space-y-6 animate-in fade-in duration-200">
             <YearlyClosure
               appState={appState}
+              onLockExercise={handleLockExercise}
             />
           </div>
         )}

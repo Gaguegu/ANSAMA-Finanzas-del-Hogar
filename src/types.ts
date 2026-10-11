@@ -86,6 +86,7 @@ export interface YieldRecord {
 export interface MonthClosure {
   month: string; // YYYY-MM
   isClosed: boolean;
+  isLocked?: boolean; // Blindaje oficial del periodo contra alteraciones futuras
   closedAt?: string;
   notes?: string;
   auditedBalances?: Record<string, number>; // accountId -> closing balance
