@@ -22,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
-  Sparkles
+  Sparkles,
+  Printer,
+  FileDown
 } from 'lucide-react';
 import { TransactionCategory, Transaction } from '../types';
 import { formatCurrency } from '../utils/storage';
@@ -81,6 +83,31 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
     }
   };
 
+  // Anos disponibles dinamicamente (2025, 2026, proximos anos o los que existan en datos/cierres)
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    // Anos base fundamentales
+    yearsSet.add('2025');
+    yearsSet.add('2026');
+    // Anos con movimientos registrados
+    transactions.forEach((t) => {
+      if (t.date && t.date.length >= 4) {
+        yearsSet.add(t.date.substring(0, 4));
+      }
+    });
+    // Anos en meses disponibles
+    availableMonths.forEach((m) => {
+      if (m && m.length >= 4) {
+        yearsSet.add(m.substring(0, 4));
+      }
+    });
+    // Si estamos en un ano posterior, incluirlo tambien
+    const curY = new Date().getFullYear().toString();
+    yearsSet.add(curY);
+
+    return Array.from(yearsSet).sort().reverse();
+  }, [transactions, availableMonths]);
+
   // Lista combinada de opciones de meses disponibles
   const periodOptions = useMemo(() => {
     const set = new Set<string>();
@@ -92,7 +119,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
     return Array.from(set).sort().reverse();
   }, [monthsWithData, availableMonths]);
 
-  // Navegación rápida mes a mes (anterior / siguiente)
+  // Navegacion rapida mes a mes (anterior / siguiente)
   const handlePrevMonth = () => {
     if (activePeriod === 'all' || activePeriod.startsWith('year-')) {
       handlePeriodChange(latestMonthWithData);
@@ -137,7 +164,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
     return transactions.filter((t) => t.date.startsWith(activePeriod));
   }, [transactions, activePeriod]);
 
-  // Formato legible del periodo en español
+  // Formato legible del periodo en espanol
   const formatPeriodLabel = (p: string): string => {
     if (p === 'all') return 'Todos los movimientos registrados';
     if (p.startsWith('year-')) return `Ejercicio ${p.replace('year-', '')} Completo`;
@@ -151,6 +178,11 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   };
 
   const currentPeriodLabel = formatPeriodLabel(activePeriod);
+
+  // Accion directa para imprimir o guardar informe en PDF
+  const handlePrintReport = () => {
+    window.print();
+  };
 
   // Totales de gastos e ingresos en este periodo
   const expenseTotalSum = useMemo(() => {
@@ -279,8 +311,12 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="── Vista Acumulada ──">
-                  <option value="year-2026">📅 Todo el Ejercicio 2026</option>
+                <optgroup label="── Vista Anual Acumulada ──">
+                  {availableYears.map((yr) => (
+                    <option key={`year-${yr}`} value={`year-${yr}`}>
+                      📅 Todo el Ejercicio {yr}
+                    </option>
+                  ))}
                   <option value="all">🏛️ Todos los movimientos</option>
                 </optgroup>
               </select>
@@ -322,6 +358,18 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
               Ingresos ({formatCurrency(incomeTotalSum)})
             </button>
           </div>
+
+          {/* Boton Imprimir / Guardar en PDF el filtro actual */}
+          <button
+            type="button"
+            onClick={handlePrintReport}
+            title={`Imprimir en papel o guardar en PDF el informe de ${currentPeriodLabel} (${activeTab === 'expense' ? 'Gastos' : 'Ingresos'})`}
+            className="px-3 py-1.5 h-[34px] rounded-xl text-xs font-bold text-zinc-800 bg-white hover:bg-zinc-100 border border-zinc-300 shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shrink-0"
+          >
+            <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
+            <span className="hidden sm:inline">Imprimir PDF</span>
+            <span className="sm:hidden">PDF</span>
+          </button>
         </div>
       </div>
 
@@ -498,6 +546,115 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
           })}
         </div>
 
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECCION EXCLUSIVA DE IMPRESION A4 / PDF (data-print="only")               */}
+      {/* ========================================================================= */}
+      <div className="print-only print-report mt-6 w-full" data-print="only">
+        {/* Cabecera oficial del informe */}
+        <div className="border-b-2 border-zinc-950 pb-3 mb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                ANSAMA • Finanzas del Hogar
+              </div>
+              <h1 className="text-xl font-black text-zinc-950 uppercase tracking-tight mt-0.5">
+                Informe de Distribución de {activeTab === 'expense' ? 'Gastos' : 'Ingresos'}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-zinc-700">
+                <span className="font-bold">Periodo Consultado: <strong className="text-zinc-950">{currentPeriodLabel}</strong></span>
+                <span>•</span>
+                <span>Filtro: <strong className="text-zinc-950">{activeTab === 'expense' ? 'Gastos por Categoría' : 'Ingresos por Categoría'}</strong></span>
+                <span>•</span>
+                <span>Movimientos: <strong>{periodTransactions.length} operaciones</strong></span>
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-zinc-600">
+              <div>Fecha de emisión: <strong>{new Date().toLocaleDateString('es-ES')}</strong></div>
+              <div className="text-[10px] text-zinc-500 mt-0.5">Generado desde ANSAMA Finanzas</div>
+            </div>
+          </div>
+
+          {/* Resumen de totales */}
+          <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-zinc-200 text-center">
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total {activeTab === 'expense' ? 'Gastos' : 'Ingresos'}</div>
+              <div className="text-base font-black text-zinc-950">{formatCurrency(totalSum)}</div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Categorías con Importe</div>
+              <div className="text-base font-black text-[#0E6A3B]">{sortedStats.filter(s => s.totalAmount > 0).length} de {sortedStats.length}</div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total Operaciones</div>
+              <div className="text-base font-black text-zinc-950">{periodTransactions.filter(t => t.type === activeTab).length} mov.</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla desglosada por categorías para impresión limpia */}
+        <table className="w-full text-left text-xs border border-zinc-300 mb-6">
+          <thead className="bg-zinc-100 border-b border-zinc-300 text-zinc-700 uppercase font-black text-[10px]">
+            <tr>
+              <th className="p-2">#</th>
+              <th className="p-2">Categoría</th>
+              <th className="p-2 text-center">Operaciones</th>
+              {activeTab === 'expense' && <th className="p-2 text-right">Presupuesto</th>}
+              <th className="p-2 text-right">Importe Total</th>
+              <th className="p-2 text-right">% del Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200">
+            {sortedStats.map((item, idx) => (
+              <tr key={item.category.id} className={item.totalAmount > 0 ? 'bg-white' : 'bg-zinc-50/50 opacity-60'}>
+                <td className="p-2 text-zinc-400 font-bold text-[10px]">{idx + 1}</td>
+                <td className="p-2 font-bold text-zinc-900">
+                  {item.category.name}
+                </td>
+                <td className="p-2 text-center font-semibold text-zinc-600">
+                  {item.transactionCount}
+                </td>
+                {activeTab === 'expense' && (
+                  <td className="p-2 text-right text-zinc-600 font-feature-settings-tnum">
+                    {item.budget > 0 ? formatCurrency(item.budget) : '—'}
+                  </td>
+                )}
+                <td className="p-2 text-right font-black text-zinc-950 font-feature-settings-tnum">
+                  {formatCurrency(item.totalAmount)}
+                </td>
+                <td className="p-2 text-right font-bold text-[#0E6A3B] font-feature-settings-tnum">
+                  {item.percentage.toFixed(1)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-zinc-100 border-t-2 border-zinc-950 font-black text-xs">
+            <tr>
+              <td colSpan={2} className="p-2 uppercase text-zinc-950">Total Consolidado</td>
+              <td className="p-2 text-center text-zinc-950">
+                {sortedStats.reduce((acc, s) => acc + s.transactionCount, 0)}
+              </td>
+              {activeTab === 'expense' && (
+                <td className="p-2 text-right text-zinc-950 font-feature-settings-tnum">
+                  {formatCurrency(sortedStats.reduce((acc, s) => acc + s.budget, 0))}
+                </td>
+              )}
+              <td className="p-2 text-right text-zinc-950 font-feature-settings-tnum">
+                {formatCurrency(totalSum)}
+              </td>
+              <td className="p-2 text-right text-[#0E6A3B]">
+                100.0%
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Pie de página oficial del PDF */}
+        <div className="text-[10px] text-zinc-500 flex justify-between border-t border-zinc-300 pt-2">
+          <span>ANSAMA Finanzas del Hogar • Registro y Control Presupuestario</span>
+          <span>Página 1 de 1</span>
+        </div>
       </div>
 
     </div>
