@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Home, 
   ShoppingCart, 
@@ -18,7 +18,11 @@ import {
   Building,
   Banknote,
   Wrench,
-  ArrowUpRight
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 import { TransactionCategory, Transaction } from '../types';
 import { formatCurrency } from '../utils/storage';
@@ -27,46 +31,179 @@ interface ExpenseCategoriesChartProps {
   categories: TransactionCategory[];
   transactions: Transaction[];
   selectedMonth?: string;
+  onSelectMonth?: (month: string) => void;
+  availableMonths?: string[];
 }
 
 export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   categories,
   transactions,
-  selectedMonth
+  selectedMonth,
+  onSelectMonth,
+  availableMonths = []
 }) => {
   const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
-  // Filter transactions for the selected month or current month
-  const currentMonth = selectedMonth || new Date().toISOString().substring(0, 7);
-  const monthTransactions = transactions.filter((t) => t.date.startsWith(currentMonth));
+  // 1. Detectar todos los meses que tienen transacciones reales registradas
+  const monthsWithData = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach((t) => {
+      if (t.date && t.date.length >= 7) {
+        set.add(t.date.substring(0, 7));
+      }
+    });
+    return Array.from(set).sort().reverse();
+  }, [transactions]);
 
-  // Compute category totals
+  // Último mes con movimientos reales (ej: 2026-09)
+  const latestMonthWithData = monthsWithData[0] || '2026-09';
+
+  // 2. Determinar periodo activo (prioriza el mes con datos si el seleccionado no tiene movimientos)
+  const [activePeriod, setActivePeriod] = useState<string>(() => {
+    if (selectedMonth && (transactions.some(t => t.date.startsWith(selectedMonth)) || monthsWithData.length === 0)) {
+      return selectedMonth;
+    }
+    return selectedMonth || latestMonthWithData;
+  });
+
+  // Sincronizar si cambia desde fuera
+  useEffect(() => {
+    if (selectedMonth && selectedMonth !== activePeriod) {
+      setActivePeriod(selectedMonth);
+    }
+  }, [selectedMonth]);
+
+  const handlePeriodChange = (newPeriod: string) => {
+    setActivePeriod(newPeriod);
+    if (onSelectMonth && !newPeriod.startsWith('year-') && newPeriod !== 'all') {
+      onSelectMonth(newPeriod);
+    }
+  };
+
+  // Lista combinada de opciones de meses disponibles
+  const periodOptions = useMemo(() => {
+    const set = new Set<string>();
+    // Primero los meses con movimientos
+    monthsWithData.forEach((m) => set.add(m));
+    // Luego los meses disponibles del historial
+    availableMonths.forEach((m) => set.add(m));
+    if (set.size === 0) set.add('2026-09');
+    return Array.from(set).sort().reverse();
+  }, [monthsWithData, availableMonths]);
+
+  // Navegación rápida mes a mes (anterior / siguiente)
+  const handlePrevMonth = () => {
+    if (activePeriod === 'all' || activePeriod.startsWith('year-')) {
+      handlePeriodChange(latestMonthWithData);
+      return;
+    }
+    const idx = periodOptions.indexOf(activePeriod);
+    if (idx < periodOptions.length - 1 && idx >= 0) {
+      handlePeriodChange(periodOptions[idx + 1]);
+    } else {
+      const [y, m] = activePeriod.split('-').map(Number);
+      const prevDate = new Date(y, m - 2, 1);
+      const prevMStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+      handlePeriodChange(prevMStr);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (activePeriod === 'all' || activePeriod.startsWith('year-')) {
+      handlePeriodChange(latestMonthWithData);
+      return;
+    }
+    const idx = periodOptions.indexOf(activePeriod);
+    if (idx > 0) {
+      handlePeriodChange(periodOptions[idx - 1]);
+    } else {
+      const [y, m] = activePeriod.split('-').map(Number);
+      const nextDate = new Date(y, m, 1);
+      const nextMStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+      handlePeriodChange(nextMStr);
+    }
+  };
+
+  // Filtrar transacciones para el periodo seleccionado
+  const periodTransactions = useMemo(() => {
+    if (activePeriod === 'all') {
+      return transactions;
+    }
+    if (activePeriod.startsWith('year-')) {
+      const yr = activePeriod.replace('year-', '');
+      return transactions.filter((t) => t.date.startsWith(`${yr}-`));
+    }
+    return transactions.filter((t) => t.date.startsWith(activePeriod));
+  }, [transactions, activePeriod]);
+
+  // Formato legible del periodo en español
+  const formatPeriodLabel = (p: string): string => {
+    if (p === 'all') return 'Todos los movimientos registrados';
+    if (p.startsWith('year-')) return `Ejercicio ${p.replace('year-', '')} Completo`;
+    const [yStr, mStr] = p.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(y) || isNaN(m)) return p;
+    const date = new Date(y, m - 1, 1);
+    const mName = date.toLocaleString('es-ES', { month: 'long' });
+    return `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${y}`;
+  };
+
+  const currentPeriodLabel = formatPeriodLabel(activePeriod);
+
+  // Totales de gastos e ingresos en este periodo
+  const expenseTotalSum = useMemo(() => {
+    return periodTransactions
+      .filter((t) => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [periodTransactions]);
+
+  const incomeTotalSum = useMemo(() => {
+    return periodTransactions
+      .filter((t) => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [periodTransactions]);
+
   const targetCategories = categories.filter((c) => c.type === activeTab);
-  
+  const isYearView = activePeriod.startsWith('year-') || activePeriod === 'all';
+
   const categoryStats = targetCategories.map((category) => {
-    const totalAmount = monthTransactions
-      .filter((t) => t.categoryId === category.id)
+    const totalAmount = periodTransactions
+      .filter((t) => t.categoryId === category.id && t.type === activeTab)
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const transactionCount = monthTransactions.filter((t) => t.categoryId === category.id).length;
+    const transactionCount = periodTransactions.filter(
+      (t) => t.categoryId === category.id && t.type === activeTab
+    ).length;
+
+    const baseBudget = category.monthlyBudget || 0;
+    const budget = isYearView ? baseBudget * 12 : baseBudget;
+
     return {
       category,
       totalAmount,
       transactionCount,
-      budget: category.monthlyBudget || 0
+      budget
     };
   });
 
-  const totalSum = categoryStats.reduce((sum, item) => sum + item.totalAmount, 0);
+  const totalSum = activeTab === 'expense' ? expenseTotalSum : incomeTotalSum;
 
-  // Calculate percentages and sort descending
+  // Calcular porcentajes y ordenar descendente
   const sortedStats = categoryStats
     .map((item) => ({
       ...item,
       percentage: totalSum > 0 ? (item.totalAmount / totalSum) * 100 : 0
     }))
     .sort((a, b) => b.totalAmount - a.totalAmount);
+
+  // Total de gastos del último mes con datos para el botón de sugerencia
+  const latestMonthExpensesTotal = useMemo(() => {
+    return transactions
+      .filter((t) => t.date.startsWith(latestMonthWithData) && t.type === 'expense')
+      .reduce((s, t) => s + t.amount, 0);
+  }, [transactions, latestMonthWithData]);
 
   // SVG Donut Chart calculation
   const size = 220;
@@ -101,8 +238,8 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   return (
     <div id="section-categories-chart" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 lg:p-7">
       
-      {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-emerald-100/90 pb-5 mb-6">
+      {/* Header, Selector de Periodo y Pestañas */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-emerald-100/90 pb-5 mb-6">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base sm:text-lg font-black text-zinc-950">Distribución de Gastos e Ingresos</h3>
@@ -110,33 +247,108 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
               Presupuesto
             </span>
           </div>
-          <p className="text-xs text-zinc-500 mt-0.5">Consumo presupuestario y categorización del mes corriente</p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            Consumo presupuestario y categorización de <strong className="text-emerald-950 font-bold">{currentPeriodLabel}</strong> ({periodTransactions.length} movimientos)
+          </p>
         </div>
 
-        {/* Expense vs Income Toggle */}
-        <div className="inline-flex p-1 bg-zinc-100 rounded-xl border border-zinc-200/60">
-          <button
-            onClick={() => setActiveTab('expense')}
-            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              activeTab === 'expense'
-                ? 'bg-white text-zinc-950 shadow-xs border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900'
-            }`}
-          >
-            Gastos ({formatCurrency(totalSum > 0 && activeTab === 'expense' ? totalSum : 0)})
-          </button>
-          <button
-            onClick={() => setActiveTab('income')}
-            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              activeTab === 'income'
-                ? 'bg-white text-emerald-950 shadow-xs border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900'
-            }`}
-          >
-            Ingresos ({formatCurrency(totalSum > 0 && activeTab === 'income' ? totalSum : 0)})
-          </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Selector interactivo de Periodo (Mes / Año) */}
+          <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/90 p-1 rounded-xl shadow-2xs">
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              disabled={activePeriod === 'all' || activePeriod.startsWith('year-')}
+              className="w-7 h-7 rounded-lg text-zinc-600 hover:bg-zinc-200/70 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+              title="Mes anterior"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-1.5 px-1">
+              <Calendar className="w-3.5 h-3.5 text-[#0E6A3B] shrink-0" />
+              <select
+                value={activePeriod}
+                onChange={(e) => handlePeriodChange(e.target.value)}
+                className="px-2 py-1 bg-white border border-zinc-200 text-xs font-bold text-zinc-800 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs max-w-[190px] sm:max-w-[220px] truncate"
+              >
+                <optgroup label="── Meses con extractos ──">
+                  {periodOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {formatPeriodLabel(opt)} {monthsWithData.includes(opt) ? '•' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="── Vista Acumulada ──">
+                  <option value="year-2026">📅 Todo el Ejercicio 2026</option>
+                  <option value="all">🏛️ Todos los movimientos</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              disabled={activePeriod === 'all' || activePeriod.startsWith('year-')}
+              className="w-7 h-7 rounded-lg text-zinc-600 hover:bg-zinc-200/70 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+              title="Mes siguiente"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Expense vs Income Toggle */}
+          <div className="inline-flex p-1 bg-zinc-100 rounded-xl border border-zinc-200/60 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('expense')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                activeTab === 'expense'
+                  ? 'bg-white text-zinc-950 shadow-xs border border-zinc-200/80'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Gastos ({formatCurrency(expenseTotalSum)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('income')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                activeTab === 'income'
+                  ? 'bg-white text-emerald-950 shadow-xs border border-zinc-200/80'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Ingresos ({formatCurrency(incomeTotalSum)})
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Aviso informativo inteligente si el periodo actual no tiene movimientos */}
+      {periodTransactions.length === 0 && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-bold block">
+                No hay movimientos registrados en {currentPeriodLabel}.
+              </span>
+              <span className="text-zinc-600">
+                Los extractos importados actualmente llegan hasta <strong>{formatPeriodLabel(latestMonthWithData)}</strong>.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handlePeriodChange(latestMonthWithData)}
+            className="px-3.5 py-2 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Ver {formatPeriodLabel(latestMonthWithData)} ({formatCurrency(latestMonthExpensesTotal)})</span>
+          </button>
+        </div>
+      )}
 
       {/* Main Content: Donut + List */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -204,7 +416,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                 {formatCurrency(totalSum)}
               </span>
               <span className="text-[10px] text-zinc-500 mt-0.5 font-medium">
-                {monthTransactions.filter((t) => t.type === activeTab).length} movimientos
+                {periodTransactions.filter((t) => t.type === activeTab).length} movimientos
               </span>
             </div>
           </div>
@@ -266,7 +478,7 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
                 {hasBudget && (
                   <div className="mt-2.5 pt-2 border-t border-zinc-100">
                     <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
-                      <span>Presupuesto mensual: <strong className="text-zinc-700">{formatCurrency(item.budget)}</strong></span>
+                      <span>Presupuesto{isYearView ? ' anual' : ' mensual'}: <strong className="text-zinc-700">{formatCurrency(item.budget)}</strong></span>
                       <span className={`font-bold ${isOverBudget ? 'text-rose-600' : isNearBudget ? 'text-amber-600' : 'text-[#0E6A3B]'}`}>
                         {budgetPercent.toFixed(0)}%
                       </span>

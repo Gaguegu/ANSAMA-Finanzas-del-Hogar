@@ -601,6 +601,59 @@ export default function App() {
     );
   };
 
+  // Alternar el candado (Blindado / Abierto / Cerrado) de un mes específico desde el selector
+  const handleToggleLockMonth = (monthKey: string) => {
+    const existing = appState.monthlyClosures || [];
+    const closure = existing.find((c) => c.month === monthKey);
+    const isCurrentlyLocked = Boolean(closure?.isLocked);
+    const isCurrentlyClosed = Boolean(closure?.isClosed);
+
+    if (isCurrentlyLocked) {
+      if (!window.confirm(`El mes ${monthKey} está blindado oficialmente para proteger los saldos bancarios y las Pérdidas y Ganancias. ¿Deseas desblindarlo para permitir ajustes y revisiones?`)) {
+        return;
+      }
+      const updated: MonthClosure = {
+        ...closure!,
+        isClosed: true,
+        isLocked: false,
+        notes: closure?.notes || `Desblindado para ajustes`
+      };
+      handleUpdateClosure(updated);
+      triggerNotification(`🔓 Mes ${monthKey} desblindado. Ahora puedes realizar ajustes en los saldos si es necesario.`, 'info');
+    } else if (isCurrentlyClosed) {
+      // Estaba cerrado pero no blindado: blindarlo
+      const updated: MonthClosure = {
+        ...closure!,
+        isClosed: true,
+        isLocked: true,
+        closedAt: closure?.closedAt || new Date().toISOString()
+      };
+      handleUpdateClosure(updated);
+      triggerNotification(`🔒 Mes ${monthKey} blindado oficialmente. Saldos y P&L protegidos contra descuadres.`, 'success');
+    } else {
+      // Estaba abierto: cerrar y blindar
+      const [yStr, mStr] = monthKey.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10) - 1;
+      const auditedBalances: Record<string, number> = {};
+      appState.accounts.forEach((acc) => {
+        const info = getAccountBalanceForMonth(acc, monthKey, appState.transactions, appState.monthlyClosures);
+        auditedBalances[acc.id] = info.balance;
+      });
+
+      const updated: MonthClosure = {
+        month: monthKey,
+        isClosed: true,
+        isLocked: true,
+        closedAt: new Date().toISOString(),
+        notes: `🔒 Cierre y blindaje contable`,
+        auditedBalances
+      };
+      handleUpdateClosure(updated);
+      triggerNotification(`🔒 Mes ${monthKey} cerrado y blindado con éxito.`, 'success');
+    }
+  };
+
   // Save (add or update) Yield Record (Intereses Bancarios o Dividendos)
   const handleSaveYield = (record: YieldRecord, syncWithTransactions: boolean) => {
     const existingYields = appState.yieldRecords || [];
@@ -880,6 +933,7 @@ export default function App() {
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
               onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
+              onToggleLockMonth={handleToggleLockMonth}
             />
 
             <NetWorthCard 
@@ -918,6 +972,8 @@ export default function App() {
                   categories={appState.categories}
                   transactions={appState.transactions}
                   selectedMonth={patrimonioMonth}
+                  onSelectMonth={setPatrimonioMonth}
+                  availableMonths={availableMonths}
                 />
               </div>
             </div>
@@ -935,6 +991,7 @@ export default function App() {
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
               onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
+              onToggleLockMonth={handleToggleLockMonth}
             />
 
             <BankAccountsList
@@ -978,6 +1035,9 @@ export default function App() {
             <ExpenseCategoriesChart
               categories={appState.categories}
               transactions={appState.transactions}
+              selectedMonth={patrimonioMonth}
+              onSelectMonth={setPatrimonioMonth}
+              availableMonths={availableMonths}
             />
 
             <TransactionsTable

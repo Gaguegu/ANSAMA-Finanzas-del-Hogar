@@ -19,6 +19,7 @@ interface PatrimonioPeriodSelectorProps {
   closures?: MonthClosure[];
   isCurrentMonth: boolean;
   onResetToCurrentMonth: () => void;
+  onToggleLockMonth?: (month: string) => void;
 }
 
 export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> = ({
@@ -27,7 +28,8 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
   availableMonths,
   closures = [],
   isCurrentMonth,
-  onResetToCurrentMonth
+  onResetToCurrentMonth,
+  onToggleLockMonth
 }) => {
   const [yearStr, monthStr] = selectedMonth.split('-');
   const year = parseInt(yearStr, 10);
@@ -39,6 +41,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
   // Check closure status for this month
   const closure = closures.find((c) => c.month === selectedMonth);
   const isClosed = Boolean(closure?.isClosed);
+  const isLocked = Boolean(closure?.isLocked);
   const hasAuditedBalances = Boolean(closure?.auditedBalances && Object.keys(closure.auditedBalances).length > 0);
 
   const maxAvailableMonth = availableMonths[0] || '2026-09';
@@ -90,16 +93,36 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
                   <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
                   Tiempo Real
                 </span>
-              ) : isClosed || hasAuditedBalances ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-50 text-[#0E6A3B] border border-emerald-300 shrink-0">
+              ) : isLocked ? (
+                <button
+                  type="button"
+                  onClick={() => onToggleLockMonth?.(selectedMonth)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-950 border border-emerald-400 hover:bg-emerald-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  title="Mes Blindado oficialmente. Haz clic para gestionar el candado/cierre si necesitas cuadrar o ajustar este mes."
+                >
                   <Lock className="w-3 h-3 text-[#0E6A3B]" />
-                  Cierre Auditado
-                </span>
+                  <span>Blindado</span>
+                </button>
+              ) : isClosed || hasAuditedBalances ? (
+                <button
+                  type="button"
+                  onClick={() => onToggleLockMonth?.(selectedMonth)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-50 text-[#0E6A3B] border border-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  title="Mes Cerrado y Auditado. Haz clic para blindarlo o reabrirlo."
+                >
+                  <Lock className="w-3 h-3 text-[#0E6A3B]" />
+                  <span>Cerrado</span>
+                </button>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-zinc-100 text-zinc-700 border border-zinc-300 shrink-0">
-                  <Clock className="w-3 h-3 text-zinc-500" />
-                  Foto Histórica
-                </span>
+                <button
+                  type="button"
+                  onClick={() => onToggleLockMonth?.(selectedMonth)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  title="Mes Abierto (En curso). Haz clic para cerrar o blindar el mes cuando esté cuadrado."
+                >
+                  <Unlock className="w-3 h-3 text-amber-700" />
+                  <span>Abierto</span>
+                </button>
               )}
             </div>
             <p className="text-xs text-zinc-600 mt-0.5 truncate">
@@ -148,8 +171,12 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
                 let label = formatMonthName(m);
                 if (isCur) {
                   label += ' • Actual';
+                } else if (mClosure?.isLocked) {
+                  label += ' • 🔒 Blindado';
                 } else if (mClosure?.isClosed) {
                   label += ' • 🔒 Cerrado';
+                } else {
+                  label += ' • 🔓 Abierto';
                 }
                 return (
                   <option key={m} value={m}>
@@ -162,6 +189,40 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
               <Calendar className="w-3.5 h-3.5" />
             </div>
           </div>
+
+          {/* Botón de Candado interactivo al lado del selector del mes */}
+          {!isCurrentMonth && (
+            <button
+              type="button"
+              onClick={() => onToggleLockMonth?.(selectedMonth)}
+              className={`h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl border flex items-center gap-1.5 font-bold text-xs shrink-0 transition-all shadow-2xs cursor-pointer ${
+                isLocked
+                  ? 'bg-emerald-100 text-emerald-950 border-emerald-400 hover:bg-emerald-200'
+                  : isClosed
+                    ? 'bg-emerald-50 text-[#0E6A3B] border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+              }`}
+              title={
+                isLocked
+                  ? `Candado de ${formattedMonth}: Mes Blindado. Haz clic para gestionar el estado.`
+                  : isClosed
+                    ? `Candado de ${formattedMonth}: Mes Cerrado. Haz clic para blindarlo o reabrirlo.`
+                    : `Candado de ${formattedMonth}: Mes Abierto. Haz clic para cerrarlo y blindarlo cuando esté cuadrado.`
+              }
+            >
+              {isLocked || isClosed ? (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-[#0E6A3B] shrink-0" />
+                  <span className="hidden md:inline">{isLocked ? 'Blindado' : 'Cerrado'}</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span className="hidden md:inline">Abierto</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Botón Mes Siguiente (posición y tamaño fijos) */}
           <button
