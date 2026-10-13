@@ -59,6 +59,70 @@
     overflow: visible !important;
   }
 
+  /* ========================================================================= */
+  /* AISLAMIENTO ESTRICTO DE IMPRESIÓN                                         */
+  /* Si se imprime Distribución de Gastos e Ingresos, ocultar todo lo demás   */
+  /* Si se imprime Historial de Movimientos, ocultar la distribución y demás   */
+  /* ========================================================================= */
+  body[data-print-mode="categories"] #section-transactions,
+  body[data-print-mode="categories"] #section-net-worth,
+  body[data-print-mode="categories"] #section-bank-accounts,
+  body[data-print-mode="categories"] #patrimonio-period-selector,
+  body[data-print-mode="categories"] #app-main-navigation,
+  body[data-print-mode="categories"] #app-header,
+  body[data-print-mode="categories"] header,
+  body[data-print-mode="categories"] nav,
+  body[data-print-mode="categories"] footer {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body[data-print-mode="transactions"] #section-categories-chart,
+  body[data-print-mode="transactions"] #section-net-worth,
+  body[data-print-mode="transactions"] #section-bank-accounts,
+  body[data-print-mode="transactions"] #patrimonio-period-selector,
+  body[data-print-mode="transactions"] #app-main-navigation,
+  body[data-print-mode="transactions"] #app-header,
+  body[data-print-mode="transactions"] header,
+  body[data-print-mode="transactions"] nav,
+  body[data-print-mode="transactions"] footer {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Aislamiento automático si se imprime con el atajo Ctrl+P según pestaña activa */
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-transactions,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-net-worth,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-bank-accounts,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #patrimonio-period-selector {
+    display: none !important;
+  }
+
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-categories-chart,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-net-worth,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-bank-accounts,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #patrimonio-period-selector {
+    display: none !important;
+  }
+
+  /* Contenedores impresos: sin bordes ni sombras de interfaz web */
+  #section-categories-chart,
+  #section-transactions {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
   /* Fondo blanco puro, textos oscuros y anulación de márgenes web */
   body, html, #root, main {
     background-color: #ffffff !important;

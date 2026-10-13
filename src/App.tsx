@@ -45,6 +45,11 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>(() => loadAppState());
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   
+  // Sincronizar pestaña activa en document.body para reglas de aislamiento de impresión (Ctrl+P)
+  useEffect(() => {
+    document.body.setAttribute('data-active-tab', activeTab);
+  }, [activeTab]);
+
   // Selector de Mes y Año para consultar el Patrimonio y saldos bancarios a esa fecha
   // Se sitúa por defecto en el último mes con extractos oficiales importados (Septiembre 2026)
   const [patrimonioMonth, setPatrimonioMonth] = useState<string>('2026-09');
@@ -974,6 +979,7 @@ export default function App() {
                   selectedMonth={patrimonioMonth}
                   onSelectMonth={setPatrimonioMonth}
                   availableMonths={availableMonths}
+                  closures={appState.monthlyClosures}
                 />
               </div>
             </div>
@@ -1038,20 +1044,7 @@ export default function App() {
               selectedMonth={patrimonioMonth}
               onSelectMonth={setPatrimonioMonth}
               availableMonths={availableMonths}
-            />
-
-            <TransactionsTable
-              transactions={appState.transactions}
-              accounts={appState.accounts}
-              categories={appState.categories}
-              onDeleteTransaction={handleDeleteTransaction}
-              onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
-              onOpenImportModal={() => setIsImportModalOpen(true)}
-              onMoveTransactions={handleMoveTransactions}
-              onBatchDeleteTransactions={handleBatchDeleteTransactions}
-              onUpdateTransactionCategory={handleUpdateTransactionCategory}
-              onBatchUpdateCategory={handleBatchUpdateCategory}
-              onAutoReconcile={handleAutoReconcile}
+              closures={appState.monthlyClosures}
             />
           </div>
         )}

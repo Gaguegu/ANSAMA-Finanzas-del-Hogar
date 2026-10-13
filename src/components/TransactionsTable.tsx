@@ -1037,6 +1037,18 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
     setTimeout(() => setDownloadToast(null), 5000);
   };
 
+  // Imprimir exclusivamente el historial filtrado de movimientos
+  const handlePrintTransactions = () => {
+    document.body.setAttribute('data-print-mode', 'transactions');
+    const cleanup = () => {
+      document.body.removeAttribute('data-print-mode');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+    setTimeout(cleanup, 1200);
+  };
+
   return (
     <div id="section-transactions" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 space-y-4">
       
@@ -1242,7 +1254,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <button
             id="btn-print-transactions"
             type="button"
-            onClick={() => window.print()}
+            onClick={handlePrintTransactions}
             title="Imprimir extracto bancario en papel o guardar en PDF limpio y sin controles"
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-zinc-800 bg-white hover:bg-zinc-100 border border-zinc-300 rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95 print:hidden screen-only"
           >

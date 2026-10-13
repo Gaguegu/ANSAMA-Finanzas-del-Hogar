@@ -26,8 +26,9 @@ import {
   Printer,
   FileDown
 } from 'lucide-react';
-import { TransactionCategory, Transaction } from '../types';
+import { TransactionCategory, Transaction, MonthClosure } from '../types';
 import { formatCurrency } from '../utils/storage';
+import { getBenchmarkForYear } from '../data/excel2025Benchmark';
 
 interface ExpenseCategoriesChartProps {
   categories: TransactionCategory[];
@@ -35,6 +36,7 @@ interface ExpenseCategoriesChartProps {
   selectedMonth?: string;
   onSelectMonth?: (month: string) => void;
   availableMonths?: string[];
+  closures?: MonthClosure[];
 }
 
 export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
@@ -42,7 +44,8 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   transactions,
   selectedMonth,
   onSelectMonth,
-  availableMonths = []
+  availableMonths = [],
+  closures = []
 }) => {
   const [activeTab, setActiveTab] = useState<'expense' | 'income'>('expense');
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
@@ -83,51 +86,83 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
     }
   };
 
-  // Anos disponibles dinamicamente (2025, 2026, proximos anos o los que existan en datos/cierres)
+  // Años disponibles garantizados: desde 2025 hasta 2030 (y los que existan en datos o cierres)
   const availableYears = useMemo(() => {
     const yearsSet = new Set<string>();
-    // Anos base fundamentales
-    yearsSet.add('2025');
-    yearsSet.add('2026');
-    // Anos con movimientos registrados
+    // Ejercicios garantizados: 2025 a 2030
+    for (let yr = 2025; yr <= 2030; yr++) {
+      yearsSet.add(String(yr));
+    }
+    // Años con movimientos registrados
     transactions.forEach((t) => {
       if (t.date && t.date.length >= 4) {
         yearsSet.add(t.date.substring(0, 4));
       }
     });
-    // Anos en meses disponibles
+    // Años en meses disponibles
     availableMonths.forEach((m) => {
       if (m && m.length >= 4) {
         yearsSet.add(m.substring(0, 4));
       }
     });
-    // Si estamos en un ano posterior, incluirlo tambien
     const curY = new Date().getFullYear().toString();
     yearsSet.add(curY);
 
     return Array.from(yearsSet).sort().reverse();
   }, [transactions, availableMonths]);
 
-  // Lista combinada de opciones de meses disponibles
-  const periodOptions = useMemo(() => {
-    const set = new Set<string>();
-    // Primero los meses con movimientos
-    monthsWithData.forEach((m) => set.add(m));
-    // Luego los meses disponibles del historial
-    availableMonths.forEach((m) => set.add(m));
-    if (set.size === 0) set.add('2026-09');
-    return Array.from(set).sort().reverse();
-  }, [monthsWithData, availableMonths]);
+  // Listas de meses organizados por ejercicio para el selector
+  const months2026List = useMemo(() => {
+    const list: string[] = [];
+    for (let m = 12; m >= 1; m--) {
+      list.push(`2026-${String(m).padStart(2, '0')}`);
+    }
+    return list;
+  }, []);
 
-  // Navegacion rapida mes a mes (anterior / siguiente)
+  const months2025List = useMemo(() => {
+    const list: string[] = [];
+    for (let m = 12; m >= 1; m--) {
+      list.push(`2025-${String(m).padStart(2, '0')}`);
+    }
+    return list;
+  }, []);
+
+  const months2027List = useMemo(() => {
+    const list: string[] = [];
+    for (let m = 12; m >= 1; m--) {
+      list.push(`2027-${String(m).padStart(2, '0')}`);
+    }
+    return list;
+  }, []);
+
+  // Lista combinada de opciones de meses disponibles para navegación con flechas
+  const allNavMonths = useMemo(() => {
+    const list: string[] = [];
+    for (let y = 2030; y >= 2025; y--) {
+      for (let m = 12; m >= 1; m--) {
+        list.push(`${y}-${String(m).padStart(2, '0')}`);
+      }
+    }
+    return list;
+  }, []);
+
+  // Navegación rápida mes a mes (anterior / siguiente)
   const handlePrevMonth = () => {
-    if (activePeriod === 'all' || activePeriod.startsWith('year-')) {
-      handlePeriodChange(latestMonthWithData);
+    if (activePeriod === 'all') {
+      handlePeriodChange('year-2026');
       return;
     }
-    const idx = periodOptions.indexOf(activePeriod);
-    if (idx < periodOptions.length - 1 && idx >= 0) {
-      handlePeriodChange(periodOptions[idx + 1]);
+    if (activePeriod.startsWith('year-')) {
+      const yr = parseInt(activePeriod.replace('year-', ''), 10);
+      if (yr > 2025) {
+        handlePeriodChange(`year-${yr - 1}`);
+      }
+      return;
+    }
+    const idx = allNavMonths.indexOf(activePeriod);
+    if (idx < allNavMonths.length - 1 && idx >= 0) {
+      handlePeriodChange(allNavMonths[idx + 1]);
     } else {
       const [y, m] = activePeriod.split('-').map(Number);
       const prevDate = new Date(y, m - 2, 1);
@@ -137,13 +172,20 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   };
 
   const handleNextMonth = () => {
-    if (activePeriod === 'all' || activePeriod.startsWith('year-')) {
-      handlePeriodChange(latestMonthWithData);
+    if (activePeriod === 'all') {
+      handlePeriodChange('year-2026');
       return;
     }
-    const idx = periodOptions.indexOf(activePeriod);
+    if (activePeriod.startsWith('year-')) {
+      const yr = parseInt(activePeriod.replace('year-', ''), 10);
+      if (yr < 2030) {
+        handlePeriodChange(`year-${yr + 1}`);
+      }
+      return;
+    }
+    const idx = allNavMonths.indexOf(activePeriod);
     if (idx > 0) {
-      handlePeriodChange(periodOptions[idx - 1]);
+      handlePeriodChange(allNavMonths[idx - 1]);
     } else {
       const [y, m] = activePeriod.split('-').map(Number);
       const nextDate = new Date(y, m, 1);
@@ -164,38 +206,94 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
     return transactions.filter((t) => t.date.startsWith(activePeriod));
   }, [transactions, activePeriod]);
 
-  // Formato legible del periodo en espanol
+  // Datos de benchmark / cierres auditados (ej. Ejercicio 2025 con datos oficiales consolidados)
+  const auditedBenchmark = useMemo(() => {
+    if (activePeriod === 'year-2025') {
+      const b2025 = getBenchmarkForYear(2025);
+      return {
+        isAudited: true,
+        year: 2025,
+        income: b2025?.yearIncome || 356155.56,
+        expense: b2025?.yearExpense || 339578.97,
+        net: b2025?.yearNet || 16576.59,
+        byBank: null
+      };
+    }
+    if (activePeriod.startsWith('2025-')) {
+      const b2025 = getBenchmarkForYear(2025);
+      const mIdx = parseInt(activePeriod.split('-')[1], 10) - 1;
+      const mData = b2025?.months[mIdx];
+      return {
+        isAudited: true,
+        year: 2025,
+        income: mData?.income || 0,
+        expense: mData?.expense || 0,
+        net: mData?.net || 0,
+        byBank: mData?.byBank || null
+      };
+    }
+    return null;
+  }, [activePeriod]);
+
+  // Formato legible del periodo en español
   const formatPeriodLabel = (p: string): string => {
-    if (p === 'all') return 'Todos los movimientos registrados';
-    if (p.startsWith('year-')) return `Ejercicio ${p.replace('year-', '')} Completo`;
+    if (p === 'all') return 'Todo el Histórico Consolidado';
+    if (p.startsWith('year-')) {
+      const yr = p.replace('year-', '');
+      if (yr === '2025') return 'Ejercicio 2025 Completo (Auditado)';
+      if (yr === '2027') return 'Ejercicio 2027 Completo (Próximo Año)';
+      return `Ejercicio ${yr} Completo`;
+    }
     const [yStr, mStr] = p.split('-');
     const y = parseInt(yStr, 10);
     const m = parseInt(mStr, 10);
     if (isNaN(y) || isNaN(m)) return p;
     const date = new Date(y, m - 1, 1);
     const mName = date.toLocaleString('es-ES', { month: 'long' });
-    return `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${y}`;
+    const formatted = `${mName.charAt(0).toUpperCase() + mName.slice(1)} ${y}`;
+    if (y === 2025) return `${formatted} (Auditado)`;
+    if (y >= 2027) return `${formatted} (Próximo)`;
+    return formatted;
   };
 
   const currentPeriodLabel = formatPeriodLabel(activePeriod);
 
-  // Accion directa para imprimir o guardar informe en PDF
+  // Acción directa para imprimir exclusivamente este informe filtrado
   const handlePrintReport = () => {
+    document.body.setAttribute('data-print-mode', 'categories');
+    const cleanup = () => {
+      document.body.removeAttribute('data-print-mode');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     window.print();
+    setTimeout(cleanup, 1200);
   };
 
-  // Totales de gastos e ingresos en este periodo
+  // Totales de gastos e ingresos en este periodo (con fallback auditado oficial para 2025)
   const expenseTotalSum = useMemo(() => {
-    return periodTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [periodTransactions]);
+    if (periodTransactions.length > 0) {
+      return periodTransactions
+        .filter((t) => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+    }
+    if (auditedBenchmark) {
+      return auditedBenchmark.expense;
+    }
+    return 0;
+  }, [periodTransactions, auditedBenchmark]);
 
   const incomeTotalSum = useMemo(() => {
-    return periodTransactions
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [periodTransactions]);
+    if (periodTransactions.length > 0) {
+      return periodTransactions
+        .filter((t) => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+    }
+    if (auditedBenchmark) {
+      return auditedBenchmark.income;
+    }
+    return 0;
+  }, [periodTransactions, auditedBenchmark]);
 
   const targetCategories = categories.filter((c) => c.type === activeTab);
   const isYearView = activePeriod.startsWith('year-') || activePeriod === 'all';
@@ -270,8 +368,8 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
   return (
     <div id="section-categories-chart" className="bg-white rounded-2xl border-2 border-emerald-600/35 shadow-sm ring-1 ring-emerald-950/5 p-5 sm:p-6 lg:p-7">
       
-      {/* Header, Selector de Periodo y Pestañas */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-emerald-100/90 pb-5 mb-6">
+      {/* Header, Selector de Periodo y Pestañas (Solo visible en pantalla, oculto en impresión) */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-emerald-100/90 pb-5 mb-6 screen-only print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base sm:text-lg font-black text-zinc-950">Distribución de Gastos e Ingresos</h3>
@@ -285,14 +383,14 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Selector interactivo de Periodo (Mes / Año) */}
+          {/* Selector interactivo de Periodo (Mes / Año completo 2025-2030) */}
           <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200/90 p-1 rounded-xl shadow-2xs">
             <button
               type="button"
               onClick={handlePrevMonth}
-              disabled={activePeriod === 'all' || activePeriod.startsWith('year-')}
+              disabled={activePeriod === 'all'}
               className="w-7 h-7 rounded-lg text-zinc-600 hover:bg-zinc-200/70 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Mes anterior"
+              title="Mes o ejercicio anterior"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -302,22 +400,36 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
               <select
                 value={activePeriod}
                 onChange={(e) => handlePeriodChange(e.target.value)}
-                className="px-2 py-1 bg-white border border-zinc-200 text-xs font-bold text-zinc-800 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs max-w-[190px] sm:max-w-[220px] truncate"
+                className="px-2 py-1 bg-white border border-zinc-200 text-xs font-bold text-zinc-800 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs max-w-[200px] sm:max-w-[240px] truncate"
               >
-                <optgroup label="── Meses con extractos ──">
-                  {periodOptions.map((opt) => (
+                <optgroup label="── 📅 Vistas Anuales Completas (2025 - 2030) ──">
+                  {availableYears.map((yr) => (
+                    <option key={`year-${yr}`} value={`year-${yr}`}>
+                      📅 Todo el Ejercicio {yr} {yr === '2025' ? '(Auditado)' : yr === '2027' ? '(Próximo Año)' : ''}
+                    </option>
+                  ))}
+                  <option value="all">🏛️ Todo el Histórico Consolidado</option>
+                </optgroup>
+                <optgroup label="── 📆 Meses Ejercicio 2026 ──">
+                  {months2026List.map((opt) => (
                     <option key={opt} value={opt}>
-                      {formatPeriodLabel(opt)} {monthsWithData.includes(opt) ? '•' : ''}
+                      {formatPeriodLabel(opt)} {monthsWithData.includes(opt) ? '• (con extractos)' : ''}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="── Vista Anual Acumulada ──">
-                  {availableYears.map((yr) => (
-                    <option key={`year-${yr}`} value={`year-${yr}`}>
-                      📅 Todo el Ejercicio {yr}
+                <optgroup label="── 🏛️ Meses Ejercicio 2025 (Auditado) ──">
+                  {months2025List.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {formatPeriodLabel(opt)}
                     </option>
                   ))}
-                  <option value="all">🏛️ Todos los movimientos</option>
+                </optgroup>
+                <optgroup label="── 🔮 Meses Próximo Ejercicio 2027 ──">
+                  {months2027List.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {formatPeriodLabel(opt)}
+                    </option>
+                  ))}
                 </optgroup>
               </select>
             </div>
@@ -325,9 +437,9 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
             <button
               type="button"
               onClick={handleNextMonth}
-              disabled={activePeriod === 'all' || activePeriod.startsWith('year-')}
+              disabled={activePeriod === 'all'}
               className="w-7 h-7 rounded-lg text-zinc-600 hover:bg-zinc-200/70 flex items-center justify-center transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-              title="Mes siguiente"
+              title="Mes o ejercicio siguiente"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -359,12 +471,13 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
             </button>
           </div>
 
-          {/* Boton Imprimir / Guardar en PDF el filtro actual */}
+          {/* Boton Imprimir / Guardar en PDF exclusivamente este filtro actual */}
           <button
+            id="btn-print-categories"
             type="button"
             onClick={handlePrintReport}
-            title={`Imprimir en papel o guardar en PDF el informe de ${currentPeriodLabel} (${activeTab === 'expense' ? 'Gastos' : 'Ingresos'})`}
-            className="px-3 py-1.5 h-[34px] rounded-xl text-xs font-bold text-zinc-800 bg-white hover:bg-zinc-100 border border-zinc-300 shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shrink-0"
+            title={`Imprimir en papel o guardar en PDF exclusivamente el informe de ${currentPeriodLabel} (${activeTab === 'expense' ? 'Gastos' : 'Ingresos'})`}
+            className="px-3.5 py-1.5 h-[34px] rounded-xl text-xs font-bold text-zinc-800 bg-white hover:bg-zinc-100 border border-zinc-300 shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shrink-0"
           >
             <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
             <span className="hidden sm:inline">Imprimir PDF</span>
@@ -373,33 +486,59 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
         </div>
       </div>
 
-      {/* Aviso informativo inteligente si el periodo actual no tiene movimientos */}
+      {/* Aviso informativo inteligente si el periodo actual no tiene movimientos (Solo visible en pantalla) */}
       {periodTransactions.length === 0 && (
-        <div className="mb-6 p-4 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-            <div>
-              <span className="font-bold block">
-                No hay movimientos registrados en {currentPeriodLabel}.
-              </span>
-              <span className="text-zinc-600">
-                Los extractos importados actualmente llegan hasta <strong>{formatPeriodLabel(latestMonthWithData)}</strong>.
-              </span>
+        <div className="mb-6 screen-only print:hidden">
+          {auditedBenchmark ? (
+            <div className="p-4 rounded-xl bg-emerald-50/90 border border-emerald-300 text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-5 h-5 text-[#0E6A3B] shrink-0" />
+                <div>
+                  <span className="font-bold block">
+                    🏛️ Ejercicio Oficial 2025 Auditado y Blindado
+                  </span>
+                  <span className="text-zinc-600">
+                    Los importes ({formatCurrency(expenseTotalSum)} en gastos / {formatCurrency(incomeTotalSum)} en ingresos) corresponden a los extractos y cierres oficiales consolidados por entidad bancaria.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handlePeriodChange('2026-09')}
+                className="px-3.5 py-2 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Ver Septiembre 2026 ({formatCurrency(latestMonthExpensesTotal)})</span>
+              </button>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => handlePeriodChange(latestMonthWithData)}
-            className="px-3.5 py-2 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Ver {formatPeriodLabel(latestMonthWithData)} ({formatCurrency(latestMonthExpensesTotal)})</span>
-          </button>
+          ) : (
+            <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-bold block">
+                    No hay movimientos registrados en {currentPeriodLabel}.
+                  </span>
+                  <span className="text-zinc-600">
+                    Los extractos importados actualmente llegan hasta <strong>{formatPeriodLabel(latestMonthWithData)}</strong>.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handlePeriodChange(latestMonthWithData)}
+                className="px-3.5 py-2 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Ver {formatPeriodLabel(latestMonthWithData)} ({formatCurrency(latestMonthExpensesTotal)})</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Main Content: Donut + List */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+      {/* Main Content: Donut + List (Solo visible en pantalla, oculto en impresión) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center screen-only print:hidden">
         
         {/* Donut Chart Visualizer */}
         <div className="lg:col-span-5 flex flex-col items-center justify-center">
@@ -576,19 +715,39 @@ export const ExpenseCategoriesChart: React.FC<ExpenseCategoriesChartProps> = ({
             </div>
           </div>
 
-          {/* Resumen de totales */}
-          <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-zinc-200 text-center">
+          {/* Banner de auditoría si es un periodo histórico consolidado */}
+          {auditedBenchmark && (
+            <div className="p-2 border border-emerald-400 rounded bg-emerald-50 my-2 text-[10px] text-emerald-950 flex items-center justify-between">
+              <div>
+                <strong>🏛️ Balance Oficial Auditado (Ejercicio {auditedBenchmark.year}):</strong> Cierres bancarios conciliados y blindados.
+              </div>
+              <div className="font-bold text-right shrink-0 ml-2">
+                Gastos: <strong>{formatCurrency(auditedBenchmark.expense)}</strong> • Ingresos: <strong>{formatCurrency(auditedBenchmark.income)}</strong> • Neto: <strong>{formatCurrency(auditedBenchmark.net)}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* Resumen de totales oficiales de impresión */}
+          <div className="grid grid-cols-4 gap-2 mt-3 pt-2.5 border-t border-zinc-200 text-center">
             <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
               <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total {activeTab === 'expense' ? 'Gastos' : 'Ingresos'}</div>
               <div className="text-base font-black text-zinc-950">{formatCurrency(totalSum)}</div>
             </div>
             <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
-              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Categorías con Importe</div>
-              <div className="text-base font-black text-[#0E6A3B]">{sortedStats.filter(s => s.totalAmount > 0).length} de {sortedStats.length}</div>
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total {activeTab === 'expense' ? 'Ingresos' : 'Gastos'}</div>
+              <div className="text-base font-black text-[#0E6A3B]">{formatCurrency(activeTab === 'expense' ? incomeTotalSum : expenseTotalSum)}</div>
             </div>
             <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
-              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Total Operaciones</div>
-              <div className="text-base font-black text-zinc-950">{periodTransactions.filter(t => t.type === activeTab).length} mov.</div>
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Saldo Neto</div>
+              <div className={`text-base font-black ${incomeTotalSum - expenseTotalSum >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}`}>
+                {formatCurrency(incomeTotalSum - expenseTotalSum)}
+              </div>
+            </div>
+            <div className="p-2 border border-zinc-300 rounded bg-zinc-50">
+              <div className="text-[9px] uppercase tracking-wider font-bold text-zinc-600">Operaciones</div>
+              <div className="text-base font-black text-zinc-950">
+                {periodTransactions.filter(t => t.type === activeTab).length} mov.
+              </div>
             </div>
           </div>
         </div>
