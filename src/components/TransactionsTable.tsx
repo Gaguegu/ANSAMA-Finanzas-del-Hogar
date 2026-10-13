@@ -7,6 +7,8 @@ import {
   Plus, 
   FileSpreadsheet,
   ArrowRightLeft,
+  ArrowDownLeft,
+  ArrowUpRight,
   AlertTriangle,
   CheckSquare,
   Square,
@@ -1419,55 +1421,100 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
         </div>
       )}
 
-      {/* Selector Rápido de Banco / Entidad en Píldoras */}
-      <div className="flex items-center gap-1.5 flex-wrap pt-1 print:hidden screen-only no-print filter-controls">
-        <span className="text-[11px] font-black uppercase text-zinc-500 mr-1 flex items-center gap-1">
-          <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
-          <span>Banco:</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => setFilterAccount('all')}
-          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            filterAccount === 'all'
-              ? 'bg-[#0E6A3B] text-white shadow-2xs font-black'
-              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-          }`}
-        >
-          Todos ({transactions.length})
-        </button>
-        {accountsByBank.map((g) => {
-          const isSelected = filterAccount === `bank:${g.bankId}` || filterAccount === g.bankId;
-          return (
-            <button
-              key={`bank-pill-${g.bankId}`}
-              type="button"
-              onClick={() => setFilterAccount(isSelected ? 'all' : `bank:${g.bankId}`)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                isSelected
-                  ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-2xs font-black'
-                  : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
-              }`}
-              title={`Filtrar movimientos exclusivamente de ${g.bankName}`}
-            >
-              <span>{g.bankName}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
-              }`}>
-                {g.totalTxCount}
-              </span>
-            </button>
-          );
-        })}
-        {filterAccount !== 'all' && (
+      {/* Selectores Rápidos de Banco y Flujo (Ingresos / Gastos) en Píldoras */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-1 print:hidden screen-only no-print filter-controls">
+        {/* Selector Rápido de Banco / Entidad */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-black uppercase text-zinc-500 mr-1 flex items-center gap-1">
+            <Building2 className="w-3.5 h-3.5 text-[#0E6A3B]" />
+            <span>Banco:</span>
+          </span>
           <button
             type="button"
             onClick={() => setFilterAccount('all')}
-            className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
+            className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filterAccount === 'all'
+                ? 'bg-[#0E6A3B] text-white shadow-2xs font-black'
+                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+            }`}
           >
-            <span>✕ Quitar filtro</span>
+            Todos ({transactions.length})
           </button>
-        )}
+          {accountsByBank.map((g) => {
+            const isSelected = filterAccount === `bank:${g.bankId}` || filterAccount === g.bankId;
+            return (
+              <button
+                key={`bank-pill-${g.bankId}`}
+                type="button"
+                onClick={() => setFilterAccount(isSelected ? 'all' : `bank:${g.bankId}`)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  isSelected
+                    ? 'bg-[#0E6A3B] text-white border-[#0E6A3B] shadow-2xs font-black'
+                    : 'bg-white hover:bg-zinc-50 text-zinc-800 border-zinc-200'
+                }`}
+                title={`Filtrar movimientos exclusivamente de ${g.bankName}`}
+              >
+                <span>{g.bankName}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+                }`}>
+                  {g.totalTxCount}
+                </span>
+              </button>
+            );
+          })}
+          {filterAccount !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setFilterAccount('all')}
+              className="text-xs font-bold text-red-600 hover:text-red-700 ml-1 cursor-pointer flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              <span>✕ Quitar banco</span>
+            </button>
+          )}
+        </div>
+
+        {/* Selector Rápido de Flujo: Todos, Solo Gastos, Solo Ingresos */}
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-100/90 border border-zinc-200/90 rounded-xl shadow-2xs self-start lg:self-auto shrink-0">
+          <span className="text-[10px] font-black uppercase text-zinc-500 px-1.5">Flujo:</span>
+          <button
+            type="button"
+            onClick={() => setFilterType('all')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              filterType === 'all'
+                ? 'bg-white text-zinc-950 shadow-xs border border-zinc-200/80 font-black'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterType('expense')}
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              filterType === 'expense'
+                ? 'bg-rose-600 text-white shadow-xs font-black ring-1 ring-rose-700'
+                : 'text-rose-700 hover:bg-rose-50'
+            }`}
+            title="Filtrar y mostrar exclusivamente movimientos de Gasto"
+          >
+            <ArrowDownLeft className="w-3.5 h-3.5" />
+            <span>Solo Gastos</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterType('income')}
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              filterType === 'income'
+                ? 'bg-[#0E6A3B] text-white shadow-xs font-black ring-1 ring-emerald-700'
+                : 'text-emerald-800 hover:bg-emerald-50'
+            }`}
+            title="Filtrar y mostrar exclusivamente movimientos de Ingreso"
+          >
+            <ArrowUpRight className="w-3.5 h-3.5" />
+            <span>Solo Ingresos</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Controls Row */}
@@ -1947,11 +1994,17 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as 'all' | 'expense' | 'income')}
-            className="w-full px-3 py-2 text-xs rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all text-zinc-800 font-semibold cursor-pointer"
+            className={`w-full px-3 py-2 text-xs rounded-xl border focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 transition-all font-semibold cursor-pointer shadow-2xs ${
+              filterType === 'expense'
+                ? 'bg-rose-50 border-rose-300 text-rose-950 font-black ring-2 ring-rose-400/20'
+                : filterType === 'income'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-black ring-2 ring-emerald-500/20'
+                : 'bg-zinc-50 border-zinc-200 text-zinc-800'
+            }`}
           >
             <option value="all">Tipo: Todos los Flujos</option>
-            <option value="expense">Solo Gastos</option>
-            <option value="income">Solo Ingresos</option>
+            <option value="expense">📉 Solo Gastos</option>
+            <option value="income">📈 Solo Ingresos</option>
           </select>
         </div>
 
@@ -2266,18 +2319,74 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 </span>
               </>
             )}
+            {filterType !== 'all' && (
+              <>
+                <span className="text-zinc-300">|</span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] border ${
+                  filterType === 'expense'
+                    ? 'bg-rose-100 text-rose-950 border-rose-300 ring-1 ring-rose-400/30'
+                    : 'bg-emerald-100 text-emerald-950 border-emerald-300 ring-1 ring-emerald-400/30'
+                }`}>
+                  {filterType === 'expense' ? (
+                    <ArrowDownLeft className="w-3.5 h-3.5 text-rose-600" />
+                  ) : (
+                    <ArrowUpRight className="w-3.5 h-3.5 text-[#0E6A3B]" />
+                  )}
+                  <span>{filterType === 'expense' ? 'Solo Gastos' : 'Solo Ingresos'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterType('all')}
+                    className="hover:text-rose-700 ml-0.5 cursor-pointer font-black"
+                    title="Quitar filtro de flujo (mostrar todos)"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              </>
+            )}
             <span className="text-zinc-300">|</span>
-            <span className="text-emerald-800 font-bold">
-              Ingresos: +{formatCurrency(filteredStats.income)} ({filteredStats.incomeCount})
-            </span>
+            <button
+              type="button"
+              onClick={() => setFilterType(filterType === 'income' ? 'all' : 'income')}
+              className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                filterType === 'income'
+                  ? 'bg-[#0E6A3B] text-white shadow-2xs font-black ring-1 ring-emerald-700'
+                  : 'text-emerald-800 hover:bg-emerald-100/80'
+              }`}
+              title={filterType === 'income' ? 'Quitar filtro (mostrar todos los flujos)' : 'Filtrar y ver exclusivamente Ingresos'}
+            >
+              <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+              <span>Ingresos: +{formatCurrency(filteredStats.income)} ({filteredStats.incomeCount})</span>
+              {filterType === 'income' && <span className="text-[10px] ml-0.5 font-bold">✕</span>}
+            </button>
             <span className="text-zinc-300">|</span>
-            <span className="text-rose-700 font-bold">
-              Gastos: -{formatCurrency(filteredStats.expense)} ({filteredStats.expenseCount})
-            </span>
+            <button
+              type="button"
+              onClick={() => setFilterType(filterType === 'expense' ? 'all' : 'expense')}
+              className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                filterType === 'expense'
+                  ? 'bg-rose-600 text-white shadow-2xs font-black ring-1 ring-rose-700'
+                  : 'text-rose-700 hover:bg-rose-100/80'
+              }`}
+              title={filterType === 'expense' ? 'Quitar filtro (mostrar todos los flujos)' : 'Filtrar y ver exclusivamente Gastos'}
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
+              <span>Gastos: -{formatCurrency(filteredStats.expense)} ({filteredStats.expenseCount})</span>
+              {filterType === 'expense' && <span className="text-[10px] ml-0.5 font-bold">✕</span>}
+            </button>
             <span className="text-zinc-300">|</span>
-            <span className={`font-black ${filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700'}`}>
+            <button
+              type="button"
+              onClick={() => setFilterType('all')}
+              className={`px-2 py-0.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                filterType === 'all'
+                  ? (filteredStats.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-700')
+                  : 'text-zinc-600 hover:bg-zinc-200'
+              }`}
+              title="Restablecer filtro a todos los flujos"
+            >
               Neto: {filteredStats.net >= 0 ? `+${formatCurrency(filteredStats.net)}` : formatCurrency(filteredStats.net)}
-            </span>
+            </button>
           </div>
 
           <button
