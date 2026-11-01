@@ -20,10 +20,11 @@ import {
   Calendar,
   FileSpreadsheet,
   Info,
-  Eye
+  Eye,
+  Lock
 } from 'lucide-react';
 import { BankAccount, Transaction, AccountType, MonthClosure } from '../types';
-import { formatCurrency, formatRelativeTime, formatDate, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth } from '../utils/storage';
+import { formatCurrency, formatRelativeTime, formatDate, formatMonthName, recalculateAccountBalanceFromTransactions, getAccountBalanceForMonth, isMonthLocked } from '../utils/storage';
 import { SyncAccountBalanceModal } from './SyncAccountBalanceModal';
 
 interface BankAccountsListProps {
@@ -58,6 +59,7 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [accountToSyncBalance, setAccountToSyncBalance] = useState<BankAccount | null>(null);
   const [accountToDelete, setAccountToDelete] = useState<BankAccount | null>(null);
+  const isCurrentMonthLocked = Boolean(selectedMonth && isMonthLocked(selectedMonth, monthlyClosures));
   const [bankToDelete, setBankToDelete] = useState<{
     bankId: string;
     bankName: string;
@@ -273,11 +275,21 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
 
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setAccountToSyncBalance(account)}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200/90 border border-zinc-200 px-2 py-0.5 rounded-lg transition-all cursor-pointer"
-                title={`Ajustar o sincronizar saldo de ${account.accountName}`}
+                onClick={() => {
+                  if (isCurrentMonthLocked && selectedMonth) {
+                    alert(`El mes de ${formatMonthName(selectedMonth)} está blindado oficialmente para proteger los saldos bancarios. Para ajustar o sincronizar un saldo, primero debes desblindar el mes pulsando el candado verde en la cabecera.`);
+                    return;
+                  }
+                  setAccountToSyncBalance(account);
+                }}
+                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg transition-all cursor-pointer ${
+                  isCurrentMonthLocked
+                    ? 'text-zinc-600 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300'
+                    : 'text-zinc-700 bg-zinc-100 hover:bg-zinc-200/90 border border-zinc-200'
+                }`}
+                title={isCurrentMonthLocked ? 'Mes blindado: desblinda primero para modificar saldos' : `Ajustar o sincronizar saldo de ${account.accountName}`}
               >
-                <RefreshCw className="w-3 h-3 text-[#0E6A3B]" />
+                {isCurrentMonthLocked ? <Lock className="w-3 h-3 text-[#0E6A3B]" /> : <RefreshCw className="w-3 h-3 text-[#0E6A3B]" />}
                 <span>Saldo</span>
               </button>
               {onOpenImportModal && (
@@ -853,6 +865,8 @@ export const BankAccountsList: React.FC<BankAccountsListProps> = ({
         onClose={() => setAccountToSyncBalance(null)}
         account={accountToSyncBalance}
         transactions={transactions || []}
+        monthlyClosures={monthlyClosures}
+        selectedMonth={selectedMonth}
         onSaveAccount={(updated) => {
           if (onSaveAccount) onSaveAccount(updated);
           setAccountToSyncBalance(null);

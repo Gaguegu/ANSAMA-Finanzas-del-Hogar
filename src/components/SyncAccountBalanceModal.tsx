@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Check, Calendar, TrendingUp, TrendingDown, ArrowRight, ShieldCheck } from 'lucide-react';
-import { BankAccount, Transaction } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput, recalculateAccountBalanceFromTransactions } from '../utils/storage';
+import { X, RefreshCw, Check, Calendar, TrendingUp, TrendingDown, ArrowRight, ShieldCheck, Lock } from 'lucide-react';
+import { BankAccount, Transaction, MonthClosure } from '../types';
+import { formatCurrency, formatDate, parseCurrencyInput, recalculateAccountBalanceFromTransactions, isMonthLocked } from '../utils/storage';
 
 interface SyncAccountBalanceModalProps {
   isOpen: boolean;
@@ -9,6 +9,8 @@ interface SyncAccountBalanceModalProps {
   account: BankAccount | null;
   transactions: Transaction[];
   onSaveAccount: (account: BankAccount) => void;
+  monthlyClosures?: MonthClosure[];
+  selectedMonth?: string;
 }
 
 export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = ({
@@ -16,13 +18,17 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
   onClose,
   account,
   transactions,
-  onSaveAccount
+  onSaveAccount,
+  monthlyClosures,
+  selectedMonth
 }) => {
   const [manualBalanceStr, setManualBalanceStr] = useState('');
   const [manualDate, setManualDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [activeTab, setActiveTab] = useState<'calculated' | 'manual'>('calculated');
 
   const recalc = account ? recalculateAccountBalanceFromTransactions(account, transactions) : null;
+  const targetMonth = manualDate ? manualDate.substring(0, 7) : selectedMonth;
+  const isTargetLocked = Boolean(targetMonth && isMonthLocked(targetMonth, monthlyClosures));
 
   useEffect(() => {
     if (account) {
@@ -35,6 +41,7 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
   if (!isOpen || !account) return null;
 
   const handleApplyCalculated = () => {
+    if (isTargetLocked) return;
     if (!recalc) return;
     const updatedAccount: BankAccount = {
       ...account,
@@ -47,6 +54,7 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
   };
 
   const handleApplyManual = () => {
+    if (isTargetLocked) return;
     const parsed = parseCurrencyInput(manualBalanceStr);
     const updatedAccount: BankAccount = {
       ...account,
@@ -110,6 +118,19 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
               </span>
             </div>
           </div>
+
+          {/* Banner si el mes está blindado */}
+          {isTargetLocked && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-[#0E6A3B] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-extrabold block">Periodo blindado oficialmente ({targetMonth})</span>
+                <p className="text-amber-800 text-[11px] leading-snug">
+                  Los saldos de este periodo están protegidos contra modificaciones accidentales. Para ajustar el saldo, primero debes desblindar el mes desde el selector de la cabecera.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Selector de modo */}
           <div className="flex rounded-xl bg-zinc-100 p-1 text-xs font-bold">
@@ -202,11 +223,16 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
 
               <button
                 type="button"
+                disabled={isTargetLocked}
                 onClick={handleApplyCalculated}
-                className="w-full py-2.5 px-4 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className={`w-full py-2.5 px-4 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 ${
+                  isTargetLocked
+                    ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed border border-zinc-300'
+                    : 'bg-[#0E6A3B] hover:bg-[#0a522d] text-white cursor-pointer'
+                }`}
               >
-                <Check className="w-4 h-4" />
-                <span>Actualizar saldo a {formatCurrency(recalc.calculatedBalance)}</span>
+                {isTargetLocked ? <Lock className="w-4 h-4 text-zinc-500" /> : <Check className="w-4 h-4" />}
+                <span>{isTargetLocked ? 'Saldo protegido (Mes blindado)' : `Actualizar saldo a ${formatCurrency(recalc.calculatedBalance)}`}</span>
               </button>
             </div>
           )}
@@ -221,10 +247,13 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
                   </label>
                   <input
                     type="text"
+                    disabled={isTargetLocked}
                     value={manualBalanceStr}
                     onChange={(e) => setManualBalanceStr(e.target.value)}
                     placeholder="Ej: 4599.13 o 4.599,13"
-                    className="w-full px-3 py-2 text-sm font-mono font-bold bg-white border border-zinc-300 rounded-xl text-zinc-900"
+                    className={`w-full px-3 py-2 text-sm font-mono font-bold border rounded-xl text-zinc-900 ${
+                      isTargetLocked ? 'bg-zinc-100 text-zinc-500 border-zinc-300 cursor-not-allowed' : 'bg-white border-zinc-300'
+                    }`}
                   />
                   <span className="text-[11px] text-zinc-500 mt-1 block">
                     Interpretado: <strong className="font-bold text-emerald-800">{formatCurrency(parsedManual)}</strong>
@@ -248,11 +277,16 @@ export const SyncAccountBalanceModal: React.FC<SyncAccountBalanceModalProps> = (
 
               <button
                 type="button"
+                disabled={isTargetLocked}
                 onClick={handleApplyManual}
-                className="w-full py-2.5 px-4 bg-[#0E6A3B] hover:bg-[#0a522d] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className={`w-full py-2.5 px-4 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 ${
+                  isTargetLocked
+                    ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed border border-zinc-300'
+                    : 'bg-[#0E6A3B] hover:bg-[#0a522d] text-white cursor-pointer'
+                }`}
               >
-                <Check className="w-4 h-4" />
-                <span>Fijar saldo manual ({formatCurrency(parsedManual)})</span>
+                {isTargetLocked ? <Lock className="w-4 h-4 text-zinc-500" /> : <Check className="w-4 h-4" />}
+                <span>{isTargetLocked ? 'Saldo protegido (Mes blindado)' : `Fijar saldo manual (${formatCurrency(parsedManual)})`}</span>
               </button>
             </div>
           )}

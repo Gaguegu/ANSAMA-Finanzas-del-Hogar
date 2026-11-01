@@ -32,6 +32,7 @@ interface SettingsModalProps {
   onOpenInstall?: () => void;
   currentPassword?: string;
   onPasswordChanged?: (newPassword: string | null) => void;
+  onRestoreAuditedClosures?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -42,7 +43,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isInstalled,
   onOpenInstall,
   currentPassword,
-  onPasswordChanged
+  onPasswordChanged,
+  onRestoreAuditedClosures
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmZero, setShowConfirmZero] = useState(false);
@@ -821,6 +823,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Restablecer
               </button>
             </div>
+
+            {/* Repasar y Restaurar Cierres Blindados */}
+            {onRestoreAuditedClosures && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-300">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-[#0E6A3B]" />
+                    <span className="text-xs font-bold text-emerald-950">Repasar y Auditar Cierres Blindados</span>
+                  </div>
+                  <span className="text-[11px] text-emerald-800/90 block">
+                    Verifica todos los cierres mensuales de 2025 y 2026 contra los datos contables oficiales. Si por error se alteró el saldo de un banco blindado, lo repara y restaura a su valor certificado.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onRestoreAuditedClosures();
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-emerald-800 rounded-lg shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 shrink-0 transition-colors"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Repasar y Restaurar
+                </button>
+              </div>
+            )}
 
             {/* Actualizaciones Automáticas */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80">

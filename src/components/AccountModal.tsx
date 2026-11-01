@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock, RotateCcw, RefreshCw } from 'lucide-react';
-import { BankAccount, BankId, AccountType, Transaction } from '../types';
-import { parseCurrencyInput, formatCurrency, formatDate, recalculateAccountBalanceFromTransactions } from '../utils/storage';
+import { X, Landmark, Trash2, AlertTriangle, CheckCircle2, Calendar, Clock, RotateCcw, RefreshCw, Lock } from 'lucide-react';
+import { BankAccount, BankId, AccountType, Transaction, MonthClosure } from '../types';
+import { parseCurrencyInput, formatCurrency, formatDate, recalculateAccountBalanceFromTransactions, isMonthLocked } from '../utils/storage';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -11,6 +11,8 @@ interface AccountModalProps {
   accountToEdit?: BankAccount | null;
   initialType?: AccountType;
   transactions?: Transaction[];
+  monthlyClosures?: MonthClosure[];
+  selectedMonth?: string;
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({
@@ -20,7 +22,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onDeleteAccount,
   accountToEdit,
   initialType,
-  transactions
+  transactions,
+  monthlyClosures,
+  selectedMonth
 }) => {
   const [bankId, setBankId] = useState<BankId | ''>('');
   const [customBankName, setCustomBankName] = useState('');
@@ -36,6 +40,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     if (!accountToEdit || !transactions) return null;
     return recalculateAccountBalanceFromTransactions(accountToEdit, transactions);
   }, [accountToEdit, transactions]);
+
+  const targetMonth = balanceDate ? balanceDate.substring(0, 7) : selectedMonth;
+  const isTargetLocked = Boolean(targetMonth && isMonthLocked(targetMonth, monthlyClosures));
 
   const resetFormToBlank = (targetType?: AccountType) => {
     setBankId('');
@@ -111,6 +118,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     const parsedBalance = parseCurrencyInput(balanceStr);
     if (isNaN(parsedBalance) || parsedBalance < 0) {
       setError('Introduce un saldo numérico válido.');
+      return;
+    }
+
+    if (isTargetLocked && accountToEdit && Math.abs(accountToEdit.balance - parsedBalance) > 0.001) {
+      setError(`El periodo ${targetMonth} está blindado oficialmente para proteger los saldos bancarios. Para modificar este saldo, primero debes desblindar el mes desde el selector de la cabecera.`);
       return;
     }
 
@@ -355,6 +367,19 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             />
           </div>
 
+          {/* Advertencia si el mes está blindado */}
+          {isTargetLocked && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-[#0E6A3B] shrink-0 mt-0.5" />
+              <div>
+                <span className="font-black block">Periodo blindado oficialmente ({targetMonth})</span>
+                <p className="text-amber-800 text-[11px] leading-snug">
+                  El saldo de este periodo está protegido contra cambios accidentales. Para modificar este saldo, primero debes desblindar el mes desde el selector de la cabecera.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Fila con Saldo y Fecha del Saldo */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Saldo */}
@@ -367,14 +392,26 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                       ? 'Capital Depositado (€)'
                       : 'Saldo Actual (€)'} *
                 </span>
+                {isTargetLocked && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                    <Lock className="w-2.5 h-2.5 text-[#0E6A3B]" />
+                    Blindado
+                  </span>
+                )}
               </label>
               <input
                 type="text"
                 required
+                disabled={isTargetLocked}
                 value={balanceStr}
                 onChange={(e) => setBalanceStr(e.target.value)}
                 placeholder="Ej: 4.599,13"
-                className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white text-zinc-900"
+                title={isTargetLocked ? 'Saldo blindado: desblinda el mes desde la cabecera para modificarlo' : undefined}
+                className={`w-full px-3 py-2 text-xs font-bold rounded-xl border focus:bg-white text-zinc-900 ${
+                  isTargetLocked 
+                    ? 'bg-zinc-100 text-zinc-500 border-zinc-300 cursor-not-allowed' 
+                    : 'bg-zinc-50 border-zinc-200'
+                }`}
               />
               {/* Interpretación en tiempo real */}
               <div className="mt-1 min-h-[18px]">

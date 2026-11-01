@@ -590,6 +590,149 @@ export function lockHistoricalExercise(currentState: AppState): AppState {
 
 export const lockHistoricalExercise2026 = lockHistoricalExercise;
 
+/**
+ * Repasa, verifica y restaura los saldos oficiales de los cierres blindados (2025 y 2026)
+ * corrigiendo cualquier modificación accidental y volviendo a blindar los periodos sellados.
+ */
+export function restoreAuditedClosuresFromBenchmark(currentState: AppState): {
+  newState: AppState;
+  restoredCount: number;
+  details: string[];
+} {
+  const closures = Array.isArray(currentState.monthlyClosures) ? [...currentState.monthlyClosures] : [];
+  let restoredCount = 0;
+  const details: string[] = [];
+
+  // 1. REPASAR Y RESTAURAR EJERCICIO 2025 (12 Meses: Enero a Diciembre)
+  const b2025 = EXCEL_2025_BENCHMARK;
+  for (let m = 0; m < 12; m++) {
+    const monthNum = String(m + 1).padStart(2, '0');
+    const monthKey = `2025-${monthNum}`;
+    const bMonth = b2025.months.find((bm) => bm.monthIndex === m);
+    if (!bMonth) continue;
+
+    const existingIdx = closures.findIndex((c) => c.month === monthKey);
+    const existing = existingIdx >= 0 ? closures[existingIdx] : null;
+
+    const auditedBalances: Record<string, number> = {};
+    if (Array.isArray(currentState.accounts)) {
+      currentState.accounts.forEach((acc) => {
+        const key = matchAccountToBenchmarkKey(acc);
+        if (key && bMonth.byBank[key] && bMonth.byBank[key].balance !== undefined) {
+          const officialBal = Math.round(bMonth.byBank[key].balance! * 100) / 100;
+          auditedBalances[acc.id] = officialBal;
+          const currentBal = existing?.auditedBalances?.[acc.id];
+          if (currentBal !== undefined && Math.abs(currentBal - officialBal) > 0.01) {
+            restoredCount++;
+            details.push(`${monthKey} (${bMonth.fullMonthName}): ${acc.accountName} restaurado de ${formatCurrency(currentBal)} a ${formatCurrency(officialBal)}`);
+          }
+        } else {
+          auditedBalances[acc.id] = 0;
+        }
+      });
+    }
+
+    const locked2025: MonthClosure = {
+      month: monthKey,
+      isClosed: true,
+      isLocked: true,
+      closedAt: existing?.closedAt || `2025-${monthNum}-28T23:59:59.000Z`,
+      notes: `🔒 Cierre oficial blindado y auditado (${bMonth.fullMonthName} 2025)`,
+      auditedIncome: bMonth.income,
+      auditedExpense: bMonth.expense,
+      auditedNet: bMonth.net,
+      auditedBalances,
+      auditedByBank: bMonth.byBank
+    };
+
+    if (existingIdx >= 0) {
+      closures[existingIdx] = locked2025;
+    } else {
+      closures.push(locked2025);
+    }
+  }
+
+  // 2. REPASAR Y RESTAURAR EJERCICIO 2026 (9 Meses: Enero a Septiembre)
+  const b2026 = EXCEL_2026_BENCHMARK;
+  for (let m = 0; m < 9; m++) {
+    const monthNum = String(m + 1).padStart(2, '0');
+    const monthKey = `2026-${monthNum}`;
+    const bMonth = b2026.months.find((bm) => bm.monthIndex === m);
+    if (!bMonth) continue;
+
+    const existingIdx = closures.findIndex((c) => c.month === monthKey);
+    const existing = existingIdx >= 0 ? closures[existingIdx] : null;
+
+    const lastDayOfMonth = new Date(2026, m + 1, 0).getDate();
+    const endOfMonthDateStr = `${monthKey}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+    const auditedBalances: Record<string, number> = {
+      ...(existing?.auditedBalances || {})
+    };
+
+    if (Array.isArray(currentState.accounts)) {
+      currentState.accounts.forEach((acc) => {
+        // En Septiembre 2026 (mes 8): si es una cuenta estándar de DEFAULT_ACCOUNTS, verificar contra el saldo oficial
+        if (m === 8) {
+          const defMatch = DEFAULT_ACCOUNTS.find((d) => d.id === acc.id);
+          if (defMatch && auditedBalances[acc.id] !== undefined && Math.abs(auditedBalances[acc.id] - defMatch.balance) > 0.01) {
+            const prev = auditedBalances[acc.id];
+            auditedBalances[acc.id] = defMatch.balance;
+            restoredCount++;
+            details.push(`2026-09 (${bMonth.fullMonthName}): ${acc.accountName} restaurado de ${formatCurrency(prev)} a ${formatCurrency(defMatch.balance)}`);
+          }
+        }
+
+        if (auditedBalances[acc.id] === undefined) {
+          const subsequentTxs = (currentState.transactions || []).filter(
+            (tx) => tx.accountId === acc.id && tx.date > endOfMonthDateStr
+          );
+          let rolled = acc.balance;
+          for (const tx of subsequentTxs) {
+            if (tx.type === 'income') rolled -= tx.amount;
+            else rolled += tx.amount;
+          }
+          auditedBalances[acc.id] = Math.round(rolled * 100) / 100;
+        }
+      });
+    }
+
+    const locked2026: MonthClosure = {
+      month: monthKey,
+      isClosed: true,
+      isLocked: true,
+      closedAt: existing?.closedAt || (m === 8 ? '2026-09-30T23:59:59.000Z' : `${endOfMonthDateStr}T23:59:59.000Z`),
+      notes: `🔒 Cierre oficial blindado y auditado (${bMonth.fullMonthName} 2026)`,
+      auditedIncome: bMonth.income,
+      auditedExpense: bMonth.expense,
+      auditedNet: bMonth.net,
+      auditedBalances,
+      auditedByBank: bMonth.byBank
+    };
+
+    if (existingIdx >= 0) {
+      closures[existingIdx] = locked2026;
+    } else {
+      closures.push(locked2026);
+    }
+  }
+
+  const updatedAccounts = syncAccountsWithClosures(
+    currentState.accounts,
+    closures,
+    currentState.transactions
+  );
+
+  const newState: AppState = {
+    ...currentState,
+    accounts: updatedAccounts,
+    monthlyClosures: closures
+  };
+
+  saveAppState(newState);
+  return { newState, restoredCount, details };
+}
+
 export function saveAppState(state: AppState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

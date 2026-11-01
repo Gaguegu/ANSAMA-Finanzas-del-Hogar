@@ -16,6 +16,7 @@ import {
   purgeDemoAccounts,
   normalizeAndDeduplicateYieldsAndTransactions,
   lockHistoricalExercise,
+  restoreAuditedClosuresFromBenchmark,
   isMonthLocked
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
@@ -489,6 +490,30 @@ export default function App() {
     
     let updatedClosures = [...(appState.monthlyClosures || [])];
     const cIdx = updatedClosures.findIndex((c) => c.month === targetMonth);
+    const targetClosure = cIdx >= 0 ? updatedClosures[cIdx] : null;
+
+    // COMPROBACIÓN CRÍTICA DE SEGURIDAD:
+    // Si el mes está blindado oficialmente (isLocked === true), PROTEGER el saldo contra alteraciones accidentales
+    if (targetClosure && targetClosure.isLocked) {
+      triggerNotification(
+        `🛡️ El mes de ${formatMonthName(targetMonth)} está blindado oficialmente. Para evitar descuadres, el saldo blindado se mantiene protegido y no se ha modificado. Desblinda primero el mes desde el selector de la cabecera si deseas ajustarlo.`,
+        'error'
+      );
+      // Permitir guardar otros datos descriptivos de la cuenta (nombre, IBAN, color, tipo) sin alterar el saldo
+      const prevAccount = appState.accounts.find((a) => a.id === account.id);
+      if (prevAccount) {
+        const safeAccount: BankAccount = {
+          ...account,
+          balance: prevAccount.balance,
+          balanceDate: prevAccount.balanceDate
+        };
+        const safeAccounts = appState.accounts.map((a) => (a.id === account.id ? safeAccount : a));
+        const newState: AppState = { ...appState, accounts: safeAccounts };
+        setAppState(newState);
+        saveAppState(newState);
+      }
+      return;
+    }
     
     if (cIdx >= 0) {
       const existingClosure = updatedClosures[cIdx];
@@ -650,6 +675,26 @@ export default function App() {
       '🛡️ Blindaje Contable Activo: Los ejercicios históricos (2025 completo y 2026 Enero–Septiembre) han quedado sellados. Los saldos bancarios y las Pérdidas y Ganancias están 100% blindados contra cualquier modificación futura.',
       'success'
     );
+  };
+
+  // Repasar, verificar y restaurar saldos oficiales de cierres blindados
+  const handleRestoreAuditedClosures = () => {
+    if (!window.confirm('¿Deseas repasar y verificar todos los cierres blindados (2025 y 2026)?\n\nEsta auditoría coteja los saldos de cada banco contra los datos oficiales del benchmark y restaura cualquier saldo que haya sido alterado por equivocación en periodos blindados.')) {
+      return;
+    }
+    const { newState, restoredCount, details } = restoreAuditedClosuresFromBenchmark(appState);
+    setAppState(newState);
+    if (restoredCount > 0) {
+      triggerNotification(
+        `🛡️ Se han repasado los cierres blindados: ${restoredCount} saldo(s) corregido(s) y restaurado(s) a su valor oficial auditado.`,
+        'success'
+      );
+    } else {
+      triggerNotification(
+        '🛡️ Cierres blindados verificados: todos los saldos de 2025 y 2026 coinciden al 100% con los datos oficiales y están protegidos.',
+        'success'
+      );
+    }
   };
 
   // Alternar el candado (Blindado / Abierto / Cerrado) de un mes específico desde el selector
@@ -1123,6 +1168,7 @@ export default function App() {
             <YearlyClosure
               appState={appState}
               onLockExercise={handleLockExercise}
+              onRestoreAuditedClosures={handleRestoreAuditedClosures}
               onUpdateClosure={handleUpdateClosure}
             />
           </div>
@@ -1220,6 +1266,8 @@ export default function App() {
         accountToEdit={accountToEdit}
         initialType={accountModalInitialType}
         transactions={appState.transactions}
+        monthlyClosures={appState.monthlyClosures}
+        selectedMonth={patrimonioMonth}
       />
 
       <SettingsModal
@@ -1227,6 +1275,7 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         appState={appState}
         onStateUpdated={(newState) => setAppState(newState)}
+        onRestoreAuditedClosures={handleRestoreAuditedClosures}
         isInstalled={pwa.isInstalled}
         onOpenInstall={() => {
           if (pwa.isInstallable) {

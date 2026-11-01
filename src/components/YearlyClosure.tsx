@@ -28,6 +28,7 @@ interface YearlyClosureProps {
   appState: AppState;
   onLockExercise?: () => void;
   onUpdateClosure?: (closure: MonthClosure) => void;
+  onRestoreAuditedClosures?: () => void;
 }
 
 const MONTH_NAMES_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -36,7 +37,12 @@ const MONTH_NAMES_FULL = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockExercise, onUpdateClosure }) => {
+export const YearlyClosure: React.FC<YearlyClosureProps> = ({ 
+  appState, 
+  onLockExercise, 
+  onUpdateClosure,
+  onRestoreAuditedClosures 
+}) => {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
@@ -932,19 +938,30 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({ appState, onLockEx
                 </p>
               </div>
             </div>
-            {onLockExercise && (
-              <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
+              {onRestoreAuditedClosures && (
+                <button
+                  type="button"
+                  onClick={onRestoreAuditedClosures}
+                  className="px-3.5 py-2.5 rounded-xl text-xs font-black bg-white/10 hover:bg-white/20 text-white border border-white/20 shadow-sm cursor-pointer transition-all flex items-center gap-1.5 active:scale-95"
+                  title="Repasar y cotejar todos los cierres blindados contra el benchmark oficial, restaurando cualquier saldo alterado por error"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                  <span>Repasar Cierres</span>
+                </button>
+              )}
+              {onLockExercise && (
                 <button
                   type="button"
                   onClick={onLockExercise}
                   className="px-4 py-2.5 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-sm cursor-pointer transition-all flex items-center gap-2 active:scale-95"
                   title="Verificar y sellar blindaje de los periodos auditados"
                 >
-                  <ShieldCheck className="w-4 h-4 text-emerald-950" />
+                  <Lock className="w-4 h-4 text-emerald-950" />
                   <span>Blindaje Activo</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
