@@ -489,8 +489,8 @@ export function ensureAuditedClosures(state: AppState): MonthClosure[] {
 
     if (existingIdx >= 0) {
       closures[existingIdx] = {
-        ...existing,
         ...locked2025,
+        ...existing,
         auditedBalances: {
           ...locked2025.auditedBalances,
           ...(existing.auditedBalances || {})
@@ -551,8 +551,8 @@ export function ensureAuditedClosures(state: AppState): MonthClosure[] {
 
     if (existingIdx >= 0) {
       closures[existingIdx] = {
-        ...existing,
         ...lockedClosure,
+        ...existing,
         auditedBalances: {
           ...lockedClosure.auditedBalances,
           ...(existing.auditedBalances || {})
@@ -1648,17 +1648,29 @@ export function getAccountBalanceForMonth(
 
   const closure = monthlyClosures.find((c) => c.month === monthStr);
 
-  // 1. Si existe un cierre auditado con saldo específico para esta cuenta en este mes
+  // 1. Si existe un cierre con saldo específico para esta cuenta en este mes
   if (closure?.auditedBalances?.[acc.id] !== undefined) {
-    const audBal = Math.round(closure.auditedBalances[acc.id] * 100) / 100;
+    let audBal = Math.round(closure.auditedBalances[acc.id] * 100) / 100;
+    
+    // Si el mes no está blindado (desblindado para ajustes o reabierto) y la cuenta tiene un saldo explícito fijado en este mes:
+    if (!closure.isLocked && acc.balanceDate?.startsWith(monthStr) && acc.balance !== undefined && !isNaN(acc.balance)) {
+      audBal = Math.round(acc.balance * 100) / 100;
+    }
+
     const closedDate = closure.closedAt ? closure.closedAt.split('T')[0] : lastDayOfMonthStr;
+    const effectiveBalDate = (!closure.isLocked && acc.balanceDate?.startsWith(monthStr))
+      ? acc.balanceDate!
+      : (closedDate > lastDayOfMonthStr ? lastDayOfMonthStr : closedDate);
+
+    const isLockedAndClosed = Boolean(closure.isClosed && closure.isLocked);
+
     return {
       accountId: acc.id,
       balance: audBal,
-      balanceDate: closedDate > lastDayOfMonthStr ? lastDayOfMonthStr : closedDate,
+      balanceDate: effectiveBalDate,
       source: 'audited',
-      isAudited: true,
-      label: 'Cierre auditado'
+      isAudited: isLockedAndClosed,
+      label: isLockedAndClosed ? 'Cierre auditado' : closure.isClosed ? 'Cierre mensual' : 'Saldo registrado'
     };
   }
 

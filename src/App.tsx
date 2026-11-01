@@ -8,6 +8,7 @@ import {
   formatCurrency,
   formatDate,
   formatRelativeTime,
+  formatMonthName,
   syncAccountsWithClosures,
   getAvailableMonths,
   getAccountBalanceForMonth,
@@ -483,14 +484,59 @@ export default function App() {
       updatedAccounts = [...appState.accounts, account];
     }
 
+    // Identificar qué mes corresponde al saldo guardado (por la fecha del saldo o el mes consultado en Patrimonio)
+    const targetMonth = account.balanceDate ? account.balanceDate.substring(0, 7) : patrimonioMonth;
+    
+    let updatedClosures = [...(appState.monthlyClosures || [])];
+    const cIdx = updatedClosures.findIndex((c) => c.month === targetMonth);
+    
+    if (cIdx >= 0) {
+      const existingClosure = updatedClosures[cIdx];
+      const updatedAudited = {
+        ...(existingClosure.auditedBalances || {}),
+        [account.id]: Math.round(account.balance * 100) / 100
+      };
+      updatedClosures[cIdx] = {
+        ...existingClosure,
+        auditedBalances: updatedAudited
+      };
+    } else if (targetMonth) {
+      updatedClosures.push({
+        month: targetMonth,
+        isClosed: false,
+        isLocked: false,
+        auditedBalances: {
+          [account.id]: Math.round(account.balance * 100) / 100
+        }
+      });
+    }
+
+    // Si también se está consultando patrimonioMonth y es diferente de targetMonth pero no está blindado:
+    if (patrimonioMonth && patrimonioMonth !== targetMonth) {
+      const pIdx = updatedClosures.findIndex((c) => c.month === patrimonioMonth);
+      if (pIdx >= 0) {
+        const pClosure = updatedClosures[pIdx];
+        if (!pClosure.isLocked) {
+          updatedClosures[pIdx] = {
+            ...pClosure,
+            auditedBalances: {
+              ...(pClosure.auditedBalances || {}),
+              [account.id]: Math.round(account.balance * 100) / 100
+            }
+          };
+        }
+      }
+    }
+
     const newState: AppState = {
       ...appState,
-      accounts: updatedAccounts
+      accounts: updatedAccounts,
+      monthlyClosures: updatedClosures
     };
 
     setAppState(newState);
     saveAppState(newState);
-    triggerNotification(`Cuenta "${account.accountName}" guardada correctamente.`);
+    triggerNotification(`Saldo de "${account.accountName}" guardado en ${formatCurrency(account.balance)}.`);
   };
 
   // Delete an account
@@ -612,34 +658,25 @@ export default function App() {
     const closure = existing.find((c) => c.month === monthKey);
     const isCurrentlyLocked = Boolean(closure?.isLocked);
     const isCurrentlyClosed = Boolean(closure?.isClosed);
+    const monthLabel = formatMonthName(monthKey);
 
-    if (isCurrentlyLocked) {
-      if (!window.confirm(`El mes ${monthKey} está blindado oficialmente para proteger los saldos bancarios y las Pérdidas y Ganancias. ¿Deseas desblindarlo para permitir ajustes y revisiones?`)) {
+    if (isCurrentlyLocked || isCurrentlyClosed) {
+      if (!window.confirm(`¿Deseas desblindar y reabrir el mes de ${monthLabel}? Podrás corregir o ajustar los saldos bancarios y de valores.`)) {
         return;
       }
       const updated: MonthClosure = {
-        ...closure!,
-        isClosed: true,
+        ...(closure || { month: monthKey }),
+        isClosed: false,
         isLocked: false,
-        notes: closure?.notes || `Desblindado para ajustes`
+        notes: closure?.notes || `Reabierto para ajustes de saldos`
       };
       handleUpdateClosure(updated);
-      triggerNotification(`🔓 Mes ${monthKey} desblindado. Ahora puedes realizar ajustes en los saldos si es necesario.`, 'info');
-    } else if (isCurrentlyClosed) {
-      // Estaba cerrado pero no blindado: blindarlo
-      const updated: MonthClosure = {
-        ...closure!,
-        isClosed: true,
-        isLocked: true,
-        closedAt: closure?.closedAt || new Date().toISOString()
-      };
-      handleUpdateClosure(updated);
-      triggerNotification(`🔒 Mes ${monthKey} blindado oficialmente. Saldos y P&L protegidos contra descuadres.`, 'success');
+      triggerNotification(`🔓 Mes de ${monthLabel} reabierto. Ya puedes corregir saldos en la tarjeta de cada entidad.`, 'info');
     } else {
       // Estaba abierto: cerrar y blindar
-      const [yStr, mStr] = monthKey.split('-');
-      const y = parseInt(yStr, 10);
-      const m = parseInt(mStr, 10) - 1;
+      if (!window.confirm(`¿Deseas cerrar y blindar oficialmente el mes de ${monthLabel}? Los saldos quedarán certificados y protegidos.`)) {
+        return;
+      }
       const auditedBalances: Record<string, number> = {};
       appState.accounts.forEach((acc) => {
         const info = getAccountBalanceForMonth(acc, monthKey, appState.transactions, appState.monthlyClosures);
@@ -647,6 +684,7 @@ export default function App() {
       });
 
       const updated: MonthClosure = {
+        ...(closure || { month: monthKey }),
         month: monthKey,
         isClosed: true,
         isLocked: true,
@@ -655,7 +693,7 @@ export default function App() {
         auditedBalances
       };
       handleUpdateClosure(updated);
-      triggerNotification(`🔒 Mes ${monthKey} cerrado y blindado con éxito.`, 'success');
+      triggerNotification(`🔒 Mes de ${monthLabel} cerrado y blindado con éxito.`, 'success');
     }
   };
 
