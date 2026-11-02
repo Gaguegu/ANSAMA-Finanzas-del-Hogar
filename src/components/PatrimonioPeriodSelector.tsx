@@ -98,7 +98,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
                   <Lock className="w-3 h-3 text-[#0E6A3B]" />
                   <span>Blindado</span>
                 </button>
-              ) : isClosed || hasAuditedBalances ? (
+              ) : isClosed ? (
                 <button
                   type="button"
                   onClick={() => onToggleLockMonth?.(selectedMonth)}
