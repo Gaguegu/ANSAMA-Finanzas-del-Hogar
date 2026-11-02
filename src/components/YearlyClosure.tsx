@@ -880,14 +880,63 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
   ]);
 
   const handlePrint = () => {
+    document.body.setAttribute('data-print-mode', 'yearly');
+
+    let printStyle = document.getElementById('yearly-print-page-style') as HTMLStyleElement | null;
+    if (!printStyle) {
+      printStyle = document.createElement('style');
+      printStyle.id = 'yearly-print-page-style';
+      printStyle.innerHTML = `
+        @media print {
+          @page {
+            size: A4 landscape !important;
+            margin: 6mm 6mm 6mm 6mm !important;
+          }
+        }
+      `;
+      document.head.appendChild(printStyle);
+    }
+
+    const cleanup = () => {
+      document.body.removeAttribute('data-print-mode');
+      if (printStyle) {
+        printStyle.remove();
+      }
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
     window.print();
+    setTimeout(cleanup, 1500);
   };
 
   return (
-    <div id="section-yearly-closure" className="space-y-6 animate-in fade-in">
+    <div id="section-yearly-closure" className="space-y-6 animate-in fade-in print:space-y-3">
       
-      {/* Header Banner - Resaltado verde corporativo ANSAMA */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm ring-1 ring-emerald-950/5">
+      {/* Encabezado oficial exclusivo para impresión */}
+      <div className="print-only mb-3 border-b-2 border-emerald-800 pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-black text-emerald-950 uppercase tracking-tight">ANSAMA Finanzas del Hogar</span>
+              <span className="text-xs px-2 py-0.5 rounded font-black bg-emerald-100 text-emerald-900 border border-emerald-400">
+                Ejercicio {selectedYear}
+              </span>
+            </div>
+            <p className="text-[11px] font-bold text-zinc-700 mt-0.5">
+              Informe Oficial de Cierre Anual — Matriz de Saldos por Entidad
+            </p>
+          </div>
+          <div className="text-right text-[10px] text-zinc-500">
+            <span className="font-bold text-zinc-700">Modo: {tableMetric === 'balance' ? 'Saldos Auditados' : tableMetric.toUpperCase()}</span>
+            <div>Periodo: Enero a {lastLockedMonthIndex >= 0 ? MONTH_NAMES_FULL[lastLockedMonthIndex] : 'Diciembre'} (Meses Blindados)</div>
+            <div>Fecha de emisión: {new Date().toLocaleDateString('es-ES')}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Header Banner - Resaltado verde corporativo ANSAMA (pantalla web) */}
+      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm ring-1 ring-emerald-950/5 print:hidden">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-[#092B19] border border-emerald-700/60 flex items-center justify-center text-emerald-400 shadow-sm shrink-0">
@@ -909,7 +958,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
           </div>
 
           {/* Year selector controls */}
-          <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 select-none">
+          <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 select-none print:hidden">
             <button
               type="button"
               onClick={handlePrevYear}
@@ -966,7 +1015,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
 
       {/* Tarjeta de Blindaje Oficial de los Ejercicios Históricos (2025 y 2026) */}
       {(selectedYear === 2025 || selectedYear === 2026) && (
-        <div className="bg-gradient-to-r from-[#092B19] via-emerald-950 to-[#0A341F] rounded-2xl border-2 border-emerald-500/50 p-4 sm:p-5 shadow-sm text-white">
+        <div className="bg-gradient-to-r from-[#092B19] via-emerald-950 to-[#0A341F] rounded-2xl border-2 border-emerald-500/50 p-4 sm:p-5 shadow-sm text-white print:hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3.5">
               <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner">
@@ -974,7 +1023,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  <h3 className="text-base sm:lg font-black text-white tracking-tight">
                     Blindaje Oficial del Ejercicio {selectedYear}
                   </h3>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
@@ -1018,7 +1067,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       )}
 
       {/* Selector de Perspectiva Contable: Ahorro Familiar Real vs Tesorería Bruta */}
-      <div className="bg-white rounded-2xl border-2 border-emerald-600/40 p-3.5 sm:p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl border-2 border-emerald-600/40 p-3.5 sm:p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#092B19] border border-emerald-700/60 text-emerald-400 flex items-center justify-center shrink-0 shadow-xs">
             <Sparkles className="w-5 h-5" />
@@ -1072,72 +1121,72 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* KPI Summary Cards for the entire Year */}
-      <div className="space-y-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="space-y-2 print:space-y-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4 print:gap-2 print:mb-2">
           {/* Total Year Income */}
-          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs print:p-2.5 print:rounded-xl print:border-zinc-300 print:shadow-none">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ingresos Anuales</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center">
+              <span className="text-xs print:text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Ingresos Anuales</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center print:hidden">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-2 text-2xl font-black text-emerald-800 font-feature-settings-tnum">
+            <div className="mt-2 print:mt-0.5 text-2xl print:text-sm font-black text-emerald-800 font-feature-settings-tnum">
               +{formatCurrency(totalYearIncome)}
             </div>
-            <span className="text-[11px] text-zinc-400 block mt-1">
+            <span className="text-[11px] print:text-[8px] text-zinc-400 block mt-1 print:mt-0">
               Ingresos reales acumulados en {selectedYear}
             </span>
           </div>
 
           {/* Total Year Expense */}
-          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs print:p-2.5 print:rounded-xl print:border-zinc-300 print:shadow-none">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Gastos Anuales</span>
-              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+              <span className="text-xs print:text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Gastos Anuales</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center print:hidden">
                 <TrendingDown className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-2 text-2xl font-black text-rose-600 font-feature-settings-tnum">
+            <div className="mt-2 print:mt-0.5 text-2xl print:text-sm font-black text-rose-600 font-feature-settings-tnum">
               -{formatCurrency(totalYearExpense)}
             </div>
-            <span className="text-[11px] text-zinc-400 block mt-1">
+            <span className="text-[11px] print:text-[8px] text-zinc-400 block mt-1 print:mt-0">
               Gastos de consumo desembolsados en {selectedYear}
             </span>
           </div>
 
           {/* Total Year Net Savings */}
-          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs print:p-2.5 print:rounded-xl print:border-zinc-300 print:shadow-none">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Ahorro Anual Neto</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0E6A3B] border border-emerald-200 flex items-center justify-center">
+              <span className="text-xs print:text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Ahorro Anual Neto</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0E6A3B] border border-emerald-200 flex items-center justify-center print:hidden">
                 <ArrowUpRight className="w-4 h-4" />
               </div>
             </div>
-            <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
+            <div className={`mt-2 print:mt-0.5 text-2xl print:text-sm font-black font-feature-settings-tnum ${
               totalYearNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
             }`}>
               {totalYearNet >= 0 ? `+${formatCurrency(totalYearNet)}` : formatCurrency(totalYearNet)}
             </div>
-            <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
+            <span className="text-[11px] print:text-[8px] text-zinc-500 block mt-1 print:mt-0 font-semibold">
               {totalYearNet >= 0 ? `Tasa de ahorro: ${yearSavingsRate}% de los ingresos` : 'Déficit acumulado'}
             </span>
           </div>
 
           {/* Year Growth */}
-          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs">
+          <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs print:p-2.5 print:rounded-xl print:border-zinc-300 print:shadow-none">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Variación Patrimonial</span>
-              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+              <span className="text-xs print:text-[9px] font-bold text-zinc-500 uppercase tracking-wide">Variación Patrimonial</span>
+              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center print:hidden">
                 <Percent className="w-4 h-4" />
               </div>
             </div>
-            <div className={`mt-2 text-2xl font-black font-feature-settings-tnum ${
+            <div className={`mt-2 print:mt-0.5 text-2xl print:text-sm font-black font-feature-settings-tnum ${
               totalYearGrowth >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'
             }`}>
               {totalYearGrowth >= 0 ? `+${totalGrowthPercent}%` : `${totalGrowthPercent}%`}
             </div>
-            <span className="text-[11px] text-zinc-500 block mt-1 font-semibold">
+            <span className="text-[11px] print:text-[8px] text-zinc-500 block mt-1 print:mt-0 font-semibold">
               {totalYearGrowth >= 0 ? `+${formatCurrency(totalYearGrowth)}` : formatCurrency(totalYearGrowth)} (Saldo {lastLockedMonthIndex === 11 ? '31 Dic' : `${MONTH_NAMES_SHORT[lastLockedMonthIndex]?.toUpperCase() || 'Cierre'}`} vs 1 Ene)
             </span>
           </div>
@@ -1145,8 +1194,8 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* MATRIZ MAESTRA: TABLA DE SALDOS, INGRESOS, GASTOS Y BALANCE DE CADA CUENTA POR MESES */}
-      <div className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden print:border-none print:shadow-none print:overflow-visible">
+        <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col xl:flex-row xl:items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-[#092B19] text-emerald-400 flex items-center justify-center shadow-xs shrink-0">
               <Building2 className="w-4 h-4" />
@@ -1169,7 +1218,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 print:hidden">
             {/* Selector de Métrica */}
             <div className="inline-flex bg-zinc-200/80 p-0.5 rounded-xl border border-zinc-300 text-xs">
               <button
@@ -1264,7 +1313,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
         </div>
 
         {/* Banner explicativo del modo de vista */}
-        <div className={`px-4 py-2 text-xs flex items-center justify-between border-b ${
+        <div className={`px-4 py-2 text-xs flex items-center justify-between border-b print:hidden ${
           tableMetric === 'balance'
             ? 'bg-emerald-50/80 text-emerald-950 border-emerald-100'
             : tableMetric === 'income'
@@ -1292,7 +1341,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase font-bold text-[10px]">
               <tr>
-                <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs">
+                <th className="px-4 py-3 sticky left-0 bg-zinc-50 z-10 shadow-xs print:static print:bg-zinc-50 print:shadow-none">
                   Entidad / Cuenta
                 </th>
                 {MONTH_NAMES_SHORT.map((m, idx) => {
@@ -1357,48 +1406,50 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                       className={`hover:bg-zinc-50/90 transition-colors ${hasMultipleAccounts ? 'cursor-pointer' : ''}`}
                     >
                       {/* Sticky Bank Name Column */}
-                      <td className="px-4 py-3.5 font-bold text-zinc-900 sticky left-0 bg-white z-10 shadow-xs flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span 
-                            className="w-2.5 h-2.5 rounded-full shrink-0" 
-                            style={{ backgroundColor: entity.color }}
-                          />
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-zinc-900">{entity.name}</span>
-                              {entity.badgeText && (
-                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
-                                  entity.id === 'investment' 
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                                    : 'bg-sky-100 text-sky-800 border border-sky-300'
-                                }`}>
-                                  {entity.badgeText}
-                                </span>
-                              )}
+                      <td className="px-4 py-3.5 font-bold text-zinc-900 sticky left-0 bg-white z-10 shadow-xs print:static print:bg-transparent print:shadow-none">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full shrink-0" 
+                              style={{ backgroundColor: entity.color }}
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-extrabold text-zinc-900">{entity.name}</span>
+                                {entity.badgeText && (
+                                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
+                                    entity.id === 'investment' 
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                      : 'bg-sky-100 text-sky-800 border border-sky-300'
+                                  }`}>
+                                    {entity.badgeText}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-zinc-400 font-normal">
+                                {entity.accountCount} {entity.accountCount === 1 ? 'cuenta' : 'cuentas'}
+                              </span>
                             </div>
-                            <span className="text-[10px] text-zinc-400 font-normal">
-                              {entity.accountCount} {entity.accountCount === 1 ? 'cuenta' : 'cuentas'}
-                            </span>
                           </div>
-                        </div>
 
-                        {hasMultipleAccounts && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleExpand(entity.id);
-                            }}
-                            className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"
-                            title={isExpanded ? 'Ocultar cuentas' : 'Ver cuentas'}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-4 h-4 text-zinc-600" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-zinc-400" />
-                            )}
-                          </button>
-                        )}
+                          {hasMultipleAccounts && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(entity.id);
+                              }}
+                              className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 print:hidden"
+                              title={isExpanded ? 'Ocultar cuentas' : 'Ver cuentas'}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-zinc-600" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* 12 Monthly Values */}
@@ -1593,7 +1644,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             {/* Total Row (Consolidado Mensual) */}
             <tfoot className="bg-[#092B19] text-white font-black border-t-2 border-[#0E6A3B]">
               <tr>
-                <td className="px-4 py-3.5 text-emerald-300 uppercase text-[11px] sticky left-0 bg-[#092B19] z-10 shadow-xs">
+                <td className="px-4 py-3.5 text-emerald-300 uppercase text-[11px] sticky left-0 bg-[#092B19] z-10 shadow-xs print:static print:bg-[#092B19] print:shadow-none">
                   TOTAL CONSOLIDADO (€)
                 </td>
                 {consolidatedMonthlyValues.map((val, idx) => (
@@ -1683,10 +1734,10 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* Flujo Mensual en el Año: Desglose por Cuenta de Bancos Mes a Mes y Año */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm space-y-4">
+      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm space-y-4 yearly-cashflow-section print:border-none print:shadow-none print:p-0">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0 print:hidden">
               <CalendarRange className="w-4 h-4" />
             </div>
             <div>
@@ -1699,7 +1750,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 print:hidden">
             {/* Selector de Cuenta / Banco */}
             <div className="flex items-center gap-1.5">
               <label htmlFor="select-cashflow-account" className="text-xs font-bold text-zinc-600 shrink-0">
@@ -1892,7 +1943,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                     </div>
 
                     {/* Acción inferior: Estado y botón para Cerrar y Blindar cuando esté cuadrado */}
-                    <div className="mt-2.5 pt-1.5 border-t border-zinc-100">
+                    <div className="mt-2.5 pt-1.5 border-t border-zinc-100 print:hidden">
                       {isLocked ? (
                         <div className="flex items-center justify-between text-[10px] text-emerald-800 font-semibold">
                           <span className="flex items-center gap-1">

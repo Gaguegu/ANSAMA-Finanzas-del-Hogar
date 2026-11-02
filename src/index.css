@@ -13,7 +13,7 @@
     margin: 8mm 8mm 10mm 8mm;
   }
 
-  /* Ocultar absolutamente todos los elementos de pantalla, controles, botones, formularios y navegación */
+  /* Ocultar elementos de pantalla, controles, botones, formularios y navegación */
   .no-print,
   .screen-only,
   .print-hidden,
@@ -36,8 +36,6 @@
   [role="button"],
   [role="alert"],
   .fixed,
-  .sticky,
-  .cursor-pointer,
   .action-column {
     display: none !important;
     visibility: hidden !important;
@@ -45,6 +43,13 @@
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
+  }
+
+  /* Los elementos sticky deben renderizarse estáticos en impresión para no desaparecer ni superponerse */
+  .sticky {
+    position: static !important;
+    left: auto !important;
+    box-shadow: none !important;
   }
 
   /* Forzar visualización de elementos exclusivos de impresión */
@@ -61,12 +66,11 @@
 
   /* ========================================================================= */
   /* AISLAMIENTO ESTRICTO DE IMPRESIÓN                                         */
-  /* Si se imprime Distribución de Gastos e Ingresos, ocultar todo lo demás   */
-  /* Si se imprime Historial de Movimientos, ocultar la distribución y demás   */
   /* ========================================================================= */
   body[data-print-mode="categories"] #section-transactions,
   body[data-print-mode="categories"] #section-net-worth,
   body[data-print-mode="categories"] #section-bank-accounts,
+  body[data-print-mode="categories"] #section-yearly-closure,
   body[data-print-mode="categories"] #patrimonio-period-selector,
   body[data-print-mode="categories"] #app-main-navigation,
   body[data-print-mode="categories"] #app-header,
@@ -84,6 +88,7 @@
   body[data-print-mode="transactions"] #section-categories-chart,
   body[data-print-mode="transactions"] #section-net-worth,
   body[data-print-mode="transactions"] #section-bank-accounts,
+  body[data-print-mode="transactions"] #section-yearly-closure,
   body[data-print-mode="transactions"] #patrimonio-period-selector,
   body[data-print-mode="transactions"] #app-main-navigation,
   body[data-print-mode="transactions"] #app-header,
@@ -98,19 +103,94 @@
     overflow: hidden !important;
   }
 
+  /* Aislamiento específico para imprimir Cierre Anual en Horizontal (Landscape) */
+  body[data-print-mode="yearly"] #section-categories-chart,
+  body[data-print-mode="yearly"] #section-transactions,
+  body[data-print-mode="yearly"] #section-net-worth,
+  body[data-print-mode="yearly"] #section-bank-accounts,
+  body[data-print-mode="yearly"] #patrimonio-period-selector,
+  body[data-print-mode="yearly"] #app-main-navigation,
+  body[data-print-mode="yearly"] #app-header,
+  body[data-print-mode="yearly"] header,
+  body[data-print-mode="yearly"] nav,
+  body[data-print-mode="yearly"] footer {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
   /* Aislamiento automático si se imprime con el atajo Ctrl+P según pestaña activa */
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-transactions,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-net-worth,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #section-bank-accounts,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]) #patrimonio-period-selector {
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-transactions,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-net-worth,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-bank-accounts,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-yearly-closure,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #patrimonio-period-selector {
     display: none !important;
   }
 
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-categories-chart,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-net-worth,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #section-bank-accounts,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]) #patrimonio-period-selector {
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-categories-chart,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-net-worth,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-bank-accounts,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-yearly-closure,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #patrimonio-period-selector {
     display: none !important;
+  }
+
+  body[data-active-tab="yearly"]:not([data-print-mode="categories"]):not([data-print-mode="transactions"]) #section-categories-chart,
+  body[data-active-tab="yearly"]:not([data-print-mode="categories"]):not([data-print-mode="transactions"]) #section-transactions,
+  body[data-active-tab="yearly"]:not([data-print-mode="categories"]):not([data-print-mode="transactions"]) #section-net-worth,
+  body[data-active-tab="yearly"]:not([data-print-mode="categories"]):not([data-print-mode="transactions"]) #section-bank-accounts,
+  body[data-active-tab="yearly"]:not([data-print-mode="categories"]):not([data-print-mode="transactions"]) #patrimonio-period-selector {
+    display: none !important;
+  }
+
+  /* Estilos para Cierre Anual en impresión horizontal */
+  #section-yearly-closure {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    width: 100% !important;
+  }
+
+  #section-yearly-closure .overflow-x-auto,
+  #section-yearly-closure .overflow-hidden {
+    overflow: visible !important;
+    max-width: 100% !important;
+  }
+
+  #section-yearly-closure table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    font-size: 8px !important;
+    border-collapse: collapse !important;
+  }
+
+  #section-yearly-closure th,
+  #section-yearly-closure td {
+    padding: 3px 2px !important;
+    font-size: 8px !important;
+    position: static !important;
+    left: auto !important;
+    box-shadow: none !important;
+  }
+
+  #section-yearly-closure td.sticky,
+  #section-yearly-closure th.sticky {
+    position: static !important;
+    left: auto !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .yearly-cashflow-section {
+    page-break-before: always !important;
+    break-before: page !important;
   }
 
   /* Contenedores impresos: sin bordes ni sombras de interfaz web */
