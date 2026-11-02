@@ -321,12 +321,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       ? Math.round((yearlyDiff / Math.abs(startBalance)) * 100) 
       : 0;
       
-    // Promedio calculado sobre los meses blindados del ejercicio
+    // Suma y promedio calculados sobre los meses blindados del ejercicio (ej. Enero a Septiembre)
     const activeCount = lockedIndices.length > 0 ? lockedIndices.length : 12;
-    const activeBalanceSum = lockedIndices.length > 0
-      ? lockedIndices.reduce((sum, idx) => sum + (monthlyBalances[idx] || 0), 0)
-      : monthlyBalances.reduce((sum, v) => sum + v, 0);
-    const averageBalance = Math.round((activeBalanceSum / activeCount) * 100) / 100;
+    const totalLockedBalance = lockedIndices.length > 0
+      ? Math.round(lockedIndices.reduce((sum, idx) => sum + (monthlyBalances[idx] || 0), 0) * 100) / 100
+      : Math.round(monthlyBalances.reduce((sum, v) => sum + v, 0) * 100) / 100;
+    const averageBalance = Math.round((totalLockedBalance / activeCount) * 100) / 100;
 
     const totalYearAccIncome = Math.round(monthlyIncomes.reduce((a, b) => a + b, 0) * 100) / 100;
     const totalYearAccExpense = Math.round(monthlyExpenses.reduce((a, b) => a + b, 0) * 100) / 100;
@@ -342,6 +342,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       totalYearAccNet,
       startBalance,
       endBalance,
+      totalLockedBalance,
       averageBalance,
       yearlyDiff,
       yearlyDiffPercent
@@ -1276,7 +1277,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             <Sparkles className="w-4 h-4 text-[#0E6A3B] shrink-0" />
             <span>
               <strong>Modo activo:</strong>{' '}
-              {tableMetric === 'balance' && `Saldos al final de cada mes cerrado. El bloque de resumen muestra el Saldo al Cierre del periodo blindado (${lastLockedMonthIndex >= 0 ? MONTH_NAMES_SHORT[lastLockedMonthIndex].toUpperCase() : 'Fin de año'}), el Saldo Medio (${lockedIndices.length} meses auditados) y la Variación.`}
+              {tableMetric === 'balance' && `Saldos al final de cada mes cerrado. El bloque de resumen muestra el TOTAL (suma de los meses blindados de Enero a ${lastLockedMonthIndex >= 0 ? MONTH_NAMES_FULL[lastLockedMonthIndex] : 'Diciembre'}), el Saldo Medio (${lockedIndices.length} meses auditados) y la Variación.`}
               {tableMetric === 'income' && 'Entradas y cobros netos registrados mes por mes en cada una de tus cuentas.'}
               {tableMetric === 'expense' && 'Pagos y consumos registrados mes por mes en cada una de tus cuentas.'}
               {tableMetric === 'net' && 'Diferencia mensual (Ingresos − Gastos) generada en cada cuenta.'}
@@ -1310,18 +1311,16 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                   );
                 })}
                 
-                {/* Bloque Resumen Anual: CIERRE (31-DIC) / TOTAL ANUAL, SALDO MEDIO, VAR. ANUAL */}
+                {/* Bloque Resumen Anual: TOTAL (suma de meses blindados), SALDO MEDIO, VAR. ANUAL */}
                 <th 
                   className="px-3.5 py-3 text-right bg-emerald-100/95 text-emerald-950 font-black border-l-2 border-emerald-500/40 shadow-xs"
                   title={
                     tableMetric === 'balance' 
-                      ? `Saldo patrimonial al cierre de los meses blindados (${lastLockedMonthIndex >= 0 ? `${new Date(selectedYear, lastLockedMonthIndex + 1, 0).getDate()} de ${MONTH_NAMES_FULL[lastLockedMonthIndex]} de ${selectedYear}` : 'Fin de año'}).` 
+                      ? `Suma acumulada de los meses blindados (${lastLockedMonthIndex >= 0 ? `Enero a ${MONTH_NAMES_FULL[lastLockedMonthIndex]}` : 'Año completo'}).` 
                       : `Total acumulado en los meses blindados del año ${selectedYear}`
                   }
                 >
-                  {tableMetric === 'balance' 
-                    ? (lastLockedMonthIndex === 11 ? 'CIERRE (31-DIC)' : `CIERRE (${MONTH_NAMES_SHORT[lastLockedMonthIndex]?.toUpperCase() || 'CIERRE'})`) 
-                    : 'TOTAL ANUAL'}
+                  TOTAL
                 </th>
                 <th 
                   className="px-3.5 py-3 text-right bg-emerald-100/90 text-emerald-950 font-black border-l border-emerald-200 shadow-xs"
@@ -1417,9 +1416,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                         <>
                           <td 
                             className="px-3.5 py-3.5 text-right font-black text-emerald-950 bg-emerald-100/50 border-l-2 border-emerald-500/30 font-feature-settings-tnum text-[13px]"
-                            title={`Saldo al cierre de periodo blindado (${lastLockedMonthIndex >= 0 ? MONTH_NAMES_SHORT[lastLockedMonthIndex].toUpperCase() : 'Fin de año'}): ${formatCurrency(entity.endBalance)}`}
+                            title={`Suma total de los meses blindados (${lastLockedMonthIndex >= 0 ? `Ene-${MONTH_NAMES_SHORT[lastLockedMonthIndex].toUpperCase()}` : 'Año'}): ${formatCurrency(entity.totalLockedBalance)}`}
                           >
-                            {formatCurrency(entity.endBalance)}
+                            {formatCurrency(entity.totalLockedBalance)}
                           </td>
                           <td className="px-3.5 py-3.5 text-right font-black text-zinc-800 bg-emerald-50/70 border-l border-emerald-100 font-feature-settings-tnum">
                             {formatCurrency(entity.averageBalance)}
@@ -1539,9 +1538,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                             <>
                               <td 
                                 className="px-3.5 py-2.5 text-right font-black text-emerald-950 bg-emerald-50/60 border-l-2 border-emerald-500/20 font-feature-settings-tnum"
-                                title={`Saldo de la cuenta al cierre de periodo blindado (${lastLockedMonthIndex >= 0 ? MONTH_NAMES_SHORT[lastLockedMonthIndex].toUpperCase() : 'Fin de año'}): ${formatCurrency(acc.endBalance)}`}
+                                title={`Suma total de los meses blindados: ${formatCurrency(acc.totalLockedBalance)}`}
                               >
-                                {formatCurrency(acc.endBalance)}
+                                {formatCurrency(acc.totalLockedBalance)}
                               </td>
                               <td className="px-3.5 py-2.5 text-right font-bold text-zinc-600 bg-zinc-50/50 border-l border-zinc-200 font-feature-settings-tnum">
                                 {formatCurrency(acc.averageBalance)}
@@ -1619,9 +1618,9 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                   <>
                     <td 
                       className="px-3.5 py-3.5 text-right text-emerald-100 text-xs font-black border-l-2 border-emerald-400 bg-emerald-950 font-feature-settings-tnum shadow-inner"
-                      title={`Patrimonio total consolidado al cierre de los meses blindados (${lastLockedMonthIndex >= 0 ? MONTH_NAMES_FULL[lastLockedMonthIndex] : 'Fin de año'}): ${formatCurrency(totalEndYear)}`}
+                      title={`Suma total consolidada de los meses blindados (${lastLockedMonthIndex >= 0 ? `Enero a ${MONTH_NAMES_FULL[lastLockedMonthIndex]}` : 'Año completo'}): ${formatCurrency(totalActiveBalanceSum)}`}
                     >
-                      {formatCurrency(totalEndYear)}
+                      {formatCurrency(totalActiveBalanceSum)}
                     </td>
                     <td className="px-3.5 py-3.5 text-right text-emerald-200 text-xs font-black border-l border-emerald-800 bg-emerald-950/80 font-feature-settings-tnum shadow-inner">
                       {formatCurrency(totalAverageBalance)}
