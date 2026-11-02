@@ -593,21 +593,19 @@ export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-center w-40 sm:w-48 shrink-0">
-              <span className="text-[11px] font-semibold text-emerald-800 uppercase block tracking-wider truncate">
+            <div className="px-3.5 sm:px-4 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-center w-auto min-w-[165px] sm:min-w-[195px] shrink-0">
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase block tracking-wider">
                 Periodo Mensual
               </span>
-              <span className="text-sm font-black text-emerald-950 truncate flex items-center justify-center gap-1.5">
+              <span className="text-sm font-black text-emerald-950 flex items-center justify-center gap-1.5 whitespace-nowrap">
                 <span>{capitalizedMonth} {year}</span>
                 {currentClosure.isLocked ? (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-emerald-200/80 text-emerald-950 font-black border border-emerald-300" title="Mes Blindado">
-                    <Lock className="w-2.5 h-2.5 text-[#0E6A3B]" />
-                    <span>Blindado</span>
+                  <span className="inline-flex items-center text-[#0E6A3B]" title="Mes Blindado">
+                    <Lock className="w-3.5 h-3.5 text-[#0E6A3B] shrink-0" />
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-900 font-black border border-amber-300" title="Mes Abierto">
-                    <Unlock className="w-2.5 h-2.5 text-amber-600" />
-                    <span>Abierto</span>
+                  <span className="inline-flex items-center text-amber-600" title="Mes Abierto">
+                    <Unlock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                   </span>
                 )}
               </span>

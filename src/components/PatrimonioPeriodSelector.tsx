@@ -151,8 +151,8 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
             <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-700" />
           </button>
 
-          {/* Selector Desplegable de Meses (ANCHO ESTRICTAMENTE FIJO) */}
-          <div className="relative w-44 sm:w-60 shrink-0">
+          {/* Selector Desplegable de Meses (con ancho suficiente para ver el mes completo) */}
+          <div className="relative w-48 sm:w-64 shrink-0">
             <select
               value={selectedMonth}
               onChange={(e) => onSelectMonth(e.target.value)}
@@ -168,15 +168,14 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
               {availableMonths.map((m) => {
                 const mClosure = closures.find((c) => c.month === m);
                 const isCur = m === new Date().toISOString().substring(0, 7);
-                let label = formatMonthName(m);
+                const monthName = formatMonthName(m);
+                let label = monthName;
                 if (isCur) {
-                  label += ' • Actual';
-                } else if (mClosure?.isLocked) {
-                  label += ' • 🔒 Blindado';
-                } else if (mClosure?.isClosed) {
-                  label += ' • 🔒 Cerrado';
+                  label = `${monthName} (Actual)`;
+                } else if (mClosure?.isLocked || mClosure?.isClosed) {
+                  label = `🔒 ${monthName}`;
                 } else {
-                  label += ' • 🔓 Abierto';
+                  label = `🔓 ${monthName}`;
                 }
                 return (
                   <option key={m} value={m}>
