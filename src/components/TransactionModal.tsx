@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { X, PlusCircle, CheckCircle2 } from 'lucide-react';
-import { BankAccount, TransactionCategory, Transaction } from '../types';
-import { parseCurrencyInput, formatCurrency } from '../utils/storage';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle2, Lock } from 'lucide-react';
+import { BankAccount, TransactionCategory, Transaction, MonthClosure } from '../types';
+import { parseCurrencyInput, formatCurrency, formatMonthName, isMonthLocked } from '../utils/storage';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -9,6 +9,9 @@ interface TransactionModalProps {
   accounts: BankAccount[];
   categories: TransactionCategory[];
   onAddTransaction: (transaction: Omit<Transaction, 'id'>) => void;
+  transactionToEdit?: Transaction | null;
+  onEditTransaction?: (transaction: Transaction) => void;
+  monthlyClosures?: MonthClosure[];
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -16,8 +19,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onClose,
   accounts,
   categories,
-  onAddTransaction
+  onAddTransaction,
+  transactionToEdit,
+  onEditTransaction,
+  monthlyClosures = []
 }) => {
+  const isEditing = Boolean(transactionToEdit);
+
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amountStr, setAmountStr] = useState('');
   const [title, setTitle] = useState('');
@@ -27,6 +35,30 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Sync state whenever modal opens or transactionToEdit changes
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      if (transactionToEdit) {
+        setType(transactionToEdit.type);
+        setAmountStr(String(transactionToEdit.amount));
+        setTitle(transactionToEdit.title || '');
+        setAccountId(transactionToEdit.accountId || accounts[0]?.id || '');
+        setCategoryId(transactionToEdit.categoryId || '');
+        setDate(transactionToEdit.date || new Date().toISOString().split('T')[0]);
+        setNote(transactionToEdit.note || '');
+      } else {
+        setType('expense');
+        setAmountStr('');
+        setTitle('');
+        setAccountId(accounts[0]?.id || '');
+        setCategoryId('');
+        setDate(new Date().toISOString().split('T')[0]);
+        setNote('');
+      }
+    }
+  }, [isOpen, transactionToEdit, accounts]);
+
   if (!isOpen) return null;
 
   // Filter categories by type
@@ -35,9 +67,26 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   // Set default category when type switches
   const currentCategory = categoryId || availableCategories[0]?.id || '';
 
+  const targetMonth = date.substring(0, 7);
+  const isTargetMonthLocked = isMonthLocked(targetMonth, monthlyClosures);
+
+  const originalMonth = transactionToEdit ? transactionToEdit.date.substring(0, 7) : null;
+  const isOriginalMonthLocked = originalMonth ? isMonthLocked(originalMonth, monthlyClosures) : false;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Bloqueo estricto por cierre contable
+    if (isOriginalMonthLocked && originalMonth) {
+      setError(`Este apunte pertenece a ${formatMonthName(originalMonth)}, que está oficialmente cerrado y blindado. Los movimientos de meses blindados no pueden modificarse.`);
+      return;
+    }
+
+    if (isTargetMonthLocked) {
+      setError(`La fecha seleccionada corresponde a ${formatMonthName(targetMonth)}, que está oficialmente cerrado y blindado. No se pueden añadir ni trasladar movimientos a un mes blindado.`);
+      return;
+    }
 
     const parsedAmount = parseCurrencyInput(amountStr);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -55,20 +104,31 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       return;
     }
 
-    onAddTransaction({
-      accountId,
-      date,
-      title: title.trim(),
-      amount: parsedAmount,
-      type,
-      categoryId: currentCategory || availableCategories[0]?.id || 'cat-otros-gastos',
-      note: note.trim() ? note.trim() : undefined
-    });
+    const finalCategoryId = currentCategory || availableCategories[0]?.id || (type === 'expense' ? 'cat-otros-gastos' : 'cat-otros-ingresos');
 
-    // Reset & close
-    setAmountStr('');
-    setTitle('');
-    setNote('');
+    if (isEditing && transactionToEdit && onEditTransaction) {
+      onEditTransaction({
+        ...transactionToEdit,
+        accountId,
+        date,
+        title: title.trim(),
+        amount: parsedAmount,
+        type,
+        categoryId: finalCategoryId,
+        note: note.trim() ? note.trim() : undefined
+      });
+    } else {
+      onAddTransaction({
+        accountId,
+        date,
+        title: title.trim(),
+        amount: parsedAmount,
+        type,
+        categoryId: finalCategoryId,
+        note: note.trim() ? note.trim() : undefined
+      });
+    }
+
     onClose();
   };
 
@@ -80,14 +140,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       >
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-emerald-50/40">
           <div>
-            <h3 className="text-base font-bold text-slate-900">Registrar Nuevo Movimiento</h3>
-            <p className="text-xs text-slate-500">Añade un gasto o ingreso manual a las cuentas del hogar</p>
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              {isEditing ? 'Editar Apunte Contable Completo' : 'Registrar Nuevo Movimiento'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isEditing 
+                ? 'Modifica importe, fecha, concepto, cuenta de cargo o categoría del apunte'
+                : 'Añade un gasto o ingreso manual a las cuentas del hogar'}
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -96,8 +162,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           
           {error && (
-            <div className="p-3 text-xs rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
-              {error}
+            <div className="p-3 text-xs rounded-xl bg-rose-50 text-rose-700 border border-rose-200 flex items-start gap-2">
+              <Lock className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Aviso si el mes está blindado */}
+          {isTargetMonthLocked && (
+            <div className="p-3 text-xs rounded-xl bg-amber-50 text-amber-900 border border-amber-300 flex items-start gap-2">
+              <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                El mes de <strong>{formatMonthName(targetMonth)}</strong> está cerrado y blindado contablemente.
+                Para guardar cambios en este mes, primero debes reabrirlo en la pantalla de Cierre Mensual.
+              </span>
             </div>
           )}
 
@@ -170,7 +248,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Fecha
+                Fecha *
               </label>
               <input
                 type="date"
@@ -187,11 +265,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           {/* Title / Concept */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Concepto *
+              Concepto / Detalle *
             </label>
             <input
               type="text"
-              placeholder="Ej: Mercadona, Nómina, Recibo Luz, Cena amigos..."
+              placeholder="Ej: Mercadona, Nómina, Recibo Luz, Abono intereses..."
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -202,7 +280,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           {/* Bank Account */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Cuenta Bancaria de Cargo
+              Cuenta Bancaria
             </label>
             <select
               value={accountId}
@@ -260,9 +338,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-bold text-white bg-[#0E6A3B] hover:bg-[#0a522d] rounded-xl transition-colors shadow-sm cursor-pointer"
+              disabled={isTargetMonthLocked || isOriginalMonthLocked}
+              className={`px-4 py-2 text-xs font-bold text-white rounded-xl transition-colors shadow-sm cursor-pointer ${
+                isTargetMonthLocked || isOriginalMonthLocked
+                  ? 'bg-zinc-400 cursor-not-allowed opacity-60'
+                  : 'bg-[#0E6A3B] hover:bg-[#0a522d]'
+              }`}
             >
-              Guardar Movimiento
+              {isEditing ? 'Guardar Cambios' : 'Guardar Movimiento'}
             </button>
           </div>
 

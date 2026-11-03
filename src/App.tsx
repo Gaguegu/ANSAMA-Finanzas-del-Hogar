@@ -60,6 +60,7 @@ export default function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
   const [importTargetAccountId, setImportTargetAccountId] = useState<string | undefined>(undefined);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState<boolean>(false);
+  const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
@@ -216,6 +217,103 @@ export default function App() {
         ? 'Anotación eliminada correctamente.'
         : 'Movimiento eliminado y saldo restaurado.'
     );
+  };
+
+  // Abrir modal para editar el apunte completo (solo si el mes no está blindado)
+  const handleOpenEditTransaction = (tx: Transaction) => {
+    const txMonth = tx.date.substring(0, 7);
+    if (isMonthLocked(txMonth, appState.monthlyClosures)) {
+      triggerNotification(
+        `El movimiento pertenece a ${formatMonthName(txMonth)}, que está cerrado y blindado contablemente. Para modificarlo, primero debes reabrir el mes en Cierre Mensual.`,
+        'error'
+      );
+      return;
+    }
+    setTransactionToEdit(tx);
+    setIsTransactionModalOpen(true);
+  };
+
+  // Editar apunte contable completo (importe, fecha, concepto, cuenta, categoría y notas)
+  const handleEditTransaction = (updatedTx: Transaction) => {
+    const oldTx = appState.transactions.find((t) => t.id === updatedTx.id);
+    if (!oldTx) return;
+
+    const oldTxMonth = oldTx.date.substring(0, 7);
+    const newTxMonth = updatedTx.date.substring(0, 7);
+
+    if (isMonthLocked(oldTxMonth, appState.monthlyClosures)) {
+      triggerNotification(
+        `El movimiento original pertenece a ${formatMonthName(oldTxMonth)}, que está cerrado y blindado contablemente. No se puede modificar un apunte de un mes cerrado.`,
+        'error'
+      );
+      return;
+    }
+
+    if (isMonthLocked(newTxMonth, appState.monthlyClosures)) {
+      triggerNotification(
+        `La nueva fecha asignada pertenece a ${formatMonthName(newTxMonth)}, que está cerrado y blindado contablemente. No se puede trasladar un apunte a un mes cerrado.`,
+        'error'
+      );
+      return;
+    }
+
+    // Revertir efecto de oldTx en su cuenta y aplicar el efecto de updatedTx en la cuenta de destino
+    const updatedAccounts = appState.accounts.map((acc) => {
+      let b = acc.balance;
+      let changed = false;
+
+      // Revertir efecto anterior
+      if (acc.id === oldTx.accountId) {
+        if (oldTx.type === 'expense') {
+          b += oldTx.amount;
+        } else {
+          b -= oldTx.amount;
+        }
+        changed = true;
+      }
+
+      // Aplicar nuevo efecto
+      if (acc.id === updatedTx.accountId) {
+        if (updatedTx.type === 'expense') {
+          b -= updatedTx.amount;
+        } else {
+          b += updatedTx.amount;
+        }
+        changed = true;
+      }
+
+      return changed ? { ...acc, balance: Math.round(b * 100) / 100 } : acc;
+    });
+
+    // Actualizar rendimientos si este movimiento estaba vinculado a un rendimiento
+    let updatedYields = (appState.yieldRecords || []).map((y) => {
+      if (y.transactionId === updatedTx.id) {
+        return {
+          ...y,
+          date: updatedTx.date,
+          accountId: updatedTx.accountId,
+          netAmount: updatedTx.amount,
+          title: updatedTx.title
+        };
+      }
+      return y;
+    });
+
+    const updatedTransactions = appState.transactions.map((t) =>
+      t.id === updatedTx.id ? { ...updatedTx, isManualCategory: true } : t
+    );
+
+    const newState: AppState = {
+      ...appState,
+      accounts: updatedAccounts,
+      transactions: updatedTransactions,
+      yieldRecords: updatedYields
+    };
+
+    setAppState(newState);
+    saveAppState(newState);
+    setTransactionToEdit(null);
+    triggerNotification(`Apunte "${updatedTx.title}" actualizado correctamente.`);
   };
 
   // Update existing transaction (e.g. adjust date to impute payroll to correct month)
@@ -974,7 +1072,10 @@ export default function App() {
         lastSync={appState.lastGlobalSync}
         isSyncing={isSyncing}
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
-        onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+        onOpenNewTransactionModal={() => {
+          setTransactionToEdit(null);
+          setIsTransactionModalOpen(true);
+        }}
         onOpenImportModal={() => handleOpenImportModal()}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         activeTab={activeTab}
@@ -1107,13 +1208,18 @@ export default function App() {
               accounts={appState.accounts}
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
-              onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenNewTransactionModal={() => {
+                setTransactionToEdit(null);
+                setIsTransactionModalOpen(true);
+              }}
               onOpenImportModal={() => handleOpenImportModal()}
               onMoveTransactions={handleMoveTransactions}
               onBatchDeleteTransactions={handleBatchDeleteTransactions}
               onUpdateTransactionCategory={handleUpdateTransactionCategory}
               onBatchUpdateCategory={handleBatchUpdateCategory}
               onAutoReconcile={handleAutoReconcile}
+              monthlyClosures={appState.monthlyClosures}
+              onEditTransaction={handleOpenEditTransaction}
             />
           </div>
         )}
@@ -1140,13 +1246,18 @@ export default function App() {
               accounts={appState.accounts}
               categories={appState.categories}
               onDeleteTransaction={handleDeleteTransaction}
-              onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+              onOpenNewTransactionModal={() => {
+                setTransactionToEdit(null);
+                setIsTransactionModalOpen(true);
+              }}
               onOpenImportModal={() => setIsImportModalOpen(true)}
               onMoveTransactions={handleMoveTransactions}
               onBatchDeleteTransactions={handleBatchDeleteTransactions}
               onUpdateTransactionCategory={handleUpdateTransactionCategory}
               onBatchUpdateCategory={handleBatchUpdateCategory}
               onAutoReconcile={handleAutoReconcile}
+              monthlyClosures={appState.monthlyClosures}
+              onEditTransaction={handleOpenEditTransaction}
             />
           </div>
         )}
@@ -1200,7 +1311,10 @@ export default function App() {
       <MobileNav
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenNewTransactionModal={() => setIsTransactionModalOpen(true)}
+        onOpenNewTransactionModal={() => {
+          setTransactionToEdit(null);
+          setIsTransactionModalOpen(true);
+        }}
       />
 
       {/* Modals */}
@@ -1217,10 +1331,16 @@ export default function App() {
 
       <TransactionModal
         isOpen={isTransactionModalOpen}
-        onClose={() => setIsTransactionModalOpen(false)}
+        onClose={() => {
+          setIsTransactionModalOpen(false);
+          setTransactionToEdit(null);
+        }}
         accounts={appState.accounts}
         categories={appState.categories}
         onAddTransaction={handleAddTransaction}
+        transactionToEdit={transactionToEdit}
+        onEditTransaction={handleEditTransaction}
+        monthlyClosures={appState.monthlyClosures}
       />
 
       <SyncModal

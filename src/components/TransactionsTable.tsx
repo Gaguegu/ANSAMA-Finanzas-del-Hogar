@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Search, 
   Trash2, 
+  Pencil,
+  Lock,
   Sparkles, 
   RotateCcw, 
   Plus, 
@@ -26,8 +28,8 @@ import {
   Filter,
   Printer
 } from 'lucide-react';
-import { Transaction, BankAccount, TransactionCategory, BankId } from '../types';
-import { formatCurrency, formatDate, formatMonthName } from '../utils/storage';
+import { Transaction, BankAccount, TransactionCategory, BankId, MonthClosure } from '../types';
+import { formatCurrency, formatDate, formatMonthName, isMonthLocked } from '../utils/storage';
 import { exportTransactionsToSpreadsheet, exportTransactionsToPdf } from '../utils/exportTransactions';
 import { normalizeConceptForMatching, areTransactionsSimilar } from '../utils/reconciliation';
 
@@ -64,6 +66,8 @@ interface TransactionsTableProps {
   onUpdateTransactionCategory?: (transactionId: string, newCategoryId: string, applyToSimilar?: boolean) => void;
   onBatchUpdateCategory?: (transactionIds: string[], newCategoryId: string) => void;
   onAutoReconcile?: () => { stats: { transfersMatched: number; patternsLearned: number; totalUpdated: number }; details: string[] };
+  monthlyClosures?: MonthClosure[];
+  onEditTransaction?: (transaction: Transaction) => void;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
@@ -77,7 +81,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onBatchDeleteTransactions,
   onUpdateTransactionCategory,
   onBatchUpdateCategory,
-  onAutoReconcile
+  onAutoReconcile,
+  monthlyClosures = [],
+  onEditTransaction
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -850,17 +856,51 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
 
   const handleConfirmMove = () => {
     if (!onMoveTransactions || !targetAccountIdForMove || selectedTxIds.size === 0) return;
-    onMoveTransactions(Array.from(selectedTxIds), targetAccountIdForMove, adjustBalancesOnMove);
+    const selectedList = transactions.filter((t) => selectedTxIds.has(t.id));
+    const lockedCount = selectedList.filter((t) => isMonthLocked(t.date.substring(0, 7), monthlyClosures)).length;
+    const movableIds = selectedList
+      .filter((t) => !isMonthLocked(t.date.substring(0, 7), monthlyClosures))
+      .map((t) => t.id);
+
+    if (movableIds.length === 0) {
+      alert('Todos los movimientos seleccionados pertenecen a meses blindados contablemente. No se pueden mover.');
+      return;
+    }
+
+    if (lockedCount > 0) {
+      alert(`Atención: ${lockedCount} movimiento(s) pertenecen a meses cerrados y blindados y permanecerán intactos. Se moverán únicamente los ${movableIds.length} movimiento(s) de meses abiertos.`);
+    }
+
+    onMoveTransactions(movableIds, targetAccountIdForMove, adjustBalancesOnMove);
     setSelectedTxIds(new Set());
     setIsMoveModalOpen(false);
   };
 
   const handleBatchDelete = () => {
     if (!onBatchDeleteTransactions || selectedTxIds.size === 0) return;
-    if (confirm(`¿Estás seguro de que deseas eliminar ${selectedTxIds.size} movimiento(s) seleccionados? Se restaurarán los saldos en las cuentas.`)) {
-      onBatchDeleteTransactions(Array.from(selectedTxIds), true);
-      setSelectedTxIds(new Set());
+    const selectedList = transactions.filter((t) => selectedTxIds.has(t.id));
+    const lockedCount = selectedList.filter((t) => isMonthLocked(t.date.substring(0, 7), monthlyClosures)).length;
+    const deletableIds = selectedList
+      .filter((t) => !isMonthLocked(t.date.substring(0, 7), monthlyClosures))
+      .map((t) => t.id);
+
+    if (deletableIds.length === 0) {
+      alert('Todos los movimientos seleccionados pertenecen a meses cerrados y blindados contablemente. Están protegidos contra borrado.');
+      return;
     }
+
+    if (lockedCount > 0) {
+      if (!confirm(`De los ${selectedList.length} movimientos seleccionados, ${lockedCount} pertenecen a periodos blindados y se mantendrán protegidos. ¿Deseas eliminar los ${deletableIds.length} movimientos de meses abiertos?`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`¿Estás seguro de que deseas eliminar ${deletableIds.length} movimiento(s) seleccionados? Se restaurarán los saldos en las cuentas.`)) {
+        return;
+      }
+    }
+
+    onBatchDeleteTransactions(deletableIds, true);
+    setSelectedTxIds(new Set());
   };
 
   // Cambio de categoría individual con detección de movimientos idénticos en otros meses
@@ -2433,6 +2473,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 const category = categoryMap.get(tx.categoryId);
                 const isIncome = tx.type === 'income';
                 const isSelected = selectedTxIds.has(tx.id);
+                const txMonth = tx.date.substring(0, 7);
+                const isTxLocked = isMonthLocked(txMonth, monthlyClosures);
 
                 return (
                   <tr 
@@ -2553,34 +2595,57 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                     </td>
 
                     <td className="py-3.5 px-3.5 text-center whitespace-nowrap action-column print:hidden">
-                      <div className="flex items-center justify-center gap-1">
-                        {onMoveTransactions && accounts.length > 1 && (
+                      {isTxLocked ? (
+                        <div className="flex items-center justify-center">
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 select-none shadow-2xs"
+                            title={`Mes cerrado y blindado contablemente (${formatMonthName(txMonth)}). Este apunte está protegido contra modificación o borrado.`}
+                          >
+                            <Lock className="w-3 h-3 text-[#0E6A3B] shrink-0" />
+                            <span>Blindado</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1">
+                          {onEditTransaction && (
+                            <button
+                              type="button"
+                              onClick={() => onEditTransaction(tx)}
+                              className="opacity-75 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-500 hover:text-[#0E6A3B] rounded-lg hover:bg-emerald-50 cursor-pointer"
+                              title="Editar apunte contable completo (importe, fecha, concepto, cuenta o categoría)"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onMoveTransactions && accounts.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedTxIds(new Set([tx.id]));
+                                const altAccount = accounts.find((a) => a.id !== tx.accountId);
+                                setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
+                                setIsMoveModalOpen(true);
+                              }}
+                              className="opacity-75 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-500 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
+                              title="Mover movimiento a otra cuenta bancaria"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedTxIds(new Set([tx.id]));
-                              const altAccount = accounts.find((a) => a.id !== tx.accountId);
-                              setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
-                              setIsMoveModalOpen(true);
+                              if (confirm(`¿Eliminar el movimiento "${tx.title}" de ${formatCurrency(tx.amount)}?`)) {
+                                onDeleteTransaction(tx.id);
+                              }
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
-                            title="Mover movimiento a otra cuenta bancaria"
+                            className="opacity-75 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                            title="Eliminar movimiento"
                           >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            if (confirm(`¿Eliminar el movimiento "${tx.title}"?`)) {
-                              onDeleteTransaction(tx.id);
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                          title="Eliminar movimiento"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -2620,6 +2685,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             const category = categoryMap.get(tx.categoryId);
             const isIncome = tx.type === 'income';
             const isSelected = selectedTxIds.has(tx.id);
+            const txMonth = tx.date.substring(0, 7);
+            const isTxLocked = isMonthLocked(txMonth, monthlyClosures);
 
             return (
               <div 
@@ -2720,32 +2787,55 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                   </span>
 
                   <div className="flex items-center gap-1 mt-2">
-                    {onMoveTransactions && accounts.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedTxIds(new Set([tx.id]));
-                          const altAccount = accounts.find((a) => a.id !== tx.accountId);
-                          setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
-                          setIsMoveModalOpen(true);
-                        }}
-                        className="p-1.5 text-zinc-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
-                        title="Mover a otra cuenta"
+                    {isTxLocked ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                        title={`Mes cerrado y blindado contablemente (${formatMonthName(txMonth)}). Este apunte está protegido contra modificación o borrado.`}
                       >
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
-                      </button>
+                        <Lock className="w-3 h-3 text-[#0E6A3B] shrink-0" />
+                        <span>Blindado</span>
+                      </span>
+                    ) : (
+                      <>
+                        {onEditTransaction && (
+                          <button
+                            type="button"
+                            onClick={() => onEditTransaction(tx)}
+                            className="p-1.5 text-zinc-500 hover:text-[#0E6A3B] rounded-lg hover:bg-emerald-50 cursor-pointer"
+                            title="Editar apunte contable completo"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onMoveTransactions && accounts.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTxIds(new Set([tx.id]));
+                              const altAccount = accounts.find((a) => a.id !== tx.accountId);
+                              setTargetAccountIdForMove(altAccount ? altAccount.id : accounts[0]?.id || '');
+                              setIsMoveModalOpen(true);
+                            }}
+                            className="p-1.5 text-zinc-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 cursor-pointer"
+                            title="Mover a otra cuenta"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar movimiento "${tx.title}" de ${formatCurrency(tx.amount)}?`)) {
+                              onDeleteTransaction(tx.id);
+                            }
+                          }}
+                          className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
+                          title="Eliminar movimiento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
-                    <button
-                      onClick={() => {
-                        if (confirm(`¿Eliminar movimiento "${tx.title}"?`)) {
-                          onDeleteTransaction(tx.id);
-                        }
-                      }}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer"
-                      title="Eliminar movimiento"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
               </div>

@@ -336,6 +336,37 @@ export function loadAppState(): AppState {
         hasRepairedTransactions = true;
       }
 
+      // Reparar transacciones de extracto de ING de Octubre 2026 que fueron desplazadas a septiembre o día anterior por zona horaria UTC:
+      parsed.transactions = parsed.transactions.map((t: Transaction) => {
+        // Intereses de octubre 1,81 € con fecha errónea 2026-09-30 (debe ser 2026-10-01)
+        if (
+          t.date === '2026-09-30' &&
+          Math.abs(t.amount - 1.81) < 0.02 &&
+          (t.title?.toLowerCase().includes('intereses') || t.title?.toLowerCase().includes('ing'))
+        ) {
+          hasRepairedTransactions = true;
+          return {
+            ...t,
+            date: '2026-10-01',
+            title: 'Intereses a tu favor',
+            note: 'Abono de intereses Cuenta Naranja ING (F. Valor 01/10/2026)'
+          };
+        }
+        // Transferencia recibida de Sánchez Marín Andrés de 220,00 € con fecha errónea 2026-10-27 (era 28 oct)
+        if (
+          t.date === '2026-10-27' &&
+          Math.abs(t.amount - 220) < 0.02 &&
+          (t.title?.toLowerCase().includes('sanchez marin') || t.title?.toLowerCase().includes('traspaso'))
+        ) {
+          hasRepairedTransactions = true;
+          return {
+            ...t,
+            date: '2026-10-28'
+          };
+        }
+        return t;
+      });
+
       // 4. Asegurar que existen todas las categorías especializadas necesarias
       if (Array.isArray(parsed.categories)) {
         const requiredCategories: TransactionCategory[] = [
@@ -429,7 +460,7 @@ export function loadAppState(): AppState {
 export function isMonthLocked(monthKey: string, closures?: MonthClosure[]): boolean {
   if (!closures || !Array.isArray(closures)) return false;
   const c = closures.find((item) => item.month === monthKey);
-  return Boolean(c?.isLocked && c?.isClosed);
+  return Boolean(c?.isLocked || c?.isClosed);
 }
 
 /**

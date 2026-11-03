@@ -453,11 +453,14 @@ export function parseDateString(val: any): string | null {
   // Si viene como objeto Date nativo de JS (generado por XLSX con cellDates: true)
   if (val instanceof Date) {
     if (!isNaN(val.getTime())) {
-      // XLSX crea fechas de Excel con hora 00:00:00 UTC a partir del número de serie.
-      // Usar getUTCDate() preserva el día exacto del calendario contable independientemente de la zona horaria del cliente.
-      const y = val.getUTCFullYear();
-      const m = String(val.getUTCMonth() + 1).padStart(2, '0');
-      const d = String(val.getUTCDate()).padStart(2, '0');
+      // Usar fecha del calendario local del objeto Date.
+      // Cuando SheetJS o el navegador instancian new Date(year, month, day), lo hacen a las 00:00 locales.
+      // Si se llamara a getUTCDate(), en husos horarios al este de Greenwich (como España UTC+1/UTC+2)
+      // la hora 00:00 local retrocede a las 22:00 o 23:00 UTC del DÍA ANTERIOR, restando un día erróneamente.
+      // getFullYear(), getMonth() y getDate() preservan exactamente el día contable original del extracto.
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     }
     return null;
