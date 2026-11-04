@@ -149,12 +149,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
     const monthKey = `${selectedYear}-${monthNum}`;
     const closure = appState.monthlyClosures?.find((c) => c.month === monthKey);
     if (closure) {
-      return Boolean(closure.isLocked);
+      return Boolean(closure.isLocked || closure.isClosed);
     }
     return Boolean((selectedYear === 2026 && mIdx < 9) || (selectedYear === 2025 && mIdx < 12));
   };
 
-  // Último mes blindado del ejercicio (ej. Septiembre 2026 o Diciembre 2025)
+  // Último mes blindado del ejercicio (ej. Septiembre u Octubre 2026, o Diciembre 2025)
   const lastLockedMonthIndex = useMemo(() => {
     for (let m = 11; m >= 0; m--) {
       if (isMonthLocked(m)) return m;
@@ -170,6 +170,30 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
     }
     return indices;
   }, [selectedYear, appState.monthlyClosures]);
+
+  // Rango dinámico de meses blindados para el banner del ejercicio
+  const lockedRangeLabel = useMemo(() => {
+    if (lockedIndices.length === 0) return 'Sin meses blindados';
+    if (lockedIndices.length === 12) return '12 Meses (Enero — Diciembre) Blindados';
+    const firstMonthName = MONTH_NAMES_FULL[lockedIndices[0]];
+    const lastMonthName = MONTH_NAMES_FULL[lockedIndices[lockedIndices.length - 1]];
+    if (lockedIndices.length === 1) return `${firstMonthName} Blindado`;
+    return `${firstMonthName} — ${lastMonthName} Blindados`;
+  }, [lockedIndices]);
+
+  const lockedRangeText = useMemo(() => {
+    if (lockedIndices.length === 0) {
+      return `Actualmente no hay meses blindados en el ejercicio ${selectedYear}. Puedes cerrar y blindar cada mes en las tarjetas inferiores cuando esté cuadrado.`;
+    }
+    if (lockedIndices.length === 12) {
+      return `Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de los 12 meses de ${selectedYear} están blindados y certificados permanentemente con los datos de tus extractos y Excel oficial.`;
+    }
+    const firstMonthName = MONTH_NAMES_FULL[lockedIndices[0]];
+    const lastMonthName = MONTH_NAMES_FULL[lockedIndices[lockedIndices.length - 1]];
+    const nextMonthIdx = lockedIndices[lockedIndices.length - 1] + 1;
+    const nextMonthName = nextMonthIdx < 12 ? MONTH_NAMES_FULL[nextMonthIdx] : '';
+    return `Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de ${firstMonthName} a ${lastMonthName} están blindados y sellados permanentemente. La importación de futuros extractos bancarios${nextMonthName ? ` (${nextMonthName.toLowerCase()} en adelante)` : ''} o nuevos movimientos nunca alterará estos datos históricos auditados.`;
+  }, [lockedIndices, selectedYear]);
 
   // Helper function to compute monthly balances and flows for any list of accounts
   const computeMonthlyStats = (accounts: BankAccount[]) => {
@@ -1028,13 +1052,11 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                   </h3>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
                     <Lock className="w-3 h-3 text-emerald-300" />
-                    {selectedYear === 2025 ? '12 Meses (Enero — Diciembre) Blindados' : 'Enero — Septiembre Blindados'}
+                    {lockedRangeLabel}
                   </span>
                 </div>
                 <p className="text-xs text-emerald-100/90 mt-1 max-w-3xl leading-relaxed">
-                  {selectedYear === 2025
-                    ? 'Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de los 12 meses de 2025 están blindados y sellados permanentemente con los datos de tus extractos y Excel oficial.'
-                    : 'Tanto los Saldos por Entidad como las Pérdidas y Ganancias (Ingresos, Gastos y Superávit Neto) de Enero a Septiembre están blindados y sellados permanentemente. La importación de futuros extractos bancarios (octubre en adelante) o nuevos movimientos nunca alterará estos datos históricos auditados.'}
+                  {lockedRangeText}
                 </p>
               </div>
             </div>
