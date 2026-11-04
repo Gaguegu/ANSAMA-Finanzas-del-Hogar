@@ -903,35 +903,42 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
     allAccountsMonthlyCashflow
   ]);
 
-  const handlePrint = () => {
-    document.body.setAttribute('data-print-mode', 'yearly');
+  const [printTarget, setPrintTarget] = useState<'all' | 'balances' | 'monthly'>('all');
+
+  const handlePrint = (target: 'all' | 'balances' | 'monthly' = 'all') => {
+    setPrintTarget(target);
+    const mode = target === 'balances' ? 'yearly-balances' : target === 'monthly' ? 'yearly-monthly' : 'yearly';
+    document.body.setAttribute('data-print-mode', mode);
 
     let printStyle = document.getElementById('yearly-print-page-style') as HTMLStyleElement | null;
     if (!printStyle) {
       printStyle = document.createElement('style');
       printStyle.id = 'yearly-print-page-style';
-      printStyle.innerHTML = `
-        @media print {
-          @page {
-            size: A4 landscape !important;
-            margin: 6mm 6mm 6mm 6mm !important;
-          }
-        }
-      `;
       document.head.appendChild(printStyle);
     }
+    printStyle.innerHTML = `
+      @media print {
+        @page {
+          size: A4 landscape !important;
+          margin: 6mm 6mm 6mm 6mm !important;
+        }
+      }
+    `;
 
     const cleanup = () => {
       document.body.removeAttribute('data-print-mode');
       if (printStyle) {
         printStyle.remove();
       }
+      setPrintTarget('all');
       window.removeEventListener('afterprint', cleanup);
     };
 
     window.addEventListener('afterprint', cleanup);
-    window.print();
-    setTimeout(cleanup, 1500);
+    setTimeout(() => {
+      window.print();
+    }, 50);
+    setTimeout(cleanup, 2000);
   };
 
   return (
@@ -948,7 +955,11 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
               </span>
             </div>
             <p className="text-[11px] font-bold text-zinc-700 mt-0.5">
-              Informe Oficial de Cierre Anual — Matriz de Saldos por Entidad
+              {printTarget === 'balances'
+                ? 'Informe Oficial de Cierre Anual — Matriz de Saldos por Entidad y Cuentas'
+                : printTarget === 'monthly'
+                ? 'Informe Oficial de Cierre Anual — Desglose Mensual de Ingresos, Gastos y Ahorro'
+                : 'Informe Oficial de Cierre Anual — Matriz de Saldos y Desglose Mensual'}
             </p>
           </div>
           <div className="text-right text-[10px] text-zinc-500">
@@ -1026,12 +1037,12 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             </button>
 
             <button
-              onClick={handlePrint}
+              onClick={() => handlePrint('all')}
               className="ml-2 px-3.5 py-2 h-10 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
-              title="Imprimir o guardar como PDF"
+              title="Imprimir informe anual completo (Saldos por cuenta y Desglose mensual)"
             >
-              <Printer className="w-3.5 h-3.5" />
-              Imprimir
+              <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
+              <span>Imprimir Todo</span>
             </button>
           </div>
         </div>
@@ -1143,7 +1154,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* KPI Summary Cards for the entire Year */}
-      <div className="space-y-2 print:space-y-0">
+      <div id="section-yearly-kpis" className="space-y-2 print:space-y-0">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-4 print:gap-2 print:mb-2">
           {/* Total Year Income */}
           <div className="bg-white rounded-2xl border-2 border-emerald-600/30 p-4 shadow-xs print:p-2.5 print:rounded-xl print:border-zinc-300 print:shadow-none">
@@ -1216,7 +1227,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* MATRIZ MAESTRA: TABLA DE SALDOS, INGRESOS, GASTOS Y BALANCE DE CADA CUENTA POR MESES */}
-      <div className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden print:border-none print:shadow-none print:overflow-visible">
+      <div id="section-yearly-balances" className="bg-white border-2 border-emerald-600/45 rounded-2xl shadow-sm overflow-hidden print:border-none print:shadow-none print:overflow-visible">
         <div className="p-4 sm:p-5 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/80 via-white to-emerald-50/40 flex flex-col xl:flex-row xl:items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-[#092B19] text-emerald-400 flex items-center justify-center shadow-xs shrink-0">
@@ -1330,6 +1341,17 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
             >
               <Layers className="w-3.5 h-3.5 text-[#0E6A3B]" />
               <span>{areAllExpanded ? 'Contraer cuentas' : 'Desglosar cuentas'}</span>
+            </button>
+
+            {/* Botón para imprimir únicamente la tabla de Saldos por Entidad y Cuentas */}
+            <button
+              type="button"
+              onClick={() => handlePrint('balances')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-[#0E6A3B] text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="Imprimir únicamente la tabla de Saldos por Entidad y Cuentas"
+            >
+              <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
+              <span>Imprimir Saldos</span>
             </button>
           </div>
         </div>
@@ -1756,7 +1778,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       </div>
 
       {/* Flujo Mensual en el Año: Desglose por Cuenta de Bancos Mes a Mes y Año */}
-      <div className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm space-y-4 yearly-cashflow-section print:border-none print:shadow-none print:p-0">
+      <div id="section-yearly-monthly-cards" className="bg-white border-2 border-emerald-600/40 rounded-2xl p-5 shadow-sm space-y-4 yearly-cashflow-section print:border-none print:shadow-none print:p-0">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0E6A3B] flex items-center justify-center shrink-0 print:hidden">
@@ -1830,6 +1852,17 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                 <span>🏢 Ver Todas las Cuentas</span>
               </button>
             </div>
+
+            {/* Botón para imprimir únicamente el Desglose Mensual */}
+            <button
+              type="button"
+              onClick={() => handlePrint('monthly')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#0E6A3B] text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title="Imprimir únicamente el Desglose Mensual de Ingresos, Gastos y Ahorro"
+            >
+              <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
+              <span>Imprimir Desglose Mensual</span>
+            </button>
           </div>
         </div>
 

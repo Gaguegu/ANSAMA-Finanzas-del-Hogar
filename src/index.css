@@ -113,7 +113,27 @@
   body[data-print-mode="yearly"] #app-header,
   body[data-print-mode="yearly"] header,
   body[data-print-mode="yearly"] nav,
-  body[data-print-mode="yearly"] footer {
+  body[data-print-mode="yearly"] footer,
+  body[data-print-mode="yearly-balances"] #section-categories-chart,
+  body[data-print-mode="yearly-balances"] #section-transactions,
+  body[data-print-mode="yearly-balances"] #section-net-worth,
+  body[data-print-mode="yearly-balances"] #section-bank-accounts,
+  body[data-print-mode="yearly-balances"] #patrimonio-period-selector,
+  body[data-print-mode="yearly-balances"] #app-main-navigation,
+  body[data-print-mode="yearly-balances"] #app-header,
+  body[data-print-mode="yearly-balances"] header,
+  body[data-print-mode="yearly-balances"] nav,
+  body[data-print-mode="yearly-balances"] footer,
+  body[data-print-mode="yearly-monthly"] #section-categories-chart,
+  body[data-print-mode="yearly-monthly"] #section-transactions,
+  body[data-print-mode="yearly-monthly"] #section-net-worth,
+  body[data-print-mode="yearly-monthly"] #section-bank-accounts,
+  body[data-print-mode="yearly-monthly"] #patrimonio-period-selector,
+  body[data-print-mode="yearly-monthly"] #app-main-navigation,
+  body[data-print-mode="yearly-monthly"] #app-header,
+  body[data-print-mode="yearly-monthly"] header,
+  body[data-print-mode="yearly-monthly"] nav,
+  body[data-print-mode="yearly-monthly"] footer {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
@@ -122,20 +142,50 @@
     overflow: hidden !important;
   }
 
+  /* Modo individual: Ocultar Desglose Mensual cuando se imprimen SOLO los Saldos */
+  body[data-print-mode="yearly-balances"] #section-yearly-monthly-cards,
+  body[data-print-mode="yearly-balances"] .yearly-cashflow-section {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Modo individual: Ocultar Saldos y KPIs cuando se imprime SOLO el Desglose Mensual */
+  body[data-print-mode="yearly-monthly"] #section-yearly-balances,
+  body[data-print-mode="yearly-monthly"] #section-yearly-kpis {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Evitar salto de página al inicio cuando solo se imprime el Desglose Mensual */
+  body[data-print-mode="yearly-monthly"] .yearly-cashflow-section {
+    page-break-before: auto !important;
+    break-before: auto !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
   /* Aislamiento automático si se imprime con el atajo Ctrl+P según pestaña activa */
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-transactions,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-net-worth,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-bank-accounts,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #section-yearly-closure,
-  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode="yearly"]) #patrimonio-period-selector {
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode^="yearly"]) #section-transactions,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode^="yearly"]) #section-net-worth,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode^="yearly"]) #section-bank-accounts,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode^="yearly"]) #section-yearly-closure,
+  body[data-active-tab="categories"]:not([data-print-mode="transactions"]):not([data-print-mode^="yearly"]) #patrimonio-period-selector {
     display: none !important;
   }
 
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-categories-chart,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-net-worth,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-bank-accounts,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #section-yearly-closure,
-  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode="yearly"]) #patrimonio-period-selector {
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode^="yearly"]) #section-categories-chart,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode^="yearly"]) #section-net-worth,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode^="yearly"]) #section-bank-accounts,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode^="yearly"]) #section-yearly-closure,
+  body[data-active-tab="transactions"]:not([data-print-mode="categories"]):not([data-print-mode^="yearly"]) #patrimonio-period-selector {
     display: none !important;
   }
 
