@@ -916,10 +916,14 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
       printStyle.id = 'yearly-print-page-style';
       document.head.appendChild(printStyle);
     }
+    
+    // Desglose Mensual: A4 portrait (vertical) para que quepan todos los meses y el total en un único folio
+    // Saldos o Todo: A4 landscape (horizontal) para que quepan holgadamente las 16 columnas
+    const isPortrait = target === 'monthly';
     printStyle.innerHTML = `
       @media print {
         @page {
-          size: A4 landscape !important;
+          size: ${isPortrait ? 'A4 portrait' : 'A4 landscape'} !important;
           margin: 6mm 6mm 6mm 6mm !important;
         }
       }
@@ -937,7 +941,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
     window.addEventListener('afterprint', cleanup);
     setTimeout(() => {
       window.print();
-    }, 50);
+    }, 60);
     setTimeout(cleanup, 2000);
   };
 
@@ -1858,60 +1862,60 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
               type="button"
               onClick={() => handlePrint('monthly')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#0E6A3B] text-xs font-bold transition-all shadow-2xs cursor-pointer"
-              title="Imprimir únicamente el Desglose Mensual de Ingresos, Gastos y Ahorro"
+              title="Imprimir el desglose mensual completo (12 meses + Total anual) en 1 solo folio vertical A4"
             >
               <Printer className="w-3.5 h-3.5 text-[#0E6A3B]" />
-              <span>Imprimir Desglose Mensual</span>
+              <span>Imprimir Desglose (Folio Vertical)</span>
             </button>
           </div>
         </div>
 
         {cashflowViewMode === 'selected' ? (
-          <div className="space-y-4">
+          <div className="space-y-4 print:space-y-2">
             {/* Tarjeta Resumen del Año para la cuenta/entidad seleccionada */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-[#0E6A3B] to-emerald-900 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1">
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-[#0E6A3B] to-emerald-900 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 print:p-2.5 print:rounded-xl print:mb-1.5 print:gap-2 print:flex-row print:items-center">
+              <div className="space-y-1 print:space-y-0.5">
                 <div className="flex items-center gap-2">
                   <span 
-                    className="w-3 h-3 rounded-full shrink-0 border border-white/40" 
+                    className="w-3 h-3 rounded-full shrink-0 border border-white/40 print:w-2.5 print:h-2.5" 
                     style={{ backgroundColor: activeCashflowData.bankColor }}
                   />
-                  <h4 className="text-base font-black text-white">
+                  <h4 className="text-base print:text-xs font-black text-white">
                     {activeCashflowData.title}
                   </h4>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-200 font-extrabold uppercase">
+                  <span className="text-[10px] print:text-[8px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-200 font-extrabold uppercase">
                     Ejercicio {selectedYear}
                   </span>
                 </div>
-                <p className="text-xs text-emerald-200/80 font-medium">
+                <p className="text-xs print:text-[9px] text-emerald-200/80 font-medium">
                   {activeCashflowData.subtitle}
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 font-feature-settings-tnum">
-                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15">
-                  <span className="text-[10px] text-emerald-200 block uppercase font-bold">Ingresos Anuales</span>
-                  <span className="text-base font-black text-emerald-300">+{formatCurrency(activeCashflowData.yearIncome)}</span>
+              <div className="flex flex-wrap items-center gap-3 print:gap-1.5 font-feature-settings-tnum">
+                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15 print:px-2 print:py-0.5 print:rounded-lg">
+                  <span className="text-[10px] print:text-[7.5px] text-emerald-200 block uppercase font-bold">Ingresos Anuales</span>
+                  <span className="text-base print:text-xs font-black text-emerald-300">+{formatCurrency(activeCashflowData.yearIncome)}</span>
                 </div>
-                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15">
-                  <span className="text-[10px] text-rose-200 block uppercase font-bold">Gastos Anuales</span>
-                  <span className="text-base font-black text-rose-300">-{formatCurrency(activeCashflowData.yearExpense)}</span>
+                <div className="bg-white/10 backdrop-blur-xs px-3.5 py-2 rounded-xl border border-white/15 print:px-2 print:py-0.5 print:rounded-lg">
+                  <span className="text-[10px] print:text-[7.5px] text-rose-200 block uppercase font-bold">Gastos Anuales</span>
+                  <span className="text-base print:text-xs font-black text-rose-300">-{formatCurrency(activeCashflowData.yearExpense)}</span>
                 </div>
-                <div className={`px-4 py-2 rounded-xl border font-black ${
+                <div className={`px-4 py-2 rounded-xl border font-black print:px-2.5 print:py-0.5 print:rounded-lg ${
                   activeCashflowData.yearNet >= 0 
                     ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200' 
                     : 'bg-rose-500/20 border-rose-400/40 text-rose-200'
                 }`}>
-                  <span className="text-[10px] block uppercase font-bold text-white/80">Balance Neto del Año</span>
-                  <span className="text-lg font-black text-white">
+                  <span className="text-[10px] print:text-[7.5px] block uppercase font-bold text-white/80">Balance Neto del Año</span>
+                  <span className="text-lg print:text-xs font-black text-white">
                     {activeCashflowData.yearNet >= 0 ? `+${formatCurrency(activeCashflowData.yearNet)}` : formatCurrency(activeCashflowData.yearNet)}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Cuadrícula de 12 Meses + 13ª Tarjeta de Total Anual */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {/* Cuadrícula de 12 Meses (3x4 en folio vertical) + 13ª Tarjeta de Total Anual (ancho completo) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 print:grid-cols-3 print:gap-1.5">
               {activeCashflowData.months.map((m, idx) => {
                 const monthNum = String(idx + 1).padStart(2, '0');
                 const monthKey = `${selectedYear}-${monthNum}`;
@@ -1926,7 +1930,7 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                 return (
                   <div 
                     key={idx}
-                    className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between ${
+                    className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between print:p-2 print:rounded-lg print:border-zinc-300 print:shadow-none print:break-inside-avoid ${
                       isLocked
                         ? 'bg-white border-emerald-300 ring-1 ring-emerald-500/15 shadow-2xs'
                         : m.hasActivity 
@@ -1936,13 +1940,13 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                   >
                     <div>
                       {/* Cabecera del Mes con Candado de Blindaje (Blindado vs Abierto) */}
-                      <div className="flex items-center justify-between mb-2 gap-1.5">
+                      <div className="flex items-center justify-between mb-2 print:mb-1 gap-1.5">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="font-extrabold text-xs text-zinc-950 truncate">{m.fullMonth}</span>
+                          <span className="font-extrabold text-xs print:text-[10px] text-zinc-950 truncate">{m.fullMonth}</span>
                           <button
                             type="button"
                             onClick={() => handleToggleMonthLock(monthKey, m.fullMonth, isLocked, m)}
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer shrink-0 shadow-2xs ${
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] print:text-[8px] print:px-1 print:py-0 font-black border transition-all cursor-pointer shrink-0 shadow-2xs ${
                               isLocked
                                 ? 'bg-emerald-100 text-emerald-950 border-emerald-300 hover:bg-emerald-200 hover:border-emerald-400'
                                 : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
@@ -1955,19 +1959,19 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                           >
                             {isLocked ? (
                               <>
-                                <Lock className="w-2.5 h-2.5 text-[#0E6A3B]" />
+                                <Lock className="w-2.5 h-2.5 print:w-2 print:h-2 text-[#0E6A3B]" />
                                 <span>Blindado</span>
                               </>
                             ) : (
                               <>
-                                <Unlock className="w-2.5 h-2.5 text-amber-600" />
+                                <Unlock className="w-2.5 h-2.5 print:w-2 print:h-2 text-amber-600" />
                                 <span>Abierto</span>
                               </>
                             )}
                           </button>
                         </div>
 
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                        <span className={`text-[10px] print:text-[8px] font-bold px-1.5 py-0.5 print:px-1 print:py-0 rounded shrink-0 ${
                           m.net > 0 
                             ? 'bg-emerald-100 text-[#0E6A3B]' 
                             : m.net < 0 
@@ -1979,17 +1983,17 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                       </div>
 
                       {/* Desglose Ingresos, Gastos y Neto del Mes */}
-                      <div className="space-y-1.5 text-xs font-feature-settings-tnum">
+                      <div className="space-y-1.5 print:space-y-0.5 text-xs print:text-[9.5px] font-feature-settings-tnum">
                         <div className="flex justify-between text-emerald-800">
-                          <span className="text-[11px] text-zinc-500">Ingresos:</span>
+                          <span className="text-[11px] print:text-[8.5px] text-zinc-500">Ingresos:</span>
                           <span className="font-bold">+{formatCurrency(m.income)}</span>
                         </div>
                         <div className="flex justify-between text-rose-600">
-                          <span className="text-[11px] text-zinc-500">Gastos:</span>
+                          <span className="text-[11px] print:text-[8.5px] text-zinc-500">Gastos:</span>
                           <span className="font-bold">-{formatCurrency(m.expense)}</span>
                         </div>
-                        <div className="flex justify-between pt-1 border-t border-zinc-200 font-extrabold">
-                          <span className="text-[11px] text-zinc-700">Neto:</span>
+                        <div className="flex justify-between pt-1 print:pt-0.5 border-t border-zinc-200 font-extrabold">
+                          <span className="text-[11px] print:text-[8.5px] text-zinc-700">Neto:</span>
                           <span className={m.net >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
                             {m.net >= 0 ? `+${formatCurrency(m.net)}` : formatCurrency(m.net)}
                           </span>
@@ -2030,39 +2034,53 @@ export const YearlyClosure: React.FC<YearlyClosureProps> = ({
                 );
               })}
 
-              {/* 13ª Tarjeta: TOTAL DEL AÑO */}
-              <div className="p-3.5 rounded-xl border-2 border-emerald-600/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-100/50 shadow-xs flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-black text-xs text-emerald-950 uppercase tracking-wide flex items-center gap-1">
+              {/* 13ª Tarjeta: TOTAL DEL AÑO (ocupa las 3 columnas como fila de cierre en folio vertical) */}
+              <div className="p-3.5 rounded-xl border-2 border-emerald-600/50 bg-gradient-to-br from-emerald-50 via-white to-emerald-100/50 shadow-xs flex flex-col justify-between print:col-span-3 print:p-2 print:rounded-lg print:border-emerald-700 print:bg-emerald-50/70 print:break-inside-avoid">
+                <div className="print:flex print:items-center print:justify-between print:gap-3 print:w-full">
+                  <div className="flex items-center justify-between mb-1.5 print:mb-0 gap-2 shrink-0">
+                    <span className="font-black text-xs print:text-[10px] text-emerald-950 uppercase tracking-wide flex items-center gap-1">
                       <span>✨ TOTAL AÑO {selectedYear}</span>
                     </span>
-                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+                    <span className={`text-[11px] print:text-[8px] font-black px-2 py-0.5 print:px-1.5 print:py-0 rounded-full ${
                       activeCashflowData.yearNet >= 0 ? 'bg-[#0E6A3B] text-white' : 'bg-rose-600 text-white'
                     }`}>
                       {activeCashflowData.yearNet >= 0 ? 'Superávit' : 'Déficit'}
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 text-xs font-feature-settings-tnum mt-2">
-                    <div className="flex justify-between text-emerald-900">
-                      <span className="text-[11px] font-semibold text-zinc-600">Ingresos Totales:</span>
-                      <span className="font-extrabold text-sm">+{formatCurrency(activeCashflowData.yearIncome)}</span>
+                  <div className="space-y-1.5 text-xs font-feature-settings-tnum mt-2 print:mt-0 print:flex print:items-center print:gap-3 print:space-y-0 print:text-[9.5px]">
+                    <div className="flex justify-between print:gap-1 text-emerald-900">
+                      <span className="text-[11px] print:text-[8.5px] font-semibold text-zinc-600">Ingresos Totales:</span>
+                      <span className="font-extrabold text-sm print:text-[10px]">+{formatCurrency(activeCashflowData.yearIncome)}</span>
                     </div>
-                    <div className="flex justify-between text-rose-700">
-                      <span className="text-[11px] font-semibold text-zinc-600">Gastos Totales:</span>
-                      <span className="font-extrabold text-sm">-{formatCurrency(activeCashflowData.yearExpense)}</span>
+                    <span className="hidden print:inline text-zinc-300">|</span>
+                    <div className="flex justify-between print:gap-1 text-rose-700">
+                      <span className="text-[11px] print:text-[8.5px] font-semibold text-zinc-600">Gastos Totales:</span>
+                      <span className="font-extrabold text-sm print:text-[10px]">-{formatCurrency(activeCashflowData.yearExpense)}</span>
                     </div>
-                    <div className="flex justify-between pt-1.5 border-t border-emerald-300 font-black text-sm">
+                    <span className="hidden print:inline text-zinc-300">|</span>
+                    <div className="flex justify-between print:gap-1 pt-1.5 print:pt-0 border-t print:border-t-0 border-emerald-300 font-black text-sm print:text-[10px]">
                       <span className="text-zinc-800">Neto Anual:</span>
                       <span className={activeCashflowData.yearNet >= 0 ? 'text-[#0E6A3B]' : 'text-rose-600'}>
                         {activeCashflowData.yearNet >= 0 ? `+${formatCurrency(activeCashflowData.yearNet)}` : formatCurrency(activeCashflowData.yearNet)}
                       </span>
                     </div>
+                    <span className="hidden print:inline text-zinc-300">|</span>
+                    <div className="flex justify-between print:gap-1 text-[10px] print:text-[8.5px] text-zinc-600 font-semibold">
+                      <span className="text-zinc-500">Media/mes:</span>
+                      <span className="font-bold text-[#0E6A3B]">
+                        {(() => {
+                          const activeMonths = activeCashflowData.months.filter(m => m.hasActivity);
+                          const count = activeMonths.length || 1;
+                          const avg = Math.round((activeCashflowData.yearNet / count) * 100) / 100;
+                          return `${avg >= 0 ? '+' : ''}${formatCurrency(avg)}/m (${count}m)`;
+                        })()}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-600 font-semibold flex justify-between">
+                <div className="mt-2.5 pt-1.5 border-t border-emerald-200 text-[10px] text-zinc-600 font-semibold flex justify-between print:hidden">
                   <span>Promedio mensual</span>
                   <span className="font-bold text-[#0E6A3B]">
                     {(() => {

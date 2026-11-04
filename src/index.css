@@ -238,7 +238,7 @@
     background: transparent !important;
   }
 
-  .yearly-cashflow-section {
+  body:not([data-print-mode="yearly-monthly"]) .yearly-cashflow-section {
     page-break-before: always !important;
     break-before: page !important;
   }
