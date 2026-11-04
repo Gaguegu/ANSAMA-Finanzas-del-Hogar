@@ -590,15 +590,28 @@ export async function parsePdfStatementFile(
       const s = it.str.trim();
       if (!s) continue;
       if (s === dateYear) continue;
-      if (parseDateString(s) !== null) continue;
       if (numericItemSet.has(it)) continue;
-      textTokens.push(s);
+
+      // Si el texto contiene la fecha pero también texto descriptivo (ej: "01 oct 2026 Interés Interest payment"):
+      // NO descartar todo el token; extraer la fecha y conservar la descripción
+      let cleanText = s;
+      if (parseDateString(cleanText) !== null) {
+        cleanText = cleanText
+          .replace(/\b\d{1,2}[-/\s][a-z]{3,10}[-/\s]\d{2,4}\b/gi, '')
+          .replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, '')
+          .replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, '')
+          .trim();
+        if (!cleanText) continue;
+      }
+      textTokens.push(cleanText);
     }
 
     const titleText = textTokens.join(' ').trim() || 'Movimiento bancario';
 
     // Reglas semánticas por Tipo de operación bancaria (Trade Republic / Bancos habituales)
-    const titleNorm = norm(titleText);
+    // Combinamos el título extraído y todo el texto del bloque para máxima fiabilidad
+    const rawBlockText = allBlockItems.map(b => b.str).join(' ');
+    const titleNorm = norm(`${titleText} ${rawBlockText}`);
 
     // Omitir absolutamente si es una nota legal, fiduciaria o de cuentas colectivas
     if (
@@ -716,10 +729,10 @@ export async function parsePdfStatementFile(
         if (inflowColX !== null && outflowColX !== null) {
           const distIn = Math.abs(amountCandidate.x - inflowColX);
           const distOut = Math.abs(amountCandidate.x - outflowColX);
-          if (distIn < distOut && distIn < 80) {
+          if (distIn < distOut) {
             transactionType = 'income';
             resolvedByColumn = true;
-          } else if (distOut < distIn && distOut < 80) {
+          } else if (distOut < distIn) {
             transactionType = 'expense';
             resolvedByColumn = true;
           }
