@@ -25,21 +25,31 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { AppState, BankAccount, Transaction, MonthClosure } from '../types';
-import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer, getAvailableMonths } from '../utils/storage';
+import { formatCurrency, formatDate, parseCurrencyInput, isCapitalTransfer, getAvailableMonths, getLatestLockedMonth } from '../utils/storage';
 import { getBenchmarkForYear } from '../data/excel2025Benchmark';
 
 interface MonthlyClosureProps {
   appState: AppState;
   onUpdateClosure: (closure: MonthClosure) => void;
   onUpdateTransaction?: (tx: Transaction) => void;
+  initialMonth?: string;
 }
 
 export const MonthlyClosure: React.FC<MonthlyClosureProps> = ({
   appState,
   onUpdateClosure,
-  onUpdateTransaction
+  onUpdateTransaction,
+  initialMonth
 }) => {
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-09');
+  const latestLocked = useMemo(() => getLatestLockedMonth(appState.monthlyClosures), [appState.monthlyClosures]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => initialMonth || latestLocked);
+
+  // Sincronizar si cambia initialMonth (por ejemplo al cambiar de pestaña)
+  React.useEffect(() => {
+    if (initialMonth) {
+      setSelectedMonth(initialMonth);
+    }
+  }, [initialMonth]);
   const [notesText, setNotesText] = useState<string>('');
   
   // Estado para alternar vista de tabla: 'detailed' (todas las cuentas desglosadas) o 'grouped' (por entidad)

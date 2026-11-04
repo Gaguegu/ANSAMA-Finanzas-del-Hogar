@@ -10,7 +10,7 @@ import {
   Info
 } from 'lucide-react';
 import { MonthClosure } from '../types';
-import { formatMonthName } from '../utils/storage';
+import { formatMonthName, getLatestLockedMonth } from '../utils/storage';
 
 interface PatrimonioPeriodSelectorProps {
   selectedMonth: string; // YYYY-MM
@@ -44,7 +44,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
   const isLocked = Boolean(closure?.isLocked);
   const hasAuditedBalances = Boolean(closure?.auditedBalances && Object.keys(closure.auditedBalances).length > 0);
 
-  const maxAvailableMonth = availableMonths[0] || '2026-09';
+  const maxAvailableMonth = availableMonths[0] || getLatestLockedMonth(closures);
 
   // Previous and next month handlers: estrictamente desde 2025-01 hasta el último mes con extractos
   const handlePrevMonth = () => {
@@ -229,7 +229,7 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-700 flex items-center justify-center transition-colors shrink-0 shadow-2xs ${
               selectedMonth >= maxAvailableMonth ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:bg-zinc-200 cursor-pointer'
             }`}
-            title={selectedMonth >= maxAvailableMonth ? 'Último mes con extractos importados (Septiembre 2026)' : 'Mes siguiente (Mes +1)'}
+            title={selectedMonth >= maxAvailableMonth ? `Último mes disponible (${formattedMonth})` : 'Mes siguiente (Mes +1)'}
             aria-label="Mes siguiente"
           >
             <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-700" />
@@ -260,16 +260,16 @@ export const PatrimonioPeriodSelector: React.FC<PatrimonioPeriodSelectorProps> =
             </button>
           </div>
 
-          {/* Botón Ir a Mes Actual (solo visible cuando se consulta un mes histórico previo) */}
+          {/* Botón Ir a Último Mes Blindado (solo visible cuando se consulta un mes histórico previo) */}
           {!isCurrentMonth && (
             <button
               type="button"
               onClick={onResetToCurrentMonth}
               className="h-9 sm:h-10 px-3 rounded-xl bg-[#0E6A3B] hover:bg-[#0a522d] active:bg-[#084224] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer select-none shrink-0"
-              title="Volver inmediatamente al mes actual y saldos de hoy"
+              title="Volver inmediatamente al último mes blindado contablemente"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-              <span className="hidden xl:inline font-bold">Ir a Actual</span>
+              <span className="hidden xl:inline font-bold">Ir a Último Blindado</span>
             </button>
           )}
         </div>

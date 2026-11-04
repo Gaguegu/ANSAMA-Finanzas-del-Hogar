@@ -17,7 +17,8 @@ import {
   normalizeAndDeduplicateYieldsAndTransactions,
   lockHistoricalExercise,
   restoreAuditedClosuresFromBenchmark,
-  isMonthLocked
+  isMonthLocked,
+  getLatestLockedMonth
 } from './utils/storage';
 import { detectYieldFromTransaction, createAutoYieldRecord } from './utils/yieldDetection';
 import { reconcileAndCategorizeAll, normalizeConceptForMatching, areTransactionsSimilar } from './utils/reconciliation';
@@ -52,9 +53,26 @@ export default function App() {
     document.body.setAttribute('data-active-tab', activeTab);
   }, [activeTab]);
 
-  // Selector de Mes y Año para consultar el Patrimonio y saldos bancarios a esa fecha
-  // Se sitúa por defecto en el último mes con extractos oficiales importados (Septiembre 2026)
-  const [patrimonioMonth, setPatrimonioMonth] = useState<string>('2026-09');
+  // Selector de Mes y Año para consultar el Patrimonio, Bancos y Gastos a esa fecha
+  // Se sitúa por defecto en el último mes oficialmente blindado y cerrado contablemente
+  const [patrimonioMonth, setPatrimonioMonth] = useState<string>(() => {
+    const loaded = loadAppState();
+    return getLatestLockedMonth(loaded.monthlyClosures);
+  });
+
+  // Al entrar o cambiar a cada pantalla (Patrimonio, Bancos, Gastos, Cierre Mensual),
+  // situar automáticamente la vista en el último mes blindado contablemente
+  useEffect(() => {
+    const latestLocked = getLatestLockedMonth(appState.monthlyClosures);
+    setPatrimonioMonth(latestLocked);
+  }, [activeTab]);
+
+  // Si cambia el estado de blindajes en monthlyClosures (ej. se cierra y blinda un nuevo mes),
+  // actualizar inmediatamente al último mes blindado
+  useEffect(() => {
+    const latestLocked = getLatestLockedMonth(appState.monthlyClosures);
+    setPatrimonioMonth(latestLocked);
+  }, [appState.monthlyClosures]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
@@ -1024,14 +1042,15 @@ export default function App() {
     return getAvailableMonths(appState.transactions, appState.monthlyClosures, appState.accounts);
   }, [appState.transactions, appState.monthlyClosures, appState.accounts]);
 
-  const latestAvailableMonth = availableMonths[0] || '2026-09';
-  const isCurrentPatrimonioMonth = patrimonioMonth === latestAvailableMonth;
+  const latestLockedMonth = useMemo(() => {
+    return getLatestLockedMonth(appState.monthlyClosures);
+  }, [appState.monthlyClosures]);
+
+  const latestAvailableMonth = availableMonths[0] || latestLockedMonth;
+  const isCurrentPatrimonioMonth = patrimonioMonth === latestLockedMonth;
 
   // Cuentas con saldos y fechas reconstruidos para el mes seleccionado en Patrimonio
   const effectivePatrimonioAccounts = useMemo(() => {
-    if (isCurrentPatrimonioMonth) {
-      return appState.accounts;
-    }
     return appState.accounts.map((acc) => {
       const info = getAccountBalanceForMonth(acc, patrimonioMonth, appState.transactions, appState.monthlyClosures);
       return {
@@ -1042,7 +1061,7 @@ export default function App() {
         isAudited: info.isAudited
       };
     });
-  }, [appState.accounts, patrimonioMonth, isCurrentPatrimonioMonth, appState.transactions, appState.monthlyClosures]);
+  }, [appState.accounts, patrimonioMonth, appState.transactions, appState.monthlyClosures]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-20 md:pb-12 text-slate-900">
@@ -1121,7 +1140,7 @@ export default function App() {
               availableMonths={availableMonths}
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestLockedMonth)}
               onToggleLockMonth={handleToggleLockMonth}
             />
 
@@ -1129,7 +1148,7 @@ export default function App() {
               accounts={effectivePatrimonioAccounts} 
               transactions={appState.transactions}
               selectedMonth={patrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestLockedMonth)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1180,7 +1199,7 @@ export default function App() {
               availableMonths={availableMonths}
               closures={appState.monthlyClosures}
               isCurrentMonth={isCurrentPatrimonioMonth}
-              onResetToCurrentMonth={() => setPatrimonioMonth(latestAvailableMonth)}
+              onResetToCurrentMonth={() => setPatrimonioMonth(latestLockedMonth)}
               onToggleLockMonth={handleToggleLockMonth}
             />
 
@@ -1269,6 +1288,7 @@ export default function App() {
               appState={appState}
               onUpdateClosure={handleUpdateClosure}
               onUpdateTransaction={handleUpdateTransaction}
+              initialMonth={patrimonioMonth}
             />
           </div>
         )}

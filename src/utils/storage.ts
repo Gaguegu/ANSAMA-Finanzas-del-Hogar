@@ -464,6 +464,53 @@ export function isMonthLocked(monthKey: string, closures?: MonthClosure[]): bool
 }
 
 /**
+ * Obtiene el último mes (YYYY-MM) que está oficialmente blindado o cerrado contablemente.
+ * Prioriza los cierres guardados en monthlyClosures (isLocked || isClosed), y como base
+ * garantizada incluye los meses auditados del ejercicio histórico (hasta 2026-09).
+ */
+export function getLatestLockedMonth(monthlyClosures: MonthClosure[] = []): string {
+  const candidateMonths: string[] = [];
+
+  // 1. Cierres mensuales explícitamente blindados o cerrados
+  if (Array.isArray(monthlyClosures)) {
+    monthlyClosures.forEach((c) => {
+      if ((c.isLocked || c.isClosed) && c.month && c.month.length === 7) {
+        candidateMonths.push(c.month);
+      }
+    });
+  }
+
+  // 2. Base histórica garantizada (2025 completo y 2026 Ene a Sep),
+  // siempre que no se hayan reabierto expresamente
+  for (let m = 1; m <= 12; m++) {
+    const mKey = `2025-${String(m).padStart(2, '0')}`;
+    const explicit = monthlyClosures.find((c) => c.month === mKey);
+    if (!explicit || explicit.isLocked || explicit.isClosed) {
+      candidateMonths.push(mKey);
+    }
+  }
+  for (let m = 1; m <= 9; m++) {
+    const mKey = `2026-${String(m).padStart(2, '0')}`;
+    const explicit = monthlyClosures.find((c) => c.month === mKey);
+    if (!explicit || explicit.isLocked || explicit.isClosed) {
+      candidateMonths.push(mKey);
+    }
+  }
+
+  // Filtrar meses reabiertos explícitamente y deduplicar
+  const filtered = Array.from(new Set(candidateMonths)).filter((m) => {
+    const explicit = monthlyClosures.find((c) => c.month === m);
+    if (explicit && !explicit.isLocked && !explicit.isClosed) {
+      return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => b.localeCompare(a));
+  return filtered[0] || '2026-09';
+}
+
+/**
  * Garantiza y blinda oficialmente los cierres mensuales de los ejercicios históricos:
  *  - Ejercicio 2025: 12 meses completos (Enero a Diciembre)
  *  - Ejercicio 2026: 9 meses auditados (Enero a Septiembre)
